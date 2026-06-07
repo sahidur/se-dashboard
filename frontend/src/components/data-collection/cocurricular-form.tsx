@@ -208,9 +208,9 @@ export function CocurricularForm({ schoolId }: Props) {
                 <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-500">
                   <span className="flex items-center gap-1"><School size={12} />{school.code}</span>
                   {school.address && <span className="flex items-center gap-1"><MapPin size={12} />{school.address}</span>}
-                  {school.category && (
-                    <Badge variant="outline" className="text-xs">
-                      {SCHOOL_CATEGORY_LABELS[school.category] ?? school.category}
+                  {school.schoolCategory && (
+                    <Badge variant="default" className="text-xs">
+                      {SCHOOL_CATEGORY_LABELS[school.schoolCategory] ?? school.schoolCategory}
                     </Badge>
                   )}
                 </div>
@@ -329,7 +329,7 @@ export function CocurricularForm({ schoolId }: Props) {
           <CardHeader className="pb-2 pt-4 px-6">
             <CardTitle className="text-sm font-semibold text-gray-700 flex items-center gap-2">
               {month}
-              <Badge variant="secondary">{rows.length} grade{rows.length > 1 ? 's' : ''}</Badge>
+              <Badge variant="default">{rows.length} grade{rows.length > 1 ? 's' : ''}</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="px-6 pb-4">
@@ -348,7 +348,7 @@ export function CocurricularForm({ schoolId }: Props) {
                   {rows.map((rec) => (
                     <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
                       <td className="py-2.5 pr-3">
-                        <Badge variant="outline" className="text-purple-700 border-purple-200 bg-purple-50 font-medium">
+                        <Badge variant="default" className="text-purple-700 border-purple-200 bg-purple-50 font-medium">
                           {rec.grade}
                         </Badge>
                       </td>

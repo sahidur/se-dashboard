@@ -84,7 +84,7 @@ const fmtTaka = (n: number) =>
   n >= 100_000 ? `৳${(n / 100_000).toFixed(1)} L` :
   n >= 1_000 ? `৳${(n / 1_000).toFixed(1)}K` : `৳${n}`;
 
-const pct = (a: number, b: number) => (b > 0 ? Math.min(((a / b) * 100).toFixed(1), '100') : '0');
+const pct = (a: number, b: number) => (b > 0 ? Math.min((a / b) * 100, 100).toFixed(1) : '0');
 
 /* ─── Animated Counter ─────────────────────────────────── */
 
@@ -575,7 +575,7 @@ export default function ProgrammeOverviewPage() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle className="text-sm font-semibold text-gray-700">
                 All Schools
-                <Badge variant="secondary" className="ml-2">{filteredSchools.length}</Badge>
+                <Badge variant="default" className="ml-2">{filteredSchools.length}</Badge>
               </CardTitle>
               <input
                 type="text"
@@ -621,7 +621,7 @@ export default function ProgrammeOverviewPage() {
                           </div>
                         </td>
                         <td className="py-3 pr-3">
-                          <Badge variant="outline" className="text-indigo-700 border-indigo-200 bg-indigo-50">
+                          <Badge variant="default" className="text-indigo-700 border-indigo-200 bg-indigo-50">
                             {CATEGORY_LABELS[school.category] ?? school.category}
                           </Badge>
                         </td>

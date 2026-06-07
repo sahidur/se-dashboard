@@ -116,7 +116,7 @@ const fmtTaka = (n: number) =>
   n >= 100_000 ? `৳${(n / 100_000).toFixed(1)} L` :
   n >= 1_000 ? `৳${(n / 1_000).toFixed(1)}K` : `৳${n}`;
 
-const pct = (a: number, b: number) => (b > 0 ? Math.min(((a / b) * 100).toFixed(1), '100') : '0');
+const pct = (a: number, b: number) => (b > 0 ? Math.min((a / b) * 100, 100).toFixed(1) : '0');
 
 /* ─── Custom tooltip ───────────────────────────────────── */
 
@@ -179,7 +179,7 @@ function RevRow({ label, target, achievement }: { label: string; target: number;
         <div className="flex gap-4">
           <span className="text-gray-400">Target: <strong className="text-gray-700">{fmtTaka(target)}</strong></span>
           <span className="text-gray-400">Achieved: <strong className={p >= 80 ? 'text-green-600' : p >= 50 ? 'text-amber-500' : 'text-red-500'}>{fmtTaka(achievement)}</strong></span>
-          <Badge variant="outline" className={`text-[10px] ${p >= 80 ? 'border-green-200 text-green-700 bg-green-50' : p >= 50 ? 'border-amber-200 text-amber-700 bg-amber-50' : 'border-red-200 text-red-700 bg-red-50'}`}>
+          <Badge variant="default" className={`text-[10px] ${p >= 80 ? 'border-green-200 text-green-700 bg-green-50' : p >= 50 ? 'border-amber-200 text-amber-700 bg-amber-50' : 'border-red-200 text-red-700 bg-red-50'}`}>
             {p}%
           </Badge>
         </div>
@@ -379,7 +379,7 @@ export default function SchoolInformationPage() {
                           </Badge>
                         )}
                         {profile.school.schoolType && (
-                          <Badge variant="outline">{profile.school.schoolType}</Badge>
+                          <Badge variant="default">{profile.school.schoolType}</Badge>
                         )}
                         {profile.school.governmentApproval && (
                           <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-0">Govt. Approved</Badge>
@@ -485,7 +485,7 @@ export default function SchoolInformationPage() {
                             <td className="py-2 font-medium text-gray-800">{t.name}</td>
                             <td className="py-2 text-gray-500">{t.designation ?? '—'}</td>
                             <td className="py-2">
-                              <Badge variant="outline" className={t.gender === 'Male' ? 'border-indigo-200 text-indigo-600' : 'border-pink-200 text-pink-600'}>
+                              <Badge variant="default" className={t.gender === 'Male' ? 'border-indigo-200 text-indigo-600' : 'border-pink-200 text-pink-600'}>
                                 {t.gender ?? '—'}
                               </Badge>
                             </td>
@@ -640,7 +640,7 @@ export default function SchoolInformationPage() {
                           <td className="py-2 font-medium text-gray-800">{a.alumniName}</td>
                           <td className="py-2">
                             {a.graduationYear ? (
-                              <Badge variant="outline" className="font-mono">{a.graduationYear}</Badge>
+                              <Badge variant="default" className="font-mono">{a.graduationYear}</Badge>
                             ) : '—'}
                           </td>
                           <td className="py-2 text-gray-600">{a.currentOccupation ?? '—'}</td>
@@ -676,7 +676,7 @@ export default function SchoolInformationPage() {
                           (pa.jrScholarship ?? 0) + (pa.sscScholarship ?? 0) + (pa.othersScholarship ?? 0);
                         return (
                           <tr key={pa.id} className="hover:bg-gray-50">
-                            <td className="py-2"><Badge variant="outline" className="font-mono">{pa.year}</Badge></td>
+                            <td className="py-2"><Badge variant="default" className="font-mono">{pa.year}</Badge></td>
                             <td className="py-2 text-right text-gray-700">{pa.kgScholarship ?? 0}</td>
                             <td className="py-2 text-right text-gray-700">{pa.primaryScholarship ?? 0}</td>
                             <td className="py-2 text-right text-gray-700">{pa.jrScholarship ?? 0}</td>

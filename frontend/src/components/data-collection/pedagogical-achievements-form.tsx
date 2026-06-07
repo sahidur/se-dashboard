@@ -216,9 +216,9 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
                 <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-500">
                   <span className="flex items-center gap-1"><School size={12} />{school.code}</span>
                   {school.address && <span className="flex items-center gap-1"><MapPin size={12} />{school.address}</span>}
-                  {school.category && (
-                    <Badge variant="outline" className="text-xs">
-                      {SCHOOL_CATEGORY_LABELS[school.category] ?? school.category}
+                  {school.schoolCategory && (
+                    <Badge variant="default" className="text-xs">
+                      {SCHOOL_CATEGORY_LABELS[school.schoolCategory] ?? school.schoolCategory}
                     </Badge>
                   )}
                 </div>
@@ -356,7 +356,7 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
           <CardHeader className="pb-2 pt-5 px-6">
             <CardTitle className="text-base font-semibold text-gray-800">
               Recorded Achievements
-              <Badge variant="secondary" className="ml-2">{records.length}</Badge>
+              <Badge variant="default" className="ml-2">{records.length}</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="px-6 pb-6">
@@ -382,7 +382,7 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
                       <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
                         <td className="py-3 pr-4 text-gray-400">{idx + 1}</td>
                         <td className="py-3 pr-4">
-                          <Badge variant="outline" className="font-mono text-indigo-700 border-indigo-200 bg-indigo-50">
+                          <Badge variant="default" className="font-mono text-indigo-700 border-indigo-200 bg-indigo-50">
                             {rec.year}
                           </Badge>
                         </td>
@@ -392,7 +392,7 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
                         <td className="py-3 pr-4 text-right font-medium text-gray-700">{rec.sscScholarship}</td>
                         <td className="py-3 pr-4 text-right font-medium text-gray-700">{rec.othersScholarship}</td>
                         <td className="py-3 pr-4 text-right">
-                          <Badge variant="secondary" className="font-semibold">{total}</Badge>
+                          <Badge variant="default" className="font-semibold">{total}</Badge>
                         </td>
                         <td className="py-3 text-right">
                           <div className="flex justify-end gap-1">
