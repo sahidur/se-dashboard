@@ -29,6 +29,10 @@ import { DataCollectionModule } from './data-collection/data-collection.module';
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
         const dbPassword = configService.get<string>('DB_PASSWORD');
+        const dbSslEnabled = configService.get<string>('DB_SSL') === 'true';
+        const dbSslRejectUnauthorized =
+          configService.get<string>('DB_SSL_REJECT_UNAUTHORIZED', 'false') ===
+          'true';
         if (!dbPassword) {
           throw new Error('DB_PASSWORD environment variable is not set');
         }
@@ -39,8 +43,8 @@ import { DataCollectionModule } from './data-collection/data-collection.module';
           username: configService.get<string>('DB_USERNAME', 'postgres'),
           password: dbPassword,
           database: configService.get<string>('DB_DATABASE', 'bep_se'),
-          ssl: configService.get<string>('DB_SSL') === 'true'
-            ? { rejectUnauthorized: true }
+          ssl: dbSslEnabled
+            ? { rejectUnauthorized: dbSslRejectUnauthorized }
             : false,
           schema: configService.get<string>('DB_SCHEMA', 'bep'),
           autoLoadEntities: true,
