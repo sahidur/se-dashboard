@@ -18,6 +18,8 @@ export default function DashboardPage() {
   const { user, hasAnyRole } = useAuthStore();
   const isAdmin = hasAnyRole('Super Admin', 'Admin');
 
+  const isSurveyCreator = hasAnyRole('Super Admin', 'Admin', 'Survey Creator');
+
   const results = useQueries({
     queries: [
       {
@@ -35,6 +37,12 @@ export default function DashboardPage() {
         queryFn: () =>
           api.get('/schools?limit=1').then((r) => r.data.meta.total as number),
       },
+      {
+        queryKey: ['stats-responses'],
+        queryFn: () =>
+          api.get('/surveys/responses?limit=1').then((r) => r.data.meta?.total as number).catch(() => 0 as number),
+        enabled: isSurveyCreator,
+      },
     ],
   });
 
@@ -43,6 +51,7 @@ export default function DashboardPage() {
     totalUsers: results[0].data,
     totalSurveys: results[1].data,
     totalSchools: results[2].data,
+    totalResponses: results[3].data,
   };
 
   const statCards = [
