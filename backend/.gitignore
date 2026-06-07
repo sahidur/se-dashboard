@@ -1,0 +1,20 @@
+# Node.js
+node_modules/
+dist/
+build/
+
+# Environment variables — NEVER commit these
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Uploads (local dev)
+uploads/
