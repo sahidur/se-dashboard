@@ -35,6 +35,10 @@ import {
   UpdateAlumniDto,
   UpsertPedagogicalAchievementDto,
   UpsertCocurricularDto,
+  UpsertStudentsPerformanceDto,
+  UpsertActivityParticipationDto,
+  CreateEventParticipationDto,
+  UpdateEventParticipationDto,
 } from './dto';
 
 @Controller('data-collection')
@@ -51,7 +55,10 @@ export class DataCollectionController {
   }
 
   @Get('schools')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions(
+    { module: 'data-collection', action: 'read' },
+    { module: 'school-information', action: 'read' },
+  )
   findAllSchools(
     @CurrentUser('id') userId: string,
     @CurrentUser('roles') roles: string[],
@@ -409,10 +416,120 @@ export class DataCollectionController {
     return this.service.deleteCocurricular(id, userId);
   }
 
+  // ===================== Students' Performance =====================
+
+  @Post('students-performance')
+  @Permissions({ module: 'data-collection', action: 'create' })
+  upsertStudentsPerformance(
+    @Body() dto: UpsertStudentsPerformanceDto,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.upsertStudentsPerformance(dto, userId, roles);
+  }
+
+  @Get('students-performance/school/:schoolId')
+  @Permissions({ module: 'data-collection', action: 'read' })
+  getStudentsPerformance(
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.getStudentsPerformance(schoolId, userId, roles);
+  }
+
+  @Delete('students-performance/:id')
+  @Permissions({ module: 'data-collection', action: 'delete' })
+  deleteStudentsPerformance(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.deleteStudentsPerformance(id, userId, roles);
+  }
+
+  // ===================== Activity Participation (Corner/Club/Library/Lab) =====================
+
+  @Post('activity-participation')
+  @Permissions({ module: 'data-collection', action: 'create' })
+  upsertActivityParticipation(
+    @Body() dto: UpsertActivityParticipationDto,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.upsertActivityParticipation(dto, userId, roles);
+  }
+
+  @Get('activity-participation/school/:schoolId')
+  @Permissions({ module: 'data-collection', action: 'read' })
+  getActivityParticipation(
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.getActivityParticipation(schoolId, userId, roles);
+  }
+
+  @Delete('activity-participation/:id')
+  @Permissions({ module: 'data-collection', action: 'delete' })
+  deleteActivityParticipation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.deleteActivityParticipation(id, userId, roles);
+  }
+
+  // ===================== Event Participation =====================
+
+  @Post('event-participation')
+  @Permissions({ module: 'data-collection', action: 'create' })
+  createEventParticipation(
+    @Body() dto: CreateEventParticipationDto,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.createEventParticipation(dto, userId, roles);
+  }
+
+  @Get('event-participation/school/:schoolId')
+  @Permissions({ module: 'data-collection', action: 'read' })
+  getEventParticipation(
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.getEventParticipation(schoolId, userId, roles);
+  }
+
+  @Patch('event-participation/:id')
+  @Permissions({ module: 'data-collection', action: 'update' })
+  updateEventParticipation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateEventParticipationDto,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.updateEventParticipation(id, dto, userId, roles);
+  }
+
+  @Delete('event-participation/:id')
+  @Permissions({ module: 'data-collection', action: 'delete' })
+  deleteEventParticipation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.deleteEventParticipation(id, userId, roles);
+  }
+
   // ===================== Programme Overview =====================
 
   @Get('programme-overview')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions(
+    { module: 'data-collection', action: 'read' },
+    { module: 'programme-overview', action: 'read' },
+  )
   getProgrammeOverview(
     @CurrentUser('id') userId: string,
     @CurrentUser('roles') roles: string[],
@@ -424,7 +541,10 @@ export class DataCollectionController {
   // ===================== School Profile Overview =====================
 
   @Get('schools/:id/profile')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions(
+    { module: 'data-collection', action: 'read' },
+    { module: 'school-information', action: 'read' },
+  )
   getSchoolProfile(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser('id') userId: string,

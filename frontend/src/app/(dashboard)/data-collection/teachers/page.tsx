@@ -80,7 +80,6 @@ export default function TeachersInfoPage() {
           <div className="flex justify-center py-16"><div className="h-10 w-10 animate-spin rounded-full border-4 border-brand-200 border-t-brand-600" /></div>
         ) : (
           <Card className="overflow-hidden">
-            <div className="h-1.5 bg-gradient-to-r from-orange-500 to-orange-600" />
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2"><GraduationCap size={18} className="text-orange-500" />Teachers Information</CardTitle>

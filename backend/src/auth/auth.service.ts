@@ -10,6 +10,7 @@ import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
+import { getAuditContext } from '../common/audit/audit-context';
 
 @Injectable()
 export class AuthService {
@@ -37,24 +38,60 @@ export class AuthService {
       throw new UnauthorizedException('Account is deactivated');
     }
 
+    return this.issueSession(user, 'password');
+  }
+
+  /**
+   * Issues a JWT session for an already-authenticated user (used by both the
+   * password login flow and the passkey login flow), updating the refresh
+   * token + last-login timestamp and writing a LOGIN audit entry.
+   */
+  async issueSession(user: any, method: 'password' | 'passkey') {
     const tokens = await this.generateTokens(user);
+    const fullUser = (await this.usersService.findOneById(user.id)) || user;
 
     // Update last login and refresh token
     await this.usersService.updateRefreshToken(user.id, tokens.refreshToken);
     await this.usersService.updateLastLogin(user.id);
+    const loginCtx = getAuditContext();
+    await this.usersService.logActivity({
+      action: 'LOGIN',
+      module: 'auth',
+      entityId: fullUser.id,
+      userId: fullUser.id,
+      ipAddress: loginCtx.ipAddress,
+      userAgent: loginCtx.userAgent,
+      newData: { email: fullUser.email, method },
+    });
 
     return {
       user: {
-        id: user.id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        phone: user.phone,
-        profilePicture: user.profilePicture,
-        roles: user.roles.map((r) => ({
+        id: fullUser.id,
+        firstName: fullUser.firstName,
+        lastName: fullUser.lastName,
+        email: fullUser.email,
+        phone: fullUser.phone,
+        profilePicture: fullUser.profilePicture,
+        isActive: fullUser.isActive,
+        lastLoginAt: fullUser.lastLoginAt,
+        pin: fullUser.pin,
+        designation: fullUser.designation,
+        base: fullUser.base,
+        geoLocationId: fullUser.geoLocationId,
+        geoLocation: fullUser.geoLocation,
+        schools: fullUser.schools,
+        createdAt: fullUser.createdAt,
+        updatedAt: fullUser.updatedAt,
+        roles: (fullUser.roles || []).map((r: any) => ({
           id: r.id,
           name: r.name,
-          permissions: r.permissions?.map((p) => ({
+          description: r.description,
+          hierarchy: r.hierarchy,
+          isActive: r.isActive,
+          createdAt: r.createdAt,
+          updatedAt: r.updatedAt,
+          permissions: (r.permissions || []).map((p: any) => ({
+            id: p.id,
             module: p.module,
             action: p.action,
           })),
@@ -120,6 +157,15 @@ export class AuthService {
 
   async logout(userId: string) {
     await this.usersService.updateRefreshToken(userId, null);
+    const ctx = getAuditContext();
+    await this.usersService.logActivity({
+      action: 'LOGOUT',
+      module: 'auth',
+      entityId: userId,
+      userId,
+      ipAddress: ctx.ipAddress,
+      userAgent: ctx.userAgent,
+    });
     return { message: 'Logged out successfully' };
   }
 
@@ -143,6 +189,15 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(newPassword, 12);
     await this.usersService.updatePassword(userId, hashedPassword);
+    const ctx = getAuditContext();
+    await this.usersService.logActivity({
+      action: 'CHANGE_PASSWORD',
+      module: 'auth',
+      entityId: userId,
+      userId,
+      ipAddress: ctx.ipAddress,
+      userAgent: ctx.userAgent,
+    });
 
     return { message: 'Password changed successfully' };
   }

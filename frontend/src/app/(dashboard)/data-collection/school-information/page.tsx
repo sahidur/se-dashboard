@@ -362,7 +362,6 @@ export default function SchoolInformationPage() {
           <div className="space-y-5">
             {/* School Header Card */}
             <Card className="border-0 shadow-md overflow-hidden">
-              <div className="h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-blue-500" />
               <CardContent className="p-6">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="flex items-start gap-4">

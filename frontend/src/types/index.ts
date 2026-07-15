@@ -12,9 +12,67 @@ export interface User {
   isActive: boolean;
   lastLoginAt?: string;
   roles: Role[];
+  pin?: number | null;
+  designation?: string | null;
+  base?: string | null;
+  geoLocationId?: string | null;
+  geoLocation?: GeoLocation | null;
+  schools?: School[];
   createdAt: string;
   updatedAt: string;
 }
+
+export interface AuditLogEntry {
+  id: string;
+  action: string;
+  module: string;
+  entityId?: string;
+  oldData?: Record<string, any> | null;
+  newData?: Record<string, any> | null;
+  ipAddress?: string;
+  userAgent?: string;
+  userId?: string;
+  user?: Pick<
+    User,
+    'id' | 'firstName' | 'lastName' | 'email' | 'profilePicture'
+  > | null;
+  createdAt: string;
+}
+
+export interface PaginatedAuditLogs {
+  data: AuditLogEntry[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface AuditLogStats {
+  total: number;
+  byAction: Record<string, number>;
+}
+
+export interface Passkey {
+  id: string;
+  name: string | null;
+  deviceType: 'singleDevice' | 'multiDevice' | null;
+  backedUp: boolean;
+  transports: string[] | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+export const USER_DESIGNATIONS = [
+  'Field Officer',
+  'Program Officer',
+  'Coordinator',
+  'Manager',
+  'Regional Manager',
+  'Monitoring & Evaluation Officer',
+  'Data Entry Operator',
+  'Admin Staff',
+  'Other',
+] as const;
 
 export interface Role {
   id: string;
@@ -109,7 +167,8 @@ export interface SurveyAssignment {
   school?: Pick<School, 'id' | 'name'>;
 }
 
-export type GeoLocationType = 'division' | 'district' | 'thana' | 'area';
+// Hierarchy order (top -> bottom): Area > Division > District > Thana/Upazilla.
+export type GeoLocationType = 'area' | 'division' | 'district' | 'thana';
 
 export interface GeoLocation {
   id: string;
@@ -487,7 +546,61 @@ export interface DcDashboard {
     alumni: { submitted: boolean; count?: number; data?: DcAlumni[] };
     pedagogicalAchievements: { submitted: boolean; count?: number };
     cocurricular: { submitted: boolean; count?: number };
+    studentsPerformance: { submitted: boolean; count?: number };
+    activityParticipation: { submitted: boolean; count?: number };
+    eventParticipation: { submitted: boolean; count?: number };
   };
+}
+
+export interface DcStudentsPerformance {
+  id: string;
+  schoolId: string;
+  grade: string;
+  numberOfStudents: number;
+  examName: string;
+  studentsAppearedPercent?: number;
+  gradeAPlus: number;
+  gradeA: number;
+  gradeAMinus: number;
+  gradeB: number;
+  gradeC: number;
+  gradeD: number;
+  gradeF: number;
+  progressGood?: number;
+  progressSatisfactory?: number;
+  progressNeedImprove?: number;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DcActivityParticipation {
+  id: string;
+  schoolId: string;
+  item: string;
+  month: string;
+  grade: string;
+  activityName?: string;
+  photoUrl?: string;
+  photoKey?: string;
+  conductedCount: number;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DcEventParticipation {
+  id: string;
+  schoolId: string;
+  eventName: string;
+  awardLevel: string;
+  maleAwarded: number;
+  femaleAwarded: number;
+  othersAwarded: number;
+  totalAwarded: number;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface DcFeeStructure {

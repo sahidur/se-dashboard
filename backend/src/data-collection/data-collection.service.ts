@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, ILike } from 'typeorm';
+import { Repository, ILike, In } from 'typeorm';
 import { DcSchool } from './entities/dc-school.entity';
 import { DcBasicInfo } from './entities/dc-basic-info.entity';
 import { DcInfrastructure } from './entities/dc-infrastructure.entity';
@@ -19,6 +19,9 @@ import { DcPerformance } from './entities/dc-performance.entity';
 import { DcAlumni } from './entities/dc-alumni.entity';
 import { DcPedagogicalAchievement } from './entities/dc-pedagogical-achievement.entity';
 import { DcCocurricular } from './entities/dc-cocurricular.entity';
+import { DcStudentsPerformance } from './entities/dc-students-performance.entity';
+import { DcActivityParticipation } from './entities/dc-activity-participation.entity';
+import { DcEventParticipation } from './entities/dc-event-participation.entity';
 import {
   CreateDcSchoolDto,
   UpdateDcSchoolDto,
@@ -39,7 +42,12 @@ import {
   UpdateAlumniDto,
   UpsertPedagogicalAchievementDto,
   UpsertCocurricularDto,
+  UpsertStudentsPerformanceDto,
+  UpsertActivityParticipationDto,
+  CreateEventParticipationDto,
+  UpdateEventParticipationDto,
 } from './dto';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class DataCollectionService {
@@ -62,6 +70,10 @@ export class DataCollectionService {
     @InjectRepository(DcAlumni) private alumniRepo: Repository<DcAlumni>,
     @InjectRepository(DcPedagogicalAchievement) private pedagAchievRepo: Repository<DcPedagogicalAchievement>,
     @InjectRepository(DcCocurricular) private cocurricularRepo: Repository<DcCocurricular>,
+    @InjectRepository(DcStudentsPerformance) private studentsPerfRepo: Repository<DcStudentsPerformance>,
+    @InjectRepository(DcActivityParticipation) private activityPartRepo: Repository<DcActivityParticipation>,
+    @InjectRepository(DcEventParticipation) private eventPartRepo: Repository<DcEventParticipation>,
+    private usersService: UsersService,
   ) {}
 
   // ===================== Helper =====================
@@ -70,15 +82,25 @@ export class DataCollectionService {
     return roles.includes('Super Admin') || roles.includes('Admin');
   }
 
+  /** School IDs explicitly assigned to a user via Users > Assign Schools (in addition to ones they created). */
+  private async getAssignedSchoolIds(userId: string): Promise<string[]> {
+    const assigned = await this.usersService.getSchools(userId);
+    return assigned.map((s) => s.id);
+  }
+
   private async validateSchoolAccess(schoolId: string, userId: string, roles: string[]): Promise<DcSchool> {
-    const where: any = this.isAdminRole(roles)
-      ? { id: schoolId }
-      : { id: schoolId, createdById: userId };
-    const school = await this.schoolRepo.findOne({ where });
+    const school = await this.schoolRepo.findOne({ where: { id: schoolId } });
     if (!school) {
       throw new NotFoundException('School not found or access denied');
     }
-    return school;
+    if (this.isAdminRole(roles) || school.createdById === userId) {
+      return school;
+    }
+    const assignedIds = await this.getAssignedSchoolIds(userId);
+    if (assignedIds.includes(schoolId)) {
+      return school;
+    }
+    throw new NotFoundException('School not found or access denied');
   }
 
   /** @deprecated use validateSchoolAccess */
@@ -102,19 +124,34 @@ export class DataCollectionService {
   async findAllSchools(userId: string, roles: string[], search?: string): Promise<DcSchool[]> {
     const admin = this.isAdminRole(roles);
     const relations = { createdBy: true };
+
+    let baseWhere: any[] = [];
+    if (!admin) {
+      const assignedIds = await this.getAssignedSchoolIds(userId);
+      baseWhere = assignedIds.length
+        ? [{ createdById: userId }, { id: In(assignedIds) }]
+        : [{ createdById: userId }];
+    }
+
     if (search) {
-      const baseWhere = admin ? {} : { createdById: userId };
+      const searchClauses = admin
+        ? [{ name: ILike(`%${search}%`) }, { code: ILike(`%${search}%`) }]
+        : baseWhere.flatMap((w) => [
+            { ...w, name: ILike(`%${search}%`) },
+            { ...w, code: ILike(`%${search}%`) },
+          ]);
       return this.schoolRepo.find({
-        where: [
-          { ...baseWhere, name: ILike(`%${search}%`) },
-          { ...baseWhere, code: ILike(`%${search}%`) },
-        ],
+        where: searchClauses,
         relations,
         order: { createdAt: 'DESC' },
       });
     }
-    const where = admin ? {} : { createdById: userId };
-    return this.schoolRepo.find({ where, relations, order: { createdAt: 'DESC' } });
+
+    return this.schoolRepo.find({
+      where: admin ? {} : baseWhere,
+      relations,
+      order: { createdAt: 'DESC' },
+    });
   }
 
   async findOneSchool(id: string, userId: string, roles: string[]): Promise<DcSchool> {
@@ -136,7 +173,7 @@ export class DataCollectionService {
 
   async getDashboard(schoolId: string, userId: string, roles: string[]) {
     const school = await this.validateSchoolAccess(schoolId, userId, roles);
-    const [basicInfo, infra, studentsCount, teacherIndividualCount, teachersDevCount, revenue, feeStructureCount, revBudgetTotal, revBudgetMonthlyCount, revActualTotal, revActualMonthlyCount, performance, alumni, pedagAchievCount, cocurricularCount] =
+    const [basicInfo, infra, studentsCount, teacherIndividualCount, teachersDevCount, revenue, feeStructureCount, revBudgetTotal, revBudgetMonthlyCount, revActualTotal, revActualMonthlyCount, performance, alumni, pedagAchievCount, cocurricularCount, studentsPerfCount, activityPartCount, eventPartCount] =
       await Promise.all([
         this.basicInfoRepo.findOne({ where: { schoolId } }),
         this.infraRepo.findOne({ where: { schoolId } }),
@@ -153,6 +190,9 @@ export class DataCollectionService {
         this.alumniRepo.find({ where: { schoolId } }),
         this.pedagAchievRepo.count({ where: { schoolId } }),
         this.cocurricularRepo.count({ where: { schoolId } }),
+        this.studentsPerfRepo.count({ where: { schoolId } }),
+        this.activityPartRepo.count({ where: { schoolId } }),
+        this.eventPartRepo.count({ where: { schoolId } }),
       ]);
 
     // Infrastructure Status: submitted when campus or building data exists
@@ -182,6 +222,9 @@ export class DataCollectionService {
         alumni: { submitted: alumni.length > 0, count: alumni.length, data: alumni },
         pedagogicalAchievements: { submitted: pedagAchievCount > 0, count: pedagAchievCount },
         cocurricular: { submitted: cocurricularCount > 0, count: cocurricularCount },
+        studentsPerformance: { submitted: studentsPerfCount > 0, count: studentsPerfCount },
+        activityParticipation: { submitted: activityPartCount > 0, count: activityPartCount },
+        eventParticipation: { submitted: eventPartCount > 0, count: eventPartCount },
       },
     };
   }
@@ -570,6 +613,90 @@ export class DataCollectionService {
     if (!record) throw new NotFoundException('Record not found');
     await this.validateSchoolOwnership(record.schoolId, userId);
     await this.cocurricularRepo.remove(record);
+  }
+
+  // ===================== Students' Performance =====================
+
+  async upsertStudentsPerformance(dto: UpsertStudentsPerformanceDto, userId: string, roles: string[]): Promise<DcStudentsPerformance> {
+    await this.validateSchoolAccess(dto.schoolId, userId, roles);
+    let record = await this.studentsPerfRepo.findOne({
+      where: { schoolId: dto.schoolId, grade: dto.grade, examName: dto.examName },
+    });
+    if (record) {
+      Object.assign(record, dto);
+    } else {
+      record = this.studentsPerfRepo.create({ ...dto, createdById: userId });
+    }
+    return this.studentsPerfRepo.save(record);
+  }
+
+  async getStudentsPerformance(schoolId: string, userId: string, roles: string[]): Promise<DcStudentsPerformance[]> {
+    await this.validateSchoolAccess(schoolId, userId, roles);
+    return this.studentsPerfRepo.find({ where: { schoolId }, order: { grade: 'ASC', examName: 'ASC' } });
+  }
+
+  async deleteStudentsPerformance(id: string, userId: string, roles: string[]): Promise<void> {
+    const record = await this.studentsPerfRepo.findOne({ where: { id } });
+    if (!record) throw new NotFoundException('Record not found');
+    await this.validateSchoolAccess(record.schoolId, userId, roles);
+    await this.studentsPerfRepo.remove(record);
+  }
+
+  // ===================== Activity Participation (Corner/Club/Library/Lab) =====================
+
+  async upsertActivityParticipation(dto: UpsertActivityParticipationDto, userId: string, roles: string[]): Promise<DcActivityParticipation> {
+    await this.validateSchoolAccess(dto.schoolId, userId, roles);
+    let record = await this.activityPartRepo.findOne({
+      where: { schoolId: dto.schoolId, item: dto.item, month: dto.month, grade: dto.grade },
+    });
+    if (record) {
+      Object.assign(record, dto);
+    } else {
+      record = this.activityPartRepo.create({ ...dto, createdById: userId });
+    }
+    return this.activityPartRepo.save(record);
+  }
+
+  async getActivityParticipation(schoolId: string, userId: string, roles: string[]): Promise<DcActivityParticipation[]> {
+    await this.validateSchoolAccess(schoolId, userId, roles);
+    return this.activityPartRepo.find({ where: { schoolId }, order: { month: 'ASC', item: 'ASC', grade: 'ASC' } });
+  }
+
+  async deleteActivityParticipation(id: string, userId: string, roles: string[]): Promise<void> {
+    const record = await this.activityPartRepo.findOne({ where: { id } });
+    if (!record) throw new NotFoundException('Record not found');
+    await this.validateSchoolAccess(record.schoolId, userId, roles);
+    await this.activityPartRepo.remove(record);
+  }
+
+  // ===================== Event Participation =====================
+
+  async createEventParticipation(dto: CreateEventParticipationDto, userId: string, roles: string[]): Promise<DcEventParticipation> {
+    await this.validateSchoolAccess(dto.schoolId, userId, roles);
+    const totalAwarded = (dto.maleAwarded || 0) + (dto.femaleAwarded || 0) + (dto.othersAwarded || 0);
+    const record = this.eventPartRepo.create({ ...dto, totalAwarded, createdById: userId });
+    return this.eventPartRepo.save(record);
+  }
+
+  async getEventParticipation(schoolId: string, userId: string, roles: string[]): Promise<DcEventParticipation[]> {
+    await this.validateSchoolAccess(schoolId, userId, roles);
+    return this.eventPartRepo.find({ where: { schoolId }, order: { createdAt: 'DESC' } });
+  }
+
+  async updateEventParticipation(id: string, dto: UpdateEventParticipationDto, userId: string, roles: string[]): Promise<DcEventParticipation> {
+    const record = await this.eventPartRepo.findOne({ where: { id } });
+    if (!record) throw new NotFoundException('Event participation record not found');
+    await this.validateSchoolAccess(record.schoolId, userId, roles);
+    Object.assign(record, dto);
+    record.totalAwarded = (record.maleAwarded || 0) + (record.femaleAwarded || 0) + (record.othersAwarded || 0);
+    return this.eventPartRepo.save(record);
+  }
+
+  async deleteEventParticipation(id: string, userId: string, roles: string[]): Promise<void> {
+    const record = await this.eventPartRepo.findOne({ where: { id } });
+    if (!record) throw new NotFoundException('Event participation record not found');
+    await this.validateSchoolAccess(record.schoolId, userId, roles);
+    await this.eventPartRepo.remove(record);
   }
 
   // ===================== Programme Overview (aggregated) =====================

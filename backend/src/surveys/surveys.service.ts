@@ -792,6 +792,57 @@ export class SurveysService {
     };
   }
 
+  async getAllResponses(
+    page = 1,
+    limit = 20,
+    filters?: {
+      startDate?: string;
+      endDate?: string;
+    },
+  ) {
+    const query = this.responsesRepository
+      .createQueryBuilder('response')
+      .leftJoinAndSelect('response.survey', 'survey')
+      .leftJoinAndSelect('response.respondent', 'respondent')
+      .select([
+        'response',
+        'survey.id',
+        'survey.title',
+        'respondent.id',
+        'respondent.firstName',
+        'respondent.lastName',
+        'respondent.email',
+      ])
+      .where('response.isComplete = :isComplete', { isComplete: true });
+
+    if (filters?.startDate) {
+      query.andWhere('response.createdAt >= :startDate', {
+        startDate: filters.startDate,
+      });
+    }
+    if (filters?.endDate) {
+      query.andWhere('response.createdAt <= :endDate', {
+        endDate: filters.endDate,
+      });
+    }
+
+    query.orderBy('response.createdAt', 'DESC');
+    const numPage = Number(page) || 1;
+    const numLimit = Number(limit) || 20;
+    query.skip((numPage - 1) * numLimit).take(numLimit);
+
+    const [data, total] = await query.getManyAndCount();
+    return {
+      data,
+      meta: {
+        total,
+        page: numPage,
+        limit: numLimit,
+        totalPages: Math.ceil(total / numLimit),
+      },
+    };
+  }
+
   async getResponse(id: string): Promise<SurveyResponse> {
     const response = await this.responsesRepository.findOne({
       where: { id },

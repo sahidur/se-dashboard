@@ -88,7 +88,6 @@ export default function AlumniPage() {
           <div className="flex justify-center py-16"><div className="h-10 w-10 animate-spin rounded-full border-4 border-brand-200 border-t-brand-600" /></div>
         ) : (
           <Card className="overflow-hidden">
-            <div className="h-1.5 bg-gradient-to-r from-amber-500 to-amber-600" />
             <CardHeader>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle className="flex items-center gap-2"><Award size={18} className="text-amber-500" />Alumni Records <Badge variant="info" className="ml-1">{alumni.length}</Badge></CardTitle>

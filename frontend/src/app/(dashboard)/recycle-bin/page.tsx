@@ -54,7 +54,7 @@ const entityConfig: Record<
 
 export default function RecycleBinPage() {
   const router = useRouter();
-  const { hasAnyRole } = useAuthStore();
+  const { hasPermission } = useAuthStore();
   const [data, setData] = useState<RecycleBinData | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -80,12 +80,12 @@ export default function RecycleBinPage() {
   }, []);
 
   useEffect(() => {
-    if (!hasAnyRole('Super Admin')) {
+    if (!hasPermission('recycle-bin', 'read')) {
       router.push('/dashboard');
       return;
     }
     fetchData();
-  }, [fetchData, hasAnyRole, router]);
+  }, [fetchData, hasPermission, router]);
 
   const handleRestore = async (entityType: string, id: string) => {
     setActionLoading(`restore-${id}`);

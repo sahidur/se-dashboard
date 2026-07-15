@@ -14,6 +14,9 @@ import {
   CheckCircle2,
   XCircle,
   ChevronRight,
+  GraduationCap,
+  Library,
+  Award,
 } from 'lucide-react';
 import api from '@/lib/api';
 import type { DcDashboard } from '@/types';
@@ -40,6 +43,39 @@ const SUB_FORMS = [
     bg: 'bg-purple-50',
     text: 'text-purple-600',
     trackKey: 'cocurricular',
+  },
+  {
+    key: 'students-performance',
+    slug: 'students-performance',
+    label: "Students' Performance",
+    description: 'Exam-wise grade-A to F results, student counts and progress indicators',
+    icon: GraduationCap,
+    color: 'from-teal-500 to-teal-600',
+    bg: 'bg-teal-50',
+    text: 'text-teal-600',
+    trackKey: 'studentsPerformance',
+  },
+  {
+    key: 'activity-participation',
+    slug: 'activity-participation',
+    label: "Students' Participation in Corner/Club/Library/Lab Activities",
+    description: 'Monthly activity participation by grade with photo evidence',
+    icon: Library,
+    color: 'from-amber-500 to-amber-600',
+    bg: 'bg-amber-50',
+    text: 'text-amber-600',
+    trackKey: 'activityParticipation',
+  },
+  {
+    key: 'event-participation',
+    slug: 'event-participation',
+    label: "School's Participation in Different Events",
+    description: 'Events, award levels and number of students awarded',
+    icon: Award,
+    color: 'from-rose-500 to-rose-600',
+    bg: 'bg-rose-50',
+    text: 'text-rose-600',
+    trackKey: 'eventParticipation',
   },
 
 ];
@@ -90,7 +126,6 @@ export default function PerformanceSubPage() {
 
       <div className="p-4 sm:p-6">
         <Card className="mb-6 overflow-hidden">
-          <div className="h-2 bg-gradient-to-r from-indigo-500 to-indigo-600" />
           <CardContent className="p-5">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-4">
@@ -138,7 +173,6 @@ export default function PerformanceSubPage() {
             return (
               <Link key={sf.key} href={`/data-collection/forms/${sf.slug}?school=${id}`} className="group block">
                 <Card className={`relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${submitted ? 'ring-2 ring-green-200' : 'ring-1 ring-gray-100'}`}>
-                  <div className={`h-1.5 bg-gradient-to-r ${sf.color}`} />
                   <CardContent className="p-5">
                     <div className="mb-3 flex items-start justify-between">
                       <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${sf.bg}`}><Icon size={22} className={sf.text} /></div>

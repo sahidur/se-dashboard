@@ -1009,7 +1009,7 @@ export default function FillSurveyPage() {
             survey.sections!
               .sort((a, b) => a.order - b.order)
               .map((section, sIdx) => (
-                <Card key={section.id} className="border-l-4 border-l-brand-500 mb-6">
+                <Card key={section.id} className="mb-6">
                   <CardHeader>
                     <div className="flex items-center gap-2">
                       <Layers size={18} className="text-brand-500" />

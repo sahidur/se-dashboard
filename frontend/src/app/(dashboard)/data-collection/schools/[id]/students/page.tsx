@@ -157,7 +157,6 @@ export default function StudentsSubPage() {
 
         {/* ── Summary Card ── */}
         <Card className="overflow-hidden">
-          <div className="h-2 bg-gradient-to-r from-violet-500 to-violet-600" />
           <CardContent className="p-5">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-4">
@@ -204,7 +203,6 @@ export default function StudentsSubPage() {
                 {/* Form link card */}
                 <Link href={`/data-collection/forms/${sf.slug}?school=${id}`} className="group flex-1 block">
                   <Card className={`relative h-full overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5 ${submitted ? 'ring-2 ring-violet-200' : 'ring-1 ring-gray-100'}`}>
-                    <div className={`h-1.5 bg-gradient-to-r ${sf.color}`} />
                     <CardContent className="p-5">
                       <div className="mb-3 flex items-start justify-between">
                         <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${sf.bg}`}>
@@ -249,7 +247,6 @@ export default function StudentsSubPage() {
         {/* ── Responses Table ── */}
         {showResponses && (
           <Card className="overflow-hidden border-0 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
-            <div className="h-1 bg-gradient-to-r from-violet-400 to-purple-500" />
             <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
               <div className="flex items-center gap-2">
                 <TableProperties size={18} className="text-violet-600" />

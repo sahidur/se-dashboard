@@ -20,6 +20,9 @@ import { DcPerformance } from './entities/dc-performance.entity';
 import { DcAlumni } from './entities/dc-alumni.entity';
 import { DcPedagogicalAchievement } from './entities/dc-pedagogical-achievement.entity';
 import { DcCocurricular } from './entities/dc-cocurricular.entity';
+import { DcStudentsPerformance } from './entities/dc-students-performance.entity';
+import { DcActivityParticipation } from './entities/dc-activity-participation.entity';
+import { DcEventParticipation } from './entities/dc-event-participation.entity';
 import { UsersModule } from '../users/users.module';
 
 @Module({
@@ -43,6 +46,9 @@ import { UsersModule } from '../users/users.module';
       DcAlumni,
       DcPedagogicalAchievement,
       DcCocurricular,
+      DcStudentsPerformance,
+      DcActivityParticipation,
+      DcEventParticipation,
     ]),
     UsersModule,
   ],

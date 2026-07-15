@@ -40,11 +40,9 @@ const statusTabs = [
 ];
 
 export default function SurveysPage() {
-  const { hasAnyRole, hasPermission } = useAuthStore();
-  const isSuperAdmin = hasAnyRole('Super Admin');
-  const isAdmin = hasAnyRole('Admin');
-  const canSeeAllStatuses = isSuperAdmin || isAdmin;
-  const canDeleteSurvey = isSuperAdmin && hasPermission('surveys', 'delete');
+  const { hasPermission } = useAuthStore();
+  const canSeeAllStatuses = hasPermission('surveys', 'update');
+  const canDeleteSurvey = hasPermission('surveys', 'delete');
   const queryClient = useQueryClient();
 
   const [search, setSearch] = useState('');

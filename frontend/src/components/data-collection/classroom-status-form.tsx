@@ -199,7 +199,6 @@ export function ClassroomStatusForm({ schoolId }: Props) {
       {/* ── School Info ─────────────────────────── */}
       {school && (
         <div className="overflow-hidden rounded-2xl border border-cyan-100 bg-gradient-to-br from-cyan-50 to-white shadow-sm">
-          <div className="h-1.5 bg-gradient-to-r from-cyan-500 to-blue-500" />
           <div className="flex items-start gap-4 p-5">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow">
               <School size={22} />
@@ -245,7 +244,6 @@ export function ClassroomStatusForm({ schoolId }: Props) {
 
       {/* ── Section 1: Classroom Counts ─────────── */}
       <Card className="overflow-hidden border-0 shadow-sm transition-all duration-200 hover:shadow-md">
-        <div className="h-1 bg-gradient-to-r from-cyan-400 to-blue-500" />
         <CardHeader className="pb-3 pt-5 px-5">
           <CardTitle className="flex items-center gap-2.5 text-base font-semibold text-gray-800">
             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-cyan-100 text-xs font-bold text-cyan-700">1</span>
@@ -283,7 +281,6 @@ export function ClassroomStatusForm({ schoolId }: Props) {
 
       {/* ── Section 2: Yes/No Features ──────────── */}
       <Card className="overflow-hidden border-0 shadow-sm transition-all duration-200 hover:shadow-md">
-        <div className="h-1 bg-gradient-to-r from-violet-400 to-purple-500" />
         <CardHeader className="pb-3 pt-5 px-5">
           <CardTitle className="flex items-center gap-2.5 text-base font-semibold text-gray-800">
             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-xs font-bold text-violet-700">2</span>

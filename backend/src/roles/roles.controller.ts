@@ -15,7 +15,6 @@ import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AccessGuard } from '../auth/guards/access.guard';
-import { Roles } from '../common/decorators/roles.decorator';
 import { Permissions } from '../common/decorators/permissions.decorator';
 
 @ApiTags('Roles')
@@ -26,7 +25,6 @@ export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
 
   @Post()
-  @Roles('Super Admin', 'Admin')
   @Permissions({ module: 'roles', action: 'create' })
   @ApiOperation({ summary: 'Create a new role' })
   async create(@Body() createRoleDto: CreateRoleDto) {
@@ -34,7 +32,6 @@ export class RolesController {
   }
 
   @Get()
-  @Roles('Super Admin', 'Admin')
   @Permissions({ module: 'roles', action: 'read' })
   @ApiOperation({ summary: 'Get all roles' })
   async findAll() {
@@ -42,7 +39,6 @@ export class RolesController {
   }
 
   @Get(':id')
-  @Roles('Super Admin', 'Admin')
   @Permissions({ module: 'roles', action: 'read' })
   @ApiOperation({ summary: 'Get a role by ID' })
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
@@ -50,7 +46,6 @@ export class RolesController {
   }
 
   @Patch(':id')
-  @Roles('Super Admin', 'Admin')
   @Permissions({ module: 'roles', action: 'update' })
   @ApiOperation({ summary: 'Update a role' })
   async update(
@@ -61,7 +56,6 @@ export class RolesController {
   }
 
   @Delete(':id')
-  @Roles('Super Admin')
   @Permissions({ module: 'roles', action: 'delete' })
   @ApiOperation({ summary: 'Delete a role' })
   async remove(@Param('id', ParseUUIDPipe) id: string) {
@@ -69,7 +63,6 @@ export class RolesController {
   }
 
   @Post('seed')
-  @Roles('Super Admin')
   @Permissions({ module: 'roles', action: 'create' })
   @ApiOperation({ summary: 'Seed default roles' })
   async seedRoles() {

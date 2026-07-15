@@ -131,7 +131,6 @@ export default function RevenueSubPage() {
       <div className="p-4 sm:p-6">
         {/* Summary card */}
         <Card className="mb-6 overflow-hidden">
-          <div className="h-2 bg-gradient-to-r from-amber-500 to-yellow-500" />
           <CardContent className="p-5">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-4">
@@ -182,7 +181,6 @@ export default function RevenueSubPage() {
             return (
               <Link key={sf.key} href={`/data-collection/forms/${sf.slug}?school=${id}`} className="group block">
                 <Card className={`relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${submitted ? 'ring-2 ring-green-200' : 'ring-1 ring-gray-100'}`}>
-                  <div className={`h-1.5 bg-gradient-to-r ${sf.color}`} />
                   <CardContent className="p-5">
                     <div className="mb-3 flex items-start justify-between">
                       <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${sf.bg}`}>

@@ -95,10 +95,12 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'bep-auth',
       partialize: (state) => ({
-        // Only persist non-sensitive user data.
-        // Tokens are kept in memory only — they are re-issued via refresh flow.
-        // This limits XSS token theft from localStorage.
+        // Persist tokens too so browser reload keeps the session alive.
+        // Without this, first API calls after a hard refresh run unauthenticated
+        // and force-logout the user.
         user: state.user,
+        accessToken: state.accessToken,
+        refreshToken: state.refreshToken,
         isAuthenticated: state.isAuthenticated,
       }),
     },

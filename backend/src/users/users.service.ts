@@ -4,13 +4,15 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, ILike } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { User } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Role } from '../roles/entities/role.entity';
+import { DcSchool } from '../data-collection/entities/dc-school.entity';
+import { AuditLog } from '../common/entities/audit-log.entity';
 
 @Injectable()
 export class UsersService {
@@ -19,9 +21,27 @@ export class UsersService {
     private usersRepository: Repository<User>,
     @InjectRepository(Role)
     private rolesRepository: Repository<Role>,
+    @InjectRepository(DcSchool)
+    private schoolsRepository: Repository<DcSchool>,
+    @InjectRepository(AuditLog)
+    private auditLogRepository: Repository<AuditLog>,
   ) {}
 
-  async create(createUserDto: CreateUserDto): Promise<User> {
+  async logActivity(params: {
+    action: string;
+    module: string;
+    entityId?: string;
+    userId?: string;
+    oldData?: Record<string, any>;
+    newData?: Record<string, any>;
+    ipAddress?: string;
+    userAgent?: string;
+  }): Promise<void> {
+    const log = this.auditLogRepository.create(params);
+    await this.auditLogRepository.save(log);
+  }
+
+  async create(createUserDto: CreateUserDto, actorId?: string): Promise<User> {
     const existing = await this.usersRepository.findOne({
       where: { email: createUserDto.email },
     });
@@ -37,13 +57,24 @@ export class UsersService {
         ? createUserDto.password
         : await bcrypt.hash(createUserDto.password, 12),
       phone: createUserDto.phone,
+      pin: createUserDto.pin,
+      designation: createUserDto.designation,
+      base: createUserDto.base,
+      geoLocationId: createUserDto.geoLocationId,
+      profilePicture: createUserDto.profilePicture,
     });
 
     if (createUserDto.roleIds?.length) {
       user.roles = await this.rolesRepository.findBy({ id: In(createUserDto.roleIds) });
     }
 
-    return this.usersRepository.save(user);
+    if (createUserDto.schoolIds?.length) {
+      user.schools = await this.schoolsRepository.findBy({ id: In(createUserDto.schoolIds) });
+    }
+
+    const saved = await this.usersRepository.save(user);
+    // Activity is recorded automatically by the global audit subscriber.
+    return saved;
   }
 
   async findAll(
@@ -57,6 +88,10 @@ export class UsersService {
     const query = this.usersRepository
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.roles', 'role')
+      .leftJoinAndSelect('user.geoLocation', 'geoLocation')
+      .leftJoinAndSelect('geoLocation.parent', 'geoLocationParent')
+      .leftJoinAndSelect('geoLocationParent.parent', 'geoLocationGrandparent')
+      .leftJoinAndSelect('geoLocationGrandparent.parent', 'geoLocationGreatGrandparent')
       .select([
         'user.id',
         'user.firstName',
@@ -64,11 +99,26 @@ export class UsersService {
         'user.email',
         'user.phone',
         'user.profilePicture',
+        'user.pin',
+        'user.designation',
+        'user.base',
         'user.isActive',
         'user.lastLoginAt',
         'user.createdAt',
         'role.id',
         'role.name',
+        'geoLocation.id',
+        'geoLocation.name',
+        'geoLocation.type',
+        'geoLocationParent.id',
+        'geoLocationParent.name',
+        'geoLocationParent.type',
+        'geoLocationGrandparent.id',
+        'geoLocationGrandparent.name',
+        'geoLocationGrandparent.type',
+        'geoLocationGreatGrandparent.id',
+        'geoLocationGreatGrandparent.name',
+        'geoLocationGreatGrandparent.type',
       ]);
 
     const conditions: string[] = [];
@@ -117,7 +167,15 @@ export class UsersService {
   async findOneById(id: string): Promise<User | null> {
     return this.usersRepository.findOne({
       where: { id },
-      relations: ['roles', 'roles.permissions'],
+      relations: [
+        'roles',
+        'roles.permissions',
+        'geoLocation',
+        'geoLocation.parent',
+        'geoLocation.parent.parent',
+        'geoLocation.parent.parent.parent',
+        'schools',
+      ],
     });
   }
 
@@ -142,7 +200,7 @@ export class UsersService {
     });
   }
 
-  async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
+  async update(id: string, updateUserDto: UpdateUserDto, actorId?: string): Promise<User> {
     const user = await this.usersRepository.findOne({
       where: { id },
       relations: ['roles'],
@@ -165,6 +223,17 @@ export class UsersService {
       ...(updateUserDto.lastName && { lastName: updateUserDto.lastName }),
       ...(updateUserDto.email && { email: updateUserDto.email }),
       ...(updateUserDto.phone !== undefined && { phone: updateUserDto.phone }),
+      ...(updateUserDto.pin !== undefined && { pin: updateUserDto.pin }),
+      ...(updateUserDto.designation !== undefined && {
+        designation: updateUserDto.designation,
+      }),
+      ...(updateUserDto.base !== undefined && { base: updateUserDto.base }),
+      ...(updateUserDto.geoLocationId !== undefined && {
+        geoLocationId: updateUserDto.geoLocationId,
+      }),
+      ...(updateUserDto.profilePicture !== undefined && {
+        profilePicture: updateUserDto.profilePicture,
+      }),
       ...(updateUserDto.isActive !== undefined && {
         isActive: updateUserDto.isActive,
       }),
@@ -174,7 +243,126 @@ export class UsersService {
       user.roles = await this.rolesRepository.findBy({ id: In(updateUserDto.roleIds) });
     }
 
-    return this.usersRepository.save(user);
+    if (updateUserDto.schoolIds) {
+      user.schools = await this.schoolsRepository.findBy({ id: In(updateUserDto.schoolIds) });
+    }
+
+    const saved = await this.usersRepository.save(user);
+    // Update activity is recorded automatically by the global audit subscriber.
+    return saved;
+  }
+
+  async setStatus(id: string, isActive: boolean, actorId?: string): Promise<User> {
+    const user = await this.usersRepository.findOne({ where: { id } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    user.isActive = isActive;
+    const saved = await this.usersRepository.save(user);
+    // Status change is recorded automatically by the global audit subscriber.
+    return saved;
+  }
+
+  async getSchools(userId: string): Promise<DcSchool[]> {
+    const user = await this.usersRepository.findOne({
+      where: { id: userId },
+      relations: ['schools'],
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    return user.schools || [];
+  }
+
+  /**
+   * Schools available to assign to a user, sourced from the real Data
+   * Collection school registry (dc_schools), with optional search + geo
+   * (division/district/upazila) filters used by the assign-schools UI.
+   */
+  async findAvailableSchools(filters: {
+    search?: string;
+    division?: string;
+    district?: string;
+    upazila?: string;
+  }): Promise<DcSchool[]> {
+    const query = this.schoolsRepository.createQueryBuilder('school');
+
+    if (filters.search?.trim()) {
+      query.andWhere(
+        '(school.name ILIKE :search OR school.code ILIKE :search)',
+        { search: `%${filters.search.trim()}%` },
+      );
+    }
+    if (filters.division?.trim()) {
+      query.andWhere('school.division ILIKE :division', {
+        division: `%${filters.division.trim()}%`,
+      });
+    }
+    if (filters.district?.trim()) {
+      query.andWhere('school.district ILIKE :district', {
+        district: `%${filters.district.trim()}%`,
+      });
+    }
+    if (filters.upazila?.trim()) {
+      query.andWhere('school.upazila ILIKE :upazila', {
+        upazila: `%${filters.upazila.trim()}%`,
+      });
+    }
+
+    query.orderBy('school.name', 'ASC');
+    return query.getMany();
+  }
+
+  async addSchools(userId: string, schoolIds: string[]): Promise<DcSchool[]> {
+    const user = await this.usersRepository.findOne({
+      where: { id: userId },
+      relations: ['schools'],
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    const newSchools = await this.schoolsRepository.findBy({ id: In(schoolIds) });
+    const existingIds = new Set((user.schools || []).map((s) => s.id));
+    const merged = [...(user.schools || [])];
+    for (const school of newSchools) {
+      if (!existingIds.has(school.id)) {
+        merged.push(school);
+        existingIds.add(school.id);
+      }
+    }
+    user.schools = merged;
+    await this.usersRepository.save(user);
+    return user.schools;
+  }
+
+  async removeSchool(userId: string, schoolId: string): Promise<DcSchool[]> {
+    const user = await this.usersRepository.findOne({
+      where: { id: userId },
+      relations: ['schools'],
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    user.schools = (user.schools || []).filter((s) => s.id !== schoolId);
+    await this.usersRepository.save(user);
+    return user.schools;
+  }
+
+  async getActivity(userId: string, limit = 50): Promise<AuditLog[]> {
+    const user = await this.usersRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    return this.auditLogRepository
+      .createQueryBuilder('log')
+      .where('log.userId = :userId', { userId })
+      .orWhere('(log.module = :module AND log.entityId = CAST(:userId AS varchar))', {
+        module: 'users',
+        userId,
+      })
+      .orderBy('log.createdAt', 'DESC')
+      .take(limit)
+      .getMany();
   }
 
   async resetPassword(id: string): Promise<{ newPassword: string }> {
@@ -201,6 +389,12 @@ export class UsersService {
     newPassword = pwArr.join('');
     const hashedPassword = await bcrypt.hash(newPassword, 12);
     await this.usersRepository.update(id, { password: hashedPassword });
+    await this.logActivity({
+      action: 'RESET_PASSWORD',
+      module: 'users',
+      entityId: id,
+      userId: id,
+    });
     return { newPassword };
   }
 
@@ -210,6 +404,7 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
     await this.usersRepository.softRemove(user);
+    // Deletion is recorded automatically by the global audit subscriber.
   }
 
   async updateRefreshToken(

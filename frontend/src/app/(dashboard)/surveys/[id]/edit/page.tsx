@@ -488,7 +488,7 @@ export default function EditSurveyPage() {
 
           {/* Sections */}
           {sections.map((section, sIdx) => (
-            <Card key={sIdx} className="border-l-4 border-l-brand-500">
+            <Card key={sIdx}>
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3 flex-1">

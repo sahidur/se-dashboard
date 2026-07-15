@@ -8,6 +8,9 @@ const api = axios.create({
   },
 });
 
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+
 // Request interceptor - add auth token
 api.interceptors.request.use(
   (config) => {
@@ -29,11 +32,12 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
-      try {
-        const refreshToken = useAuthStore.getState().refreshToken;
-        if (refreshToken) {
+      const refreshToken = useAuthStore.getState().refreshToken;
+
+      if (refreshToken) {
+        try {
           const response = await axios.post(
-            `${process.env.NEXT_PUBLIC_API_URL}/auth/refresh`,
+            `${API_BASE_URL}/auth/refresh`,
             { refreshToken },
           );
 
@@ -42,12 +46,25 @@ api.interceptors.response.use(
 
           originalRequest.headers.Authorization = `Bearer ${accessToken}`;
           return api(originalRequest);
+        } catch {
+          // Refresh token is invalid/expired — fall through to forced logout below.
         }
-      } catch {
-        useAuthStore.getState().logout();
-        if (typeof window !== 'undefined') {
-          window.location.href = '/auth/login';
-        }
+      }
+
+      // Either there was no refresh token (session lost, e.g. after a hard
+      // reload) or the refresh attempt itself failed (backend session/token
+      // expired or was revoked). In both cases the session can no longer be
+      // trusted: log the user out and send them back to the login page
+      // instead of silently leaving the app in a "loaded but no data" state.
+      useAuthStore.getState().logout();
+      if (
+        typeof window !== 'undefined' &&
+        window.location.pathname !== '/auth/login'
+      ) {
+        const from = encodeURIComponent(
+          window.location.pathname + window.location.search,
+        );
+        window.location.href = `/auth/login?from=${from}`;
       }
     }
 
@@ -56,3 +73,4 @@ api.interceptors.response.use(
 );
 
 export default api;
+

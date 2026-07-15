@@ -132,13 +132,15 @@ export class RolesService {
           { module: 'users', actions: ['create', 'read', 'update', 'delete'] },
           { module: 'roles', actions: ['create', 'read', 'update', 'delete'] },
           { module: 'surveys', actions: ['create', 'read', 'update', 'delete'] },
-          { module: 'schools', actions: ['create', 'read', 'update', 'delete'] },
           { module: 'categories', actions: ['create', 'read', 'update', 'delete'] },
           { module: 'school-records', actions: ['create', 'read', 'update', 'delete'] },
           { module: 'geo-locations', actions: ['create', 'read', 'update', 'delete'] },
           { module: 'admin-tools', actions: ['create', 'read', 'update', 'delete'] },
           { module: 'assigned-surveys', actions: ['create', 'read', 'update', 'delete'] },
           { module: 'data-collection', actions: ['create', 'read', 'update', 'delete'] },
+          { module: 'programme-overview', actions: ['create', 'read', 'update', 'delete'] },
+          { module: 'school-information', actions: ['create', 'read', 'update', 'delete'] },
+          { module: 'activity-logs', actions: ['create', 'read', 'update', 'delete'] },
         ],
       },
       {
@@ -156,6 +158,9 @@ export class RolesService {
           { module: 'admin-tools', actions: ['create', 'read', 'update'] },
           { module: 'assigned-surveys', actions: ['read'] },
           { module: 'data-collection', actions: ['create', 'read', 'update', 'delete'] },
+          { module: 'programme-overview', actions: ['read'] },
+          { module: 'school-information', actions: ['read'] },
+          { module: 'activity-logs', actions: ['read'] },
         ],
       },
       {
@@ -168,6 +173,7 @@ export class RolesService {
           { module: 'school-records', actions: ['read'] },
           { module: 'assigned-surveys', actions: ['read'] },
           { module: 'data-collection', actions: ['create', 'read', 'update'] },
+          { module: 'programme-overview', actions: ['read'] },
         ],
       },
       {
@@ -176,11 +182,11 @@ export class RolesService {
         hierarchy: 3,
         permissions: [
           { module: 'dashboard', actions: ['read'] },
-          { module: 'schools', actions: ['create', 'read', 'update'] },
           { module: 'school-records', actions: ['create', 'read', 'update'] },
           { module: 'geo-locations', actions: ['read'] },
           { module: 'assigned-surveys', actions: ['read'] },
           { module: 'data-collection', actions: ['create', 'read', 'update'] },
+          { module: 'school-information', actions: ['read'] },
         ],
       },
       {
@@ -207,7 +213,35 @@ export class RolesService {
     for (const roleData of defaultRoles) {
       const existing = await this.rolesRepository.findOne({
         where: { name: roleData.name },
+        relations: ['permissions'],
       });
+
+      const ensurePermissions = async (roleId: string, current: Permission[]) => {
+        const existingKeys = new Set(
+          (current || []).map((p) => `${p.module}:${p.action}`),
+        );
+        const missing: Permission[] = [];
+
+        for (const perm of roleData.permissions) {
+          for (const action of perm.actions) {
+            const key = `${perm.module}:${action}`;
+            if (!existingKeys.has(key)) {
+              missing.push(
+                this.permissionsRepository.create({
+                  module: perm.module,
+                  action: action as any,
+                  roleId,
+                }),
+              );
+            }
+          }
+        }
+
+        if (missing.length) {
+          await this.permissionsRepository.save(missing);
+        }
+      };
+
       if (!existing) {
         const role = await this.rolesRepository.save(
           this.rolesRepository.create({
@@ -216,20 +250,9 @@ export class RolesService {
             hierarchy: roleData.hierarchy,
           }),
         );
-
-        const permissions: Permission[] = [];
-        for (const perm of roleData.permissions) {
-          for (const action of perm.actions) {
-            permissions.push(
-              this.permissionsRepository.create({
-                module: perm.module,
-                action: action as any,
-                roleId: role.id,
-              }),
-            );
-          }
-        }
-        await this.permissionsRepository.save(permissions);
+        await ensurePermissions(role.id, []);
+      } else {
+        await ensurePermissions(existing.id, existing.permissions || []);
       }
     }
   }

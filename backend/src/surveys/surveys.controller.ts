@@ -19,13 +19,13 @@ import {
 } from '@nestjs/swagger';
 import { Response } from 'express';
 import { SurveysService } from './surveys.service';
+import { UsersService } from '../users/users.service';
 import { CreateSurveyDto } from './dto/create-survey.dto';
 import { UpdateSurveyDto } from './dto/update-survey.dto';
 import { SubmitSurveyResponseDto } from './dto/submit-response.dto';
 import { CreateSurveyAssignmentDto } from './dto/create-survey.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AccessGuard } from '../auth/guards/access.guard';
-import { Roles } from '../common/decorators/roles.decorator';
 import { Permissions } from '../common/decorators/permissions.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { SurveyStatus } from './entities/survey.entity';
@@ -35,10 +35,12 @@ import { SurveyStatus } from './entities/survey.entity';
 @UseGuards(JwtAuthGuard, AccessGuard)
 @Controller('surveys')
 export class SurveysController {
-  constructor(private readonly surveysService: SurveysService) {}
+  constructor(
+    private readonly surveysService: SurveysService,
+    private readonly usersService: UsersService,
+  ) {}
 
   @Post()
-  @Roles('Super Admin', 'Admin', 'Survey Creator')
   @Permissions({ module: 'surveys', action: 'create' })
   @ApiOperation({ summary: 'Create a new survey' })
   async create(
@@ -49,7 +51,6 @@ export class SurveysController {
   }
 
   @Get()
-  @Roles('Super Admin', 'Admin', 'Survey Creator')
   @Permissions({ module: 'surveys', action: 'read' })
   @ApiOperation({ summary: 'Get all surveys with pagination and filters' })
   @ApiQuery({ name: 'page', required: false })
@@ -79,7 +80,6 @@ export class SurveysController {
   }
 
   @Get('categories/all')
-  @Roles('Super Admin', 'Admin')
   @Permissions({ module: 'categories', action: 'read' })
   @ApiOperation({ summary: 'Get all survey categories (including inactive)' })
   async getAllCategories() {
@@ -87,7 +87,6 @@ export class SurveysController {
   }
 
   @Post('categories')
-  @Roles('Super Admin', 'Admin')
   @Permissions({ module: 'categories', action: 'create' })
   @ApiOperation({ summary: 'Create a new survey category' })
   async createCategory(
@@ -97,7 +96,6 @@ export class SurveysController {
   }
 
   @Patch('categories/:categoryId')
-  @Roles('Super Admin', 'Admin')
   @Permissions({ module: 'categories', action: 'update' })
   @ApiOperation({ summary: 'Update a survey category' })
   async updateCategory(
@@ -114,7 +112,6 @@ export class SurveysController {
   }
 
   @Delete('categories/:categoryId')
-  @Roles('Super Admin', 'Admin')
   @Permissions({ module: 'categories', action: 'delete' })
   @ApiOperation({ summary: 'Delete a survey category' })
   async deleteCategory(
@@ -126,10 +123,12 @@ export class SurveysController {
 
   // =========== Assigned Surveys ===========
   @Get('assigned')
+  @Permissions({ module: 'assigned-surveys', action: 'read' })
   @ApiOperation({ summary: 'Get surveys assigned to current user' })
-  async getAssignedSurveys(@CurrentUser() user: any) {
-    const roleIds = user.roles?.map((r: any) => r.id) || [];
-    return this.surveysService.findAssignedSurveys(user.id, roleIds);
+  async getAssignedSurveys(@CurrentUser('id') userId: string) {
+    const fullUser = await this.usersService.findOneById(userId);
+    const roleIds = fullUser?.roles?.map((r) => r.id) || [];
+    return this.surveysService.findAssignedSurveys(userId, roleIds);
   }
 
   // =========== School Records ===========
@@ -140,7 +139,6 @@ export class SurveysController {
   }
 
   @Get('school-records')
-  @Roles('Super Admin', 'Admin')
   @Permissions({ module: 'school-records', action: 'read' })
   @ApiOperation({ summary: 'Get all school records' })
   async getAllSchoolRecords() {
@@ -164,7 +162,6 @@ export class SurveysController {
   }
 
   @Patch('school-records/:recordId/transfer')
-  @Roles('Super Admin')
   @Permissions({ module: 'school-records', action: 'update' })
   @ApiOperation({ summary: 'Transfer school record ownership to another user' })
   async transferSchoolRecordOwnership(
@@ -177,6 +174,27 @@ export class SurveysController {
     );
   }
 
+  // =========== Survey Responses (all surveys) ===========
+  @Get('responses')
+  @Permissions({ module: 'surveys', action: 'read' })
+  @ApiOperation({ summary: 'Get all survey responses across all surveys (paginated)' })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiQuery({ name: 'startDate', required: false })
+  @ApiQuery({ name: 'endDate', required: false })
+  async getAllResponses(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.surveysService.getAllResponses(
+      parseInt(page || '1', 10) || 1,
+      parseInt(limit || '20', 10) || 20,
+      { startDate, endDate },
+    );
+  }
+
   // =========== Survey Detail ===========
   @Get(':id')
   @ApiOperation({ summary: 'Get a survey by ID' })
@@ -185,7 +203,6 @@ export class SurveysController {
   }
 
   @Get(':id/stats')
-  @Roles('Super Admin', 'Admin', 'Survey Creator')
   @Permissions({ module: 'surveys', action: 'read' })
   @ApiOperation({ summary: 'Get survey statistics' })
   async getStats(@Param('id', ParseUUIDPipe) id: string) {
@@ -209,7 +226,6 @@ export class SurveysController {
   }
 
   @Patch(':id')
-  @Roles('Super Admin', 'Admin', 'Survey Creator')
   @Permissions({ module: 'surveys', action: 'update' })
   @ApiOperation({ summary: 'Update a survey' })
   async update(
@@ -220,7 +236,6 @@ export class SurveysController {
   }
 
   @Patch(':id/status')
-  @Roles('Super Admin', 'Admin', 'Survey Creator')
   @Permissions({ module: 'surveys', action: 'update' })
   @ApiOperation({ summary: 'Update survey status with validation + logging' })
   async updateStatus(
@@ -232,7 +247,6 @@ export class SurveysController {
   }
 
   @Post(':id/copy')
-  @Roles('Super Admin', 'Admin', 'Survey Creator')
   @Permissions({ module: 'surveys', action: 'create' })
   @ApiOperation({ summary: 'Duplicate a survey as draft' })
   async copySurvey(
@@ -244,7 +258,6 @@ export class SurveysController {
 
   // =========== Assignment Management ===========
   @Get(':id/assignments')
-  @Roles('Super Admin', 'Admin', 'Survey Creator')
   @Permissions({ module: 'surveys', action: 'read' })
   @ApiOperation({ summary: 'Get all assignments for a survey' })
   async getAssignments(@Param('id', ParseUUIDPipe) id: string) {
@@ -252,7 +265,6 @@ export class SurveysController {
   }
 
   @Post(':id/assignments')
-  @Roles('Super Admin', 'Admin', 'Survey Creator')
   @Permissions({ module: 'surveys', action: 'update' })
   @ApiOperation({ summary: 'Add assignment(s) to a survey' })
   async addAssignment(
@@ -263,7 +275,6 @@ export class SurveysController {
   }
 
   @Post(':id/assignments/bulk')
-  @Roles('Super Admin', 'Admin', 'Survey Creator')
   @Permissions({ module: 'surveys', action: 'update' })
   @ApiOperation({ summary: 'Add multiple assignments to a survey at once' })
   async addBulkAssignments(
@@ -274,7 +285,6 @@ export class SurveysController {
   }
 
   @Delete('assignments/:assignmentId')
-  @Roles('Super Admin', 'Admin', 'Survey Creator')
   @Permissions({ module: 'surveys', action: 'update' })
   @ApiOperation({ summary: 'Remove an assignment' })
   async removeAssignment(
@@ -285,7 +295,6 @@ export class SurveysController {
   }
 
   @Delete(':id')
-  @Roles('Super Admin', 'Admin')
   @Permissions({ module: 'surveys', action: 'delete' })
   @ApiOperation({ summary: 'Delete a survey (never if was published)' })
   async remove(@Param('id', ParseUUIDPipe) id: string) {
@@ -303,7 +312,6 @@ export class SurveysController {
   }
 
   @Get(':id/responses')
-  @Roles('Super Admin', 'Admin', 'Survey Creator')
   @Permissions({ module: 'surveys', action: 'read' })
   @ApiOperation({ summary: 'Get responses for a survey' })
   @ApiQuery({ name: 'page', required: false })
@@ -326,7 +334,6 @@ export class SurveysController {
   }
 
   @Get(':id/responses/export')
-  @Roles('Super Admin', 'Admin', 'Survey Creator')
   @Permissions({ module: 'surveys', action: 'read' })
   @ApiOperation({ summary: 'Export survey responses as CSV' })
   async exportResponses(

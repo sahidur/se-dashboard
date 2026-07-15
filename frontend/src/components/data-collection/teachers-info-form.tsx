@@ -267,7 +267,6 @@ export function TeachersInfoForm({ schoolId }: Props) {
 
       {/* ── School Info Card ── */}
       <Card className="overflow-hidden border-0 shadow-sm">
-        <div className="h-1.5 bg-gradient-to-r from-pink-500 to-pink-600" />
         <CardContent className="p-5">
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-pink-500 to-pink-700 text-white shadow-md">
@@ -304,7 +303,6 @@ export function TeachersInfoForm({ schoolId }: Props) {
       {/* ── Entry Form ── */}
       <form onSubmit={handleSubmit}>
         <Card className="overflow-hidden border-0 shadow-sm">
-          <div className="h-1 bg-gradient-to-r from-pink-400 to-rose-500" />
           <CardHeader className="pb-3 pt-5 px-5">
             <CardTitle className="text-base font-semibold text-gray-800 flex items-center gap-2">
               <Plus size={17} className="text-pink-600" /> Add Teacher Record
@@ -478,7 +476,6 @@ export function TeachersInfoForm({ schoolId }: Props) {
 
       {/* ── Responses Table ── */}
       <Card className="overflow-hidden border-0 shadow-sm">
-        <div className="h-1 bg-gradient-to-r from-pink-400 to-rose-500" />
         <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
           <div className="flex items-center gap-2">
             <TableProperties size={18} className="text-pink-600" />

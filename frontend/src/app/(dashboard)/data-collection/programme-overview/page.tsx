@@ -362,7 +362,6 @@ export default function ProgrammeOverviewPage() {
         {/* PWD + Ethnic highlight row */}
         <div className="grid gap-4 sm:grid-cols-2">
           <Card className="border-0 shadow-sm overflow-hidden">
-            <div className="h-1 bg-gradient-to-r from-amber-400 to-amber-600" />
             <CardContent className="flex items-center gap-4 p-4">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-amber-100">
                 <Users size={22} className="text-amber-600" />
@@ -379,7 +378,6 @@ export default function ProgrammeOverviewPage() {
             </CardContent>
           </Card>
           <Card className="border-0 shadow-sm overflow-hidden">
-            <div className="h-1 bg-gradient-to-r from-green-400 to-green-600" />
             <CardContent className="flex items-center gap-4 p-4">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-green-100">
                 <Sparkles size={22} className="text-green-600" />

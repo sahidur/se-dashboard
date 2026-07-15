@@ -115,7 +115,6 @@ export default function TeachersSubPage() {
 
         {/* Summary Card */}
         <Card className="overflow-hidden">
-          <div className="h-2 bg-gradient-to-r from-pink-500 to-rose-600" />
           <CardContent className="p-5">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-4">
@@ -164,7 +163,6 @@ export default function TeachersSubPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
             <Link href={`/data-collection/forms/teachers-information?school=${id}`} className="group flex-1 block">
               <Card className={`relative h-full overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5 ${teacherCount > 0 ? 'ring-2 ring-pink-200' : 'ring-1 ring-gray-100'}`}>
-                <div className="h-1.5 bg-gradient-to-r from-pink-500 to-pink-600" />
                 <CardContent className="p-5">
                   <div className="mb-3 flex items-start justify-between">
                     <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-pink-50">
@@ -199,7 +197,6 @@ export default function TeachersSubPage() {
 
           {showIndividual && (
             <Card className="overflow-hidden border-0 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
-              <div className="h-1 bg-gradient-to-r from-pink-400 to-pink-500" />
               <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
                 <div className="flex items-center gap-2">
                   <Users size={18} className="text-pink-600" />
@@ -281,7 +278,6 @@ export default function TeachersSubPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
             <Link href={`/data-collection/forms/teachers-development?school=${id}`} className="group flex-1 block">
               <Card className={`relative h-full overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5 ${devCount > 0 ? 'ring-2 ring-rose-200' : 'ring-1 ring-gray-100'}`}>
-                <div className="h-1.5 bg-gradient-to-r from-rose-500 to-rose-600" />
                 <CardContent className="p-5">
                   <div className="mb-3 flex items-start justify-between">
                     <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-rose-50">
@@ -316,7 +312,6 @@ export default function TeachersSubPage() {
 
           {showDev && (
             <Card className="overflow-hidden border-0 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
-              <div className="h-1 bg-gradient-to-r from-rose-400 to-rose-500" />
               <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
                 <div className="flex items-center gap-2">
                   <BookOpen size={18} className="text-rose-600" />

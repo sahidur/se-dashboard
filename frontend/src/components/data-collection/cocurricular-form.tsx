@@ -197,7 +197,6 @@ export function CocurricularForm({ schoolId }: Props) {
       {/* School Info */}
       {school && (
         <Card className="overflow-hidden">
-          <div className="h-2 bg-gradient-to-r from-purple-500 to-purple-700" />
           <CardContent className="p-5">
             <div className="flex items-start gap-4">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-purple-700 text-white shadow">
@@ -223,7 +222,6 @@ export function CocurricularForm({ schoolId }: Props) {
       {/* Entry Form */}
       <div ref={formRef}>
         <Card className="overflow-hidden">
-          <div className="h-1.5 bg-gradient-to-r from-purple-400 to-pink-500" />
           <CardHeader className="pb-2 pt-5 px-6">
             <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-800">
               <PlusCircle size={18} className="text-purple-500" />
@@ -325,7 +323,6 @@ export function CocurricularForm({ schoolId }: Props) {
       {/* Records Table — grouped by month */}
       {groupedByMonth.map(({ month, rows }) => (
         <Card key={month} className="overflow-hidden">
-          <div className="h-1 bg-gradient-to-r from-purple-300 to-pink-400" />
           <CardHeader className="pb-2 pt-4 px-6">
             <CardTitle className="text-sm font-semibold text-gray-700 flex items-center gap-2">
               {month}

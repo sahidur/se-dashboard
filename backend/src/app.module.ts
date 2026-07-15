@@ -2,22 +2,29 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ServeStaticModule } from '@nestjs/serve-static';
 import { APP_GUARD } from '@nestjs/core';
+import { join } from 'path';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { RolesModule } from './roles/roles.module';
 import { SurveysModule } from './surveys/surveys.module';
-import { SchoolsModule } from './schools/schools.module';
 import { FilesModule } from './files/files.module';
 import { GeoLocationsModule } from './geo-locations/geo-locations.module';
 import { RecycleBinModule } from './recycle-bin/recycle-bin.module';
 import { DataCollectionModule } from './data-collection/data-collection.module';
+import { AuditModule } from './common/audit/audit.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
+    }),
+    // Serve locally-stored uploads (used when S3 credentials are not configured)
+    ServeStaticModule.forRoot({
+      rootPath: join(process.cwd(), 'uploads'),
+      serveRoot: '/uploads',
     }),
     // Rate limiting: 100 req per 60 s globally (OWASP: A04 – Insecure Design)
     ThrottlerModule.forRoot([{
@@ -57,11 +64,11 @@ import { DataCollectionModule } from './data-collection/data-collection.module';
     UsersModule,
     RolesModule,
     SurveysModule,
-    SchoolsModule,
     FilesModule,
     GeoLocationsModule,
     RecycleBinModule,
     DataCollectionModule,
+    AuditModule,
   ],
   providers: [
     // Apply rate limiting globally

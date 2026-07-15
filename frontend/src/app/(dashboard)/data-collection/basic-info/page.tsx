@@ -119,7 +119,6 @@ export default function BasicInfoPage() {
           </div>
         ) : (
           <Card className="overflow-hidden">
-            <div className="h-1.5 bg-gradient-to-r from-blue-500 to-blue-600" />
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2">

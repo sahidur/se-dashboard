@@ -15,7 +15,6 @@ import { GeoLocationsService } from './geo-locations.service';
 import { CreateGeoLocationDto, UpdateGeoLocationDto } from './dto/geo-location.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AccessGuard } from '../auth/guards/access.guard';
-import { Roles } from '../common/decorators/roles.decorator';
 import { Permissions } from '../common/decorators/permissions.decorator';
 import { GeoLocationType } from './entities/geo-location.entity';
 
@@ -27,7 +26,6 @@ export class GeoLocationsController {
   constructor(private readonly geoService: GeoLocationsService) {}
 
   @Post()
-  @Roles('Super Admin', 'Admin')
   @Permissions({ module: 'geo-locations', action: 'create' })
   @ApiOperation({ summary: 'Create a geo location' })
   create(@Body() dto: CreateGeoLocationDto) {
@@ -51,6 +49,12 @@ export class GeoLocationsController {
     return this.geoService.findDivisions();
   }
 
+  @Get('areas')
+  @ApiOperation({ summary: 'Get all areas' })
+  findAreas() {
+    return this.geoService.findAreas();
+  }
+
   @Get('tree')
   @ApiOperation({ summary: 'Get full geo location tree' })
   findTree() {
@@ -70,7 +74,6 @@ export class GeoLocationsController {
   }
 
   @Patch(':id')
-  @Roles('Super Admin', 'Admin')
   @Permissions({ module: 'geo-locations', action: 'update' })
   @ApiOperation({ summary: 'Update a geo location' })
   update(
@@ -81,7 +84,6 @@ export class GeoLocationsController {
   }
 
   @Delete(':id')
-  @Roles('Super Admin', 'Admin')
   @Permissions({ module: 'geo-locations', action: 'delete' })
   @ApiOperation({ summary: 'Delete a geo location' })
   remove(@Param('id', ParseUUIDPipe) id: string) {

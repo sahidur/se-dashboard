@@ -1,19 +1,23 @@
 import * as React from 'react';
-import { cn } from '@/lib/utils';
+import { cn, sanitizeCardClassName } from '@/lib/utils';
 
 const Card = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn(
-      'rounded-xl border border-gray-200 bg-white shadow-sm',
-      className,
-    )}
-    {...props}
-  />
-));
+>(({ className, ...props }, ref) => {
+  const sanitizedClassName = sanitizeCardClassName(className);
+
+  return (
+    <div
+      ref={ref}
+      className={cn(
+        'rounded-xl border border-gray-200 bg-white shadow-sm',
+        sanitizedClassName,
+      )}
+      {...props}
+    />
+  );
+});
 Card.displayName = 'Card';
 
 const CardHeader = React.forwardRef<

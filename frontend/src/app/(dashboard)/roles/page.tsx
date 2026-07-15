@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Fragment } from 'react';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,8 +11,49 @@ import { Plus, Edit, Trash2, Shield } from 'lucide-react';
 import api from '@/lib/api';
 import type { Role } from '@/types';
 
-const MODULES = ['dashboard', 'users', 'roles', 'surveys', 'assigned-surveys', 'schools', 'categories', 'school-records', 'geo-locations', 'admin-tools', 'data-collection'];
+const MODULE_GROUPS: { label: string; modules: { key: string; label: string; description?: string }[] }[] = [
+  {
+    label: 'General',
+    modules: [{ key: 'dashboard', label: 'Dashboard' }],
+  },
+  {
+    label: 'Data Collection',
+    modules: [
+      { key: 'programme-overview', label: 'Programme Overview', description: 'Aggregated programme-wide stats page' },
+      { key: 'school-information', label: 'School Information', description: 'Browse all schools + school profile view' },
+      { key: 'data-collection', label: 'Data Collection (forms)', description: 'My Schools + all sub-forms: basic info, infrastructure, students, teachers, revenue, performance, alumni, activity/event participation, etc.' },
+    ],
+  },
+  {
+    label: 'Users & Roles',
+    modules: [
+      { key: 'users', label: 'Users' },
+      { key: 'roles', label: 'Roles' },
+    ],
+  },
+  {
+    label: 'Surveys',
+    modules: [
+      { key: 'surveys', label: 'Surveys' },
+      { key: 'assigned-surveys', label: 'Assigned Surveys' },
+      { key: 'school-records', label: 'School Records', description: 'Survey targeting/response records for schools' },
+    ],
+  },
+  {
+    label: 'Admin Tools',
+    modules: [
+      { key: 'admin-tools', label: 'Admin Tools (menu group)', description: 'Controls whether the Admin Tools menu group is shown at all' },
+      { key: 'categories', label: 'Categories', description: 'Survey category tags, managed under Admin Tools' },
+      { key: 'geo-locations', label: 'Geo Locations' },
+      { key: 'activity-logs', label: 'Activity Logs', description: 'System-wide audit/activity log viewer' },
+      { key: 'recycle-bin', label: 'Recycle Bin' },
+    ],
+  },
+];
+
+const MODULES = MODULE_GROUPS.flatMap((g) => g.modules.map((m) => m.key));
 const ACTIONS = ['create', 'read', 'update', 'delete'] as const;
+
 
 export default function RolesPage() {
   const [roles, setRoles] = useState<Role[]>([]);
@@ -258,24 +299,42 @@ export default function RolesPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {MODULES.map((module) => (
-                    <tr key={module}>
-                      <td className="px-4 py-2 text-sm font-medium capitalize text-gray-700">
-                        {module}
-                      </td>
-                      {ACTIONS.map((action) => (
-                        <td key={action} className="px-4 py-2 text-center">
-                          <input
-                            type="checkbox"
-                            checked={hasPermission(module, action)}
-                            onChange={() => togglePermission(module, action)}
-                            className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                          />
+                  {MODULE_GROUPS.map((group) => (
+                    <Fragment key={group.label}>
+                      <tr className="bg-gray-50/70">
+                        <td
+                          colSpan={ACTIONS.length + 1}
+                          className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400"
+                        >
+                          {group.label}
                         </td>
+                      </tr>
+                      {group.modules.map((module) => (
+                        <tr key={module.key}>
+                          <td className="px-4 py-2 text-sm font-medium text-gray-700">
+                            {module.label}
+                            {module.description && (
+                              <p className="text-xs font-normal text-gray-400">
+                                {module.description}
+                              </p>
+                            )}
+                          </td>
+                          {ACTIONS.map((action) => (
+                            <td key={action} className="px-4 py-2 text-center">
+                              <input
+                                type="checkbox"
+                                checked={hasPermission(module.key, action)}
+                                onChange={() => togglePermission(module.key, action)}
+                                className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                              />
+                            </td>
+                          ))}
+                        </tr>
                       ))}
-                    </tr>
+                    </Fragment>
                   ))}
                 </tbody>
+
               </table>
             </div>
           </div>

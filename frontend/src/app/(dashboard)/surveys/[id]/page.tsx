@@ -45,9 +45,8 @@ type DetailTab = 'overview' | 'assignments' | 'history' | 'responses';
 export default function SurveyDetailPage() {
   const { id } = useParams();
   const router = useRouter();
-  const { hasAnyRole, hasPermission } = useAuthStore();
-  const isSuperAdmin = hasAnyRole('Super Admin');
-  const canDeleteSurvey = isSuperAdmin && hasPermission('surveys', 'delete');
+  const { hasPermission } = useAuthStore();
+  const canDeleteSurvey = hasPermission('surveys', 'delete');
 
   const [survey, setSurvey] = useState<Survey | null>(null);
   const [totalResponses, setTotalResponses] = useState(0);
@@ -442,7 +441,7 @@ export default function SurveyDetailPage() {
 
               {/* Linked Entity Info */}
               {survey.linkedEntityType === 'school_record' && (
-                <Card className="border-l-4 border-l-accent-blue">
+                <Card>
                   <CardContent className="flex items-center gap-3 p-4">
                     <LinkIcon className="text-accent-blue" size={20} />
                     <div>
@@ -458,7 +457,7 @@ export default function SurveyDetailPage() {
                 </Card>
               )}
               {survey.createsSchoolRecord && (
-                <Card className="border-l-4 border-l-accent-lime">
+                <Card>
                   <CardContent className="flex items-center gap-3 p-4">
                     <Plus className="text-accent-lime" size={20} />
                     <div>
@@ -523,10 +522,7 @@ export default function SurveyDetailPage() {
                 survey.sections
                   .sort((a, b) => a.order - b.order)
                   .map((section) => (
-                    <Card
-                      key={section.id}
-                      className="border-l-4 border-l-brand-500"
-                    >
+                    <Card key={section.id}>
                       <CardHeader>
                         <div className="flex items-center gap-2">
                           <Layers size={18} className="text-brand-500" />

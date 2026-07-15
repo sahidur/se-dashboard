@@ -208,7 +208,6 @@ export function TeachersDevForm({ schoolId }: Props) {
 
       {/* ── School Info Card ── */}
       <Card className="overflow-hidden border-0 shadow-sm">
-        <div className="h-1.5 bg-gradient-to-r from-rose-500 to-rose-600" />
         <CardContent className="p-5">
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-500 to-rose-700 text-white shadow-md">
@@ -264,7 +263,6 @@ export function TeachersDevForm({ schoolId }: Props) {
       {/* ── Entry Form ── */}
       <form onSubmit={handleSubmit}>
         <Card className="overflow-hidden border-0 shadow-sm">
-          <div className="h-1 bg-gradient-to-r from-rose-400 to-pink-500" />
           <CardHeader className="pb-3 pt-5 px-5">
             <CardTitle className="text-base font-semibold text-gray-800">
               Teachers&apos; Development Data
@@ -353,7 +351,6 @@ export function TeachersDevForm({ schoolId }: Props) {
 
       {/* ── All Responses Table ── */}
       <Card className="overflow-hidden border-0 shadow-sm">
-        <div className="h-1 bg-gradient-to-r from-rose-400 to-pink-500" />
         <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
           <div className="flex items-center gap-2">
             <BookOpen size={18} className="text-rose-600" />

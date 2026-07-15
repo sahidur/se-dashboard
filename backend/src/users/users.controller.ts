@@ -16,7 +16,6 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AccessGuard } from '../auth/guards/access.guard';
-import { Roles } from '../common/decorators/roles.decorator';
 import { Permissions } from '../common/decorators/permissions.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
@@ -28,15 +27,13 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Post()
-  @Roles('Super Admin', 'Admin')
   @Permissions({ module: 'users', action: 'create' })
   @ApiOperation({ summary: 'Create a new user' })
-  async create(@Body() createUserDto: CreateUserDto) {
-    return this.usersService.create(createUserDto);
+  async create(@Body() createUserDto: CreateUserDto, @CurrentUser('id') actorId: string) {
+    return this.usersService.create(createUserDto, actorId);
   }
 
   @Get()
-  @Roles('Super Admin', 'Admin')
   @Permissions({ module: 'users', action: 'read' })
   @ApiOperation({ summary: 'Get all users with pagination' })
   @ApiQuery({ name: 'page', required: false, type: Number })
@@ -74,8 +71,23 @@ export class UsersController {
     return this.usersService.update(userId, updateUserDto);
   }
 
+  @Get('schools/available')
+  @Permissions({ module: 'users', action: 'read' })
+  @ApiOperation({ summary: 'Get schools available to assign to a user (with search/geo filters)' })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({ name: 'division', required: false, type: String })
+  @ApiQuery({ name: 'district', required: false, type: String })
+  @ApiQuery({ name: 'upazila', required: false, type: String })
+  async getAvailableSchools(
+    @Query('search') search?: string,
+    @Query('division') division?: string,
+    @Query('district') district?: string,
+    @Query('upazila') upazila?: string,
+  ) {
+    return this.usersService.findAvailableSchools({ search, division, district, upazila });
+  }
+
   @Get(':id')
-  @Roles('Super Admin', 'Admin')
   @Permissions({ module: 'users', action: 'read' })
   @ApiOperation({ summary: 'Get a user by ID' })
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
@@ -83,25 +95,69 @@ export class UsersController {
   }
 
   @Patch(':id')
-  @Roles('Super Admin', 'Admin')
   @Permissions({ module: 'users', action: 'update' })
   @ApiOperation({ summary: 'Update a user' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateUserDto: UpdateUserDto,
+    @CurrentUser('id') actorId: string,
   ) {
-    return this.usersService.update(id, updateUserDto);
+    return this.usersService.update(id, updateUserDto, actorId);
   }
 
   @Post(':id/reset-password')
-  @Roles('Super Admin')
-  @ApiOperation({ summary: 'Reset password for a user (Super Admin only)' })
+  @Permissions({ module: 'users', action: 'update' })
+  @ApiOperation({ summary: 'Reset password for a user' })
   async resetPassword(@Param('id', ParseUUIDPipe) id: string) {
     return this.usersService.resetPassword(id);
   }
 
+  @Patch(':id/status')
+  @Permissions({ module: 'users', action: 'update' })
+  @ApiOperation({ summary: 'Activate or deactivate a user' })
+  async setStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { isActive: boolean },
+    @CurrentUser('id') actorId: string,
+  ) {
+    return this.usersService.setStatus(id, body.isActive, actorId);
+  }
+
+  @Get(':id/activity')
+  @Permissions({ module: 'users', action: 'read' })
+  @ApiOperation({ summary: "Get a user's recent activity log" })
+  async getActivity(@Param('id', ParseUUIDPipe) id: string) {
+    return this.usersService.getActivity(id);
+  }
+
+  @Get(':id/schools')
+  @Permissions({ module: 'users', action: 'read' })
+  @ApiOperation({ summary: 'Get schools a user has access to' })
+  async getSchools(@Param('id', ParseUUIDPipe) id: string) {
+    return this.usersService.getSchools(id);
+  }
+
+  @Post(':id/schools')
+  @Permissions({ module: 'users', action: 'update' })
+  @ApiOperation({ summary: 'Grant a user access to additional schools' })
+  async addSchools(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { schoolIds: string[] },
+  ) {
+    return this.usersService.addSchools(id, body.schoolIds || []);
+  }
+
+  @Delete(':id/schools/:schoolId')
+  @Permissions({ module: 'users', action: 'update' })
+  @ApiOperation({ summary: "Remove a school from a user's access list" })
+  async removeSchool(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+  ) {
+    return this.usersService.removeSchool(id, schoolId);
+  }
+
   @Delete(':id')
-  @Roles('Super Admin')
   @Permissions({ module: 'users', action: 'delete' })
   @ApiOperation({ summary: 'Delete a user' })
   async remove(@Param('id', ParseUUIDPipe) id: string) {
@@ -109,7 +165,6 @@ export class UsersController {
   }
 
   @Post(':id/roles')
-  @Roles('Super Admin', 'Admin')
   @Permissions({ module: 'users', action: 'update' })
   @ApiOperation({ summary: 'Assign roles to a user' })
   async assignRoles(

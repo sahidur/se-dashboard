@@ -244,7 +244,6 @@ export function StudentsInfoForm({ schoolId }: Props) {
       {/* ── School Info Header ── */}
       {school && (
         <div className="overflow-hidden rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 to-white shadow-sm">
-          <div className="h-1.5 bg-gradient-to-r from-violet-500 to-purple-500" />
           <div className="flex items-start gap-4 p-5">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow">
               <School size={22} />
@@ -298,7 +297,6 @@ export function StudentsInfoForm({ schoolId }: Props) {
 
       {/* ── Section 1: Month & Grade selectors ── */}
       <Card className="overflow-hidden border-0 shadow-sm transition-all duration-200 hover:shadow-md">
-        <div className="h-1 bg-gradient-to-r from-violet-400 to-purple-500" />
         <CardHeader className="pb-3 pt-5 px-5">
           <CardTitle className="flex items-center gap-2.5 text-base font-semibold text-gray-800">
             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-xs font-bold text-violet-700">1</span>
@@ -376,7 +374,6 @@ export function StudentsInfoForm({ schoolId }: Props) {
 
       {/* ── Section 2: Enrollment ── */}
       <Card className={`overflow-hidden border-0 shadow-sm transition-all duration-200 hover:shadow-md ${fieldsDisabled ? 'opacity-60' : ''}`}>
-        <div className="h-1 bg-gradient-to-r from-blue-400 to-indigo-500" />
         <CardHeader className="pb-3 pt-5 px-5">
           <CardTitle className="flex items-center gap-2.5 text-base font-semibold text-gray-800">
             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-xs font-bold text-blue-700">2</span>
@@ -409,7 +406,6 @@ export function StudentsInfoForm({ schoolId }: Props) {
 
       {/* ── Section 3: Demographics & Performance ── */}
       <Card className={`overflow-hidden border-0 shadow-sm transition-all duration-200 hover:shadow-md ${fieldsDisabled ? 'opacity-60' : ''}`}>
-        <div className="h-1 bg-gradient-to-r from-teal-400 to-cyan-500" />
         <CardHeader className="pb-3 pt-5 px-5">
           <CardTitle className="flex items-center gap-2.5 text-base font-semibold text-gray-800">
             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-teal-100 text-xs font-bold text-teal-700">3</span>

@@ -19,6 +19,9 @@ import { RevenueMonthlyForm } from '@/components/data-collection/revenue-monthly
 import { AlumniForm } from '@/components/data-collection/alumni-form';
 import { PedagogicalAchievementsForm } from '@/components/data-collection/pedagogical-achievements-form';
 import { CocurricularForm } from '@/components/data-collection/cocurricular-form';
+import { StudentsPerformanceForm } from '@/components/data-collection/students-performance-form';
+import { ActivityParticipationForm } from '@/components/data-collection/activity-participation-form';
+import { EventParticipationForm } from '@/components/data-collection/event-participation-form';
 
 /* ─────────────── Form Configurations (Demo) ─────────────── */
 
@@ -627,6 +630,66 @@ export default function DemoFormPage() {
         />
         <div className="p-4 sm:p-6 max-w-5xl mx-auto">
           <CocurricularForm schoolId={schoolId ?? ''} />
+        </div>
+      </>
+    );
+  }
+
+  if (slug === 'students-performance') {
+    return (
+      <>
+        <Header
+          title="Students' Performance"
+          subtitle="Exam-wise grade results and progress indicators"
+          actions={
+            <Button variant="outline" onClick={() => router.back()}>
+              <ArrowLeft size={16} className="mr-1.5" />
+              <span className="hidden sm:inline">Back</span>
+            </Button>
+          }
+        />
+        <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+          <StudentsPerformanceForm schoolId={schoolId ?? ''} />
+        </div>
+      </>
+    );
+  }
+
+  if (slug === 'activity-participation') {
+    return (
+      <>
+        <Header
+          title="Students' Participation in Corner/Club/Library/Lab Activities"
+          subtitle="Monthly activity participation by grade with photo evidence"
+          actions={
+            <Button variant="outline" onClick={() => router.back()}>
+              <ArrowLeft size={16} className="mr-1.5" />
+              <span className="hidden sm:inline">Back</span>
+            </Button>
+          }
+        />
+        <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+          <ActivityParticipationForm schoolId={schoolId ?? ''} />
+        </div>
+      </>
+    );
+  }
+
+  if (slug === 'event-participation') {
+    return (
+      <>
+        <Header
+          title="School's Participation in Different Events"
+          subtitle="Events, award levels and students awarded"
+          actions={
+            <Button variant="outline" onClick={() => router.back()}>
+              <ArrowLeft size={16} className="mr-1.5" />
+              <span className="hidden sm:inline">Back</span>
+            </Button>
+          }
+        />
+        <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+          <EventParticipationForm schoolId={schoolId ?? ''} />
         </div>
       </>
     );

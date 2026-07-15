@@ -1,18 +1,30 @@
 import {
   Controller,
   Post,
+  Get,
+  Patch,
+  Delete,
+  Param,
   Body,
   UseGuards,
   HttpCode,
   HttpStatus,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
+import { WebAuthnService } from './webauthn.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import {
+  VerifyRegistrationDto,
+  PasskeyLoginOptionsDto,
+  VerifyAuthenticationDto,
+  RenamePasskeyDto,
+} from './dto/passkey.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -20,7 +32,10 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly webAuthnService: WebAuthnService,
+  ) {}
 
   @Public()
   @Post('login')
@@ -73,5 +88,81 @@ export class AuthController {
       body.currentPassword,
       body.newPassword,
     );
+  }
+
+  // ── Passkey (WebAuthn) enrolment — requires an authenticated user ──────
+  @UseGuards(JwtAuthGuard)
+  @Post('passkey/register/options')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Begin passkey enrolment (generate options)' })
+  async passkeyRegisterOptions(@CurrentUser('id') userId: string) {
+    return this.webAuthnService.generateRegistration(userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('passkey/register/verify')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Complete passkey enrolment (verify + store)' })
+  async passkeyRegisterVerify(
+    @CurrentUser('id') userId: string,
+    @Body() body: VerifyRegistrationDto,
+  ) {
+    return this.webAuthnService.verifyRegistration(
+      userId,
+      body.response,
+      body.name,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('passkey')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "List the current user's passkeys" })
+  async listPasskeys(@CurrentUser('id') userId: string) {
+    return this.webAuthnService.listForUser(userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('passkey/:id')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Rename a passkey' })
+  async renamePasskey(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: RenamePasskeyDto,
+  ) {
+    return this.webAuthnService.rename(userId, id, body.name);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('passkey/:id')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Remove a passkey' })
+  async removePasskey(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.webAuthnService.remove(userId, id);
+  }
+
+  // ── Passkey (WebAuthn) login — public ──────────────────────────────────
+  @Public()
+  @Post('passkey/login/options')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Begin passkey login (generate options)' })
+  @Throttle({ default: { ttl: 60000, limit: 20 } })
+  async passkeyLoginOptions(@Body() body: PasskeyLoginOptionsDto) {
+    return this.webAuthnService.generateAuthentication(body.email);
+  }
+
+  @Public()
+  @Post('passkey/login/verify')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Complete passkey login (verify + issue tokens)' })
+  @Throttle({ default: { ttl: 60000, limit: 20 } })
+  async passkeyLoginVerify(@Body() body: VerifyAuthenticationDto) {
+    return this.webAuthnService.verifyAuthentication(body.flowId, body.response);
   }
 }

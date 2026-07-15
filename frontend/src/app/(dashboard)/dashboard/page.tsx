@@ -15,10 +15,10 @@ import api from '@/lib/api';
 import { useQueries } from '@tanstack/react-query';
 
 export default function DashboardPage() {
-  const { user, hasAnyRole } = useAuthStore();
-  const isAdmin = hasAnyRole('Super Admin', 'Admin');
+  const { user, hasPermission } = useAuthStore();
+  const isAdmin = hasPermission('users', 'read');
 
-  const isSurveyCreator = hasAnyRole('Super Admin', 'Admin', 'Survey Creator');
+  const isSurveyCreator = hasPermission('surveys', 'read');
 
   const results = useQueries({
     queries: [
@@ -35,7 +35,8 @@ export default function DashboardPage() {
       {
         queryKey: ['stats-schools'],
         queryFn: () =>
-          api.get('/schools?limit=1').then((r) => r.data.meta.total as number),
+          api.get('/data-collection/schools?limit=1').then((r) => (r.data?.length ?? 0) as number).catch(() => 0 as number),
+        enabled: hasPermission('data-collection', 'read') || hasPermission('school-information', 'read'),
       },
       {
         queryKey: ['stats-responses'],
@@ -60,7 +61,7 @@ export default function DashboardPage() {
       value: stats.totalUsers ?? '—',
       icon: Users,
       color: 'text-blue-600 bg-blue-100',
-      show: hasAnyRole('Super Admin', 'Admin'),
+      show: isAdmin,
     },
     {
       title: 'Total Surveys',
@@ -74,14 +75,14 @@ export default function DashboardPage() {
       value: stats.totalSchools ?? '—',
       icon: School,
       color: 'text-green-600 bg-green-100',
-      show: true,
+      show: hasPermission('data-collection', 'read') || hasPermission('school-information', 'read'),
     },
     {
       title: 'Total Responses',
       value: stats.totalResponses ?? '—',
       icon: FileText,
       color: 'text-orange-600 bg-orange-100',
-      show: hasAnyRole('Super Admin', 'Admin', 'Survey Creator'),
+      show: isSurveyCreator,
     },
   ].filter((c) => c.show);
 
@@ -128,7 +129,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {hasAnyRole('Super Admin', 'Admin', 'Survey Creator') && (
+                {hasPermission('surveys', 'create') && (
                   <a
                     href="/surveys/create"
                     className="flex items-center gap-3 rounded-lg border border-gray-200 p-3 transition-colors hover:bg-gray-50"
@@ -144,7 +145,7 @@ export default function DashboardPage() {
                     </div>
                   </a>
                 )}
-                {hasAnyRole('Super Admin', 'Admin') && (
+                {isAdmin && (
                   <a
                     href="/users"
                     className="flex items-center gap-3 rounded-lg border border-gray-200 p-3 transition-colors hover:bg-gray-50"
@@ -160,9 +161,9 @@ export default function DashboardPage() {
                     </div>
                   </a>
                 )}
-                {hasAnyRole('Super Admin', 'Admin', 'School Admin') && (
+                {(hasPermission('data-collection', 'read') || hasPermission('school-information', 'read')) && (
                   <a
-                    href="/schools"
+                    href="/data-collection/school-information"
                     className="flex items-center gap-3 rounded-lg border border-gray-200 p-3 transition-colors hover:bg-gray-50"
                   >
                     <School size={20} className="text-green-600" />

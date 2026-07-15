@@ -7,7 +7,6 @@ import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
-import { Badge } from '@/components/ui/badge';
 import {
   Plus,
   Search,
@@ -23,41 +22,90 @@ import {
 import api from '@/lib/api';
 import type { DcSchool, GeoLocation } from '@/types';
 
-const SCHOOL_TYPES = [
-  { value: 'plain_land', label: 'Plain Land' },
-  { value: 'haor', label: 'Haor' },
-];
-
-const SCHOOL_CATEGORIES = [
-  { value: 'brac_academy', label: 'BRAC Academy' },
-  { value: 'brac_primary', label: 'BRAC Primary' },
-  { value: 'brac_secondary', label: 'BRAC Secondary' },
-];
-
 const PAGE_SIZE = 10;
 
 const emptyForm = {
   name: '',
-  schoolCategory: '',
-  schoolType: '',
-  establishedYear: '',
+  areaId: '',
   divisionId: '',
   division: '',
   districtId: '',
   district: '',
   upazilaId: '',
   upazila: '',
-  governmentApproval: '' as '' | 'yes' | 'no',
-  totalTeachers: '',
-  totalStudents: '',
-  gradeCoverage: '',
 };
+
+function normalizeName(value?: string | null): string {
+  return (value ?? '').trim().toLowerCase();
+}
+
+function resolveGeoPath(
+  areas: GeoLocation[],
+  school: Pick<DcSchool, 'division' | 'district' | 'upazila'>,
+): {
+  areaId: string;
+  divisionId: string;
+  districtId: string;
+  upazilaId: string;
+} {
+  const divisionName = normalizeName(school.division);
+  const districtName = normalizeName(school.district);
+  const upazilaName = normalizeName(school.upazila);
+
+  if (!divisionName && !districtName && !upazilaName) {
+    return { areaId: '', divisionId: '', districtId: '', upazilaId: '' };
+  }
+
+  for (const area of areas) {
+    const divisions = area.children ?? [];
+    for (const division of divisions) {
+      if (divisionName && normalizeName(division.name) !== divisionName) continue;
+
+      const districts = division.children ?? [];
+      if (districtName) {
+        for (const district of districts) {
+          if (normalizeName(district.name) !== districtName) continue;
+
+          const upazilas = district.children ?? [];
+          if (upazilaName) {
+            for (const upazila of upazilas) {
+              if (normalizeName(upazila.name) !== upazilaName) continue;
+              return {
+                areaId: area.id,
+                divisionId: division.id,
+                districtId: district.id,
+                upazilaId: upazila.id,
+              };
+            }
+            continue;
+          }
+
+          return {
+            areaId: area.id,
+            divisionId: division.id,
+            districtId: district.id,
+            upazilaId: '',
+          };
+        }
+        continue;
+      }
+
+      return {
+        areaId: area.id,
+        divisionId: division.id,
+        districtId: '',
+        upazilaId: '',
+      };
+    }
+  }
+
+  return { areaId: '', divisionId: '', districtId: '', upazilaId: '' };
+}
 
 export default function DcSchoolsPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [editSchool, setEditSchool] = useState<DcSchool | null>(null);
@@ -67,6 +115,7 @@ export default function DcSchoolsPage() {
   const [form, setForm] = useState({ ...emptyForm });
 
   // Geo-location cascading
+  const [divisions, setDivisions] = useState<GeoLocation[]>([]);
   const [districts, setDistricts] = useState<GeoLocation[]>([]);
   const [upazilas, setUpazilas] = useState<GeoLocation[]>([]);
   const [geoLoading, setGeoLoading] = useState(false);
@@ -76,11 +125,33 @@ export default function DcSchoolsPage() {
     queryFn: () => api.get('/data-collection/schools').then((r) => r.data),
   });
 
-  const { data: divisions = [] } = useQuery<GeoLocation[]>({
-    queryKey: ['geo-divisions'],
-    queryFn: () => api.get<GeoLocation[]>('/geo-locations/divisions').then((r) => r.data),
-    staleTime: 10 * 60 * 1000, // divisions rarely change
+  const { data: areas = [] } = useQuery<GeoLocation[]>({
+    queryKey: ['geo-areas'],
+    queryFn: () => api.get<GeoLocation[]>('/geo-locations/areas').then((r) => r.data),
+    staleTime: 10 * 60 * 1000,
   });
+
+  const { data: geoTree = [] } = useQuery<GeoLocation[]>({
+    queryKey: ['geo-locations-tree'],
+    queryFn: () => api.get<GeoLocation[]>('/geo-locations/tree').then((r) => r.data),
+    staleTime: 10 * 60 * 1000,
+  });
+
+  // Load divisions when area changes
+  useEffect(() => {
+    if (!form.areaId) {
+      setDivisions([]);
+      setDistricts([]);
+      setUpazilas([]);
+      return;
+    }
+    setGeoLoading(true);
+    api
+      .get<GeoLocation[]>(`/geo-locations?type=division&parentId=${form.areaId}`)
+      .then(({ data }) => setDivisions(data))
+      .catch(() => setDivisions([]))
+      .finally(() => setGeoLoading(false));
+  }, [form.areaId]);
 
   // Load districts when division changes
   useEffect(() => {
@@ -118,18 +189,18 @@ export default function DcSchoolsPage() {
       const q = search.toLowerCase();
       result = result.filter((s) => s.name.toLowerCase().includes(q));
     }
-    if (typeFilter) result = result.filter((s) => s.schoolType === typeFilter);
     return result;
-  }, [schools, search, typeFilter]);
+  }, [schools, search]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paged = useMemo(() => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [filtered, page]);
 
-  useEffect(() => { setPage(1); }, [search, typeFilter]);
+  useEffect(() => { setPage(1); }, [search]);
 
   const resetForm = () => {
     setForm({ ...emptyForm });
     setEditSchool(null);
+    setDivisions([]);
     setDistricts([]);
     setUpazilas([]);
   };
@@ -141,31 +212,17 @@ export default function DcSchoolsPage() {
 
   const openEdit = async (s: DcSchool) => {
     setEditSchool(s);
-    // Find division/district IDs from names for cascading to work
-    let divisionId = '';
-    let districtId = '';
-    let upazilaId = '';
-
-    if (s.division) {
-      const div = divisions.find((d) => d.name === s.division);
-      if (div) divisionId = div.id;
-    }
+    const resolved = resolveGeoPath(geoTree, s);
 
     setForm({
       name: s.name,
-      schoolCategory: s.schoolCategory || '',
-      schoolType: s.schoolType || '',
-      establishedYear: s.establishedYear?.toString() || '',
-      divisionId,
+      areaId: resolved.areaId,
+      divisionId: resolved.divisionId,
       division: s.division || '',
-      districtId,
+      districtId: resolved.districtId,
       district: s.district || '',
-      upazilaId,
+      upazilaId: resolved.upazilaId,
       upazila: s.upazila || '',
-      governmentApproval: s.governmentApproval === true ? 'yes' : s.governmentApproval === false ? 'no' : '',
-      totalTeachers: s.totalTeachers?.toString() || '',
-      totalStudents: s.totalStudents?.toString() || '',
-      gradeCoverage: s.gradeCoverage || '',
     });
     setModalOpen(true);
   };
@@ -176,18 +233,9 @@ export default function DcSchoolsPage() {
     try {
       const payload: Record<string, any> = {
         name: form.name,
-        schoolCategory: form.schoolCategory || undefined,
-        schoolType: form.schoolType || undefined,
-        establishedYear: form.establishedYear ? parseInt(form.establishedYear) : undefined,
         division: form.division || undefined,
         district: form.district || undefined,
         upazila: form.upazila || undefined,
-        governmentApproval:
-          form.governmentApproval === 'yes' ? true :
-          form.governmentApproval === 'no' ? false : undefined,
-        totalTeachers: form.totalTeachers ? parseInt(form.totalTeachers) : undefined,
-        totalStudents: form.totalStudents ? parseInt(form.totalStudents) : undefined,
-        gradeCoverage: form.gradeCoverage || undefined,
       };
       if (editSchool) {
         await api.patch(`/data-collection/schools/${editSchool.id}`, payload);
@@ -215,7 +263,7 @@ export default function DcSchoolsPage() {
     }
   };
 
-  const hasFilters = search || typeFilter;
+  const hasFilters = search;
 
   const selectClass =
     'h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-gray-50 disabled:text-gray-400';
@@ -251,22 +299,9 @@ export default function DcSchoolsPage() {
                 />
               </div>
             </div>
-            <div className="min-w-[160px]">
-              <label className="mb-1 block text-xs font-medium text-gray-500">School Type</label>
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2.5 text-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
-              >
-                <option value="">All Types</option>
-                {SCHOOL_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
-                ))}
-              </select>
-            </div>
             {hasFilters && (
               <button
-                onClick={() => { setSearch(''); setTypeFilter(''); }}
+                onClick={() => { setSearch(''); }}
                 className="h-9 rounded-lg border border-gray-200 px-3 text-xs font-medium text-gray-500 hover:bg-gray-50 transition-colors"
               >
                 <Filter size={12} className="mr-1 inline" />
@@ -304,12 +339,7 @@ export default function DcSchoolsPage() {
                   <tr className="border-b border-gray-100 bg-gradient-to-r from-gray-50 to-gray-50/50">
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">#</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">School</th>
-                    <th className="hidden px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 md:table-cell">Category</th>
-                    <th className="hidden px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 md:table-cell">Type</th>
                     <th className="hidden px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 lg:table-cell">Location</th>
-                    <th className="hidden px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 xl:table-cell">Teachers</th>
-                    <th className="hidden px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 xl:table-cell">Students</th>
-                    <th className="hidden px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 xl:table-cell">Gov. Approved</th>
                     <th className="hidden px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 lg:table-cell">Created By</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Actions</th>
                   </tr>
@@ -317,7 +347,7 @@ export default function DcSchoolsPage() {
                 <tbody>
                   {paged.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="px-4 py-16 text-center">
+                      <td colSpan={5} className="px-4 py-16 text-center">
                         <Search size={20} className="mx-auto mb-2 text-gray-300" />
                         <p className="text-sm text-gray-500">No matching schools found</p>
                       </td>
@@ -339,47 +369,11 @@ export default function DcSchoolsPage() {
                             </div>
                             <div>
                               <p className="text-sm font-medium text-gray-900">{s.name}</p>
-                              {s.establishedYear && (
-                                <p className="text-xs text-gray-400">Est. {s.establishedYear}</p>
-                              )}
                             </div>
                           </div>
                         </td>
-                        <td className="hidden px-4 py-3 md:table-cell">
-                          {s.schoolCategory ? (
-                            <span className="text-sm text-gray-700">
-                              {SCHOOL_CATEGORIES.find((c) => c.value === s.schoolCategory)?.label || s.schoolCategory}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-gray-400">-</span>
-                          )}
-                        </td>
-                        <td className="hidden px-4 py-3 md:table-cell">
-                          {s.schoolType ? (
-                            <span className="text-sm text-gray-700">
-                              {SCHOOL_TYPES.find((t) => t.value === s.schoolType)?.label || s.schoolType}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-gray-400">-</span>
-                          )}
-                        </td>
                         <td className="hidden px-4 py-3 text-sm text-gray-500 lg:table-cell">
                           {[s.upazila, s.district, s.division].filter(Boolean).join(', ') || '-'}
-                        </td>
-                        <td className="hidden px-4 py-3 text-sm text-gray-500 xl:table-cell">
-                          {s.totalTeachers ?? '-'}
-                        </td>
-                        <td className="hidden px-4 py-3 text-sm text-gray-500 xl:table-cell">
-                          {s.totalStudents ?? '-'}
-                        </td>
-                        <td className="hidden px-4 py-3 xl:table-cell">
-                          {s.governmentApproval === true ? (
-                            <Badge variant="success">Yes</Badge>
-                          ) : s.governmentApproval === false ? (
-                            <Badge variant="error">No</Badge>
-                          ) : (
-                            <span className="text-xs text-gray-400">-</span>
-                          )}
                         </td>
                         <td className="hidden px-4 py-3 lg:table-cell">
                           {s.createdBy ? (
@@ -489,49 +483,32 @@ export default function DcSchoolsPage() {
             placeholder="e.g. BRAC Primary School Dhaka"
           />
 
-          {/* School Category */}
-          <div>
-            <label className={labelClass}>School Category</label>
-            <select
-              value={form.schoolCategory}
-              onChange={(e) => setForm({ ...form, schoolCategory: e.target.value })}
-              className={selectClass}
-            >
-              <option value="">Select category...</option>
-              {SCHOOL_CATEGORIES.map((c) => (
-                <option key={c.value} value={c.value}>{c.label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            {/* Type */}
+          {/* Cascading Location */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
-              <label className={labelClass}>Type of School</label>
+              <label className={labelClass}>Area</label>
               <select
-                value={form.schoolType}
-                onChange={(e) => setForm({ ...form, schoolType: e.target.value })}
+                value={form.areaId}
+                onChange={(e) => {
+                  setForm({
+                    ...form,
+                    areaId: e.target.value,
+                    divisionId: '',
+                    division: '',
+                    districtId: '',
+                    district: '',
+                    upazilaId: '',
+                    upazila: '',
+                  });
+                }}
                 className={selectClass}
               >
-                <option value="">Select type...</option>
-                {SCHOOL_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
+                <option value="">Select area...</option>
+                {areas.map((a) => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
                 ))}
               </select>
             </div>
-
-            {/* Established Year */}
-            <Input
-              label="School Establishment Year"
-              type="number"
-              value={form.establishedYear}
-              onChange={(e) => setForm({ ...form, establishedYear: e.target.value })}
-              placeholder="e.g. 2005"
-            />
-          </div>
-
-          {/* Cascading Location */}
-          <div className="grid gap-4 sm:grid-cols-3">
             <div>
               <label className={labelClass}>Division</label>
               <select
@@ -548,6 +525,7 @@ export default function DcSchoolsPage() {
                     upazila: '',
                   });
                 }}
+                disabled={!form.areaId || geoLoading}
                 className={selectClass}
               >
                 <option value="">Select division...</option>
@@ -597,49 +575,6 @@ export default function DcSchoolsPage() {
               </select>
             </div>
           </div>
-
-          {/* Government Approval */}
-          <div>
-            <label className={labelClass}>Government Approval Status</label>
-            <select
-              value={form.governmentApproval}
-              onChange={(e) =>
-                setForm({ ...form, governmentApproval: e.target.value as '' | 'yes' | 'no' })
-              }
-              className={selectClass}
-            >
-              <option value="">Select...</option>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </select>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            {/* Total Teachers */}
-            <Input
-              label="Total Number of Teachers"
-              type="number"
-              value={form.totalTeachers}
-              onChange={(e) => setForm({ ...form, totalTeachers: e.target.value })}
-              placeholder="e.g. 12"
-            />
-            {/* Total Students */}
-            <Input
-              label="Total Number of Students"
-              type="number"
-              value={form.totalStudents}
-              onChange={(e) => setForm({ ...form, totalStudents: e.target.value })}
-              placeholder="e.g. 350"
-            />
-          </div>
-
-          {/* Grade Coverage */}
-          <Input
-            label="Grade Coverage"
-            value={form.gradeCoverage}
-            onChange={(e) => setForm({ ...form, gradeCoverage: e.target.value })}
-            placeholder="e.g. Grade 1–5, or Pre-primary to Grade 8"
-          />
 
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => { setModalOpen(false); resetForm(); }}>

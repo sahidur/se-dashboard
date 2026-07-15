@@ -228,7 +228,6 @@ export function AlumniForm({ schoolId }: Props) {
 
       {/* ── School Info Card ── */}
       <Card className="overflow-hidden border-0 shadow-sm">
-        <div className="h-1.5 bg-gradient-to-r from-slate-500 to-slate-600" />
         <CardContent className="p-5">
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-500 to-slate-700 text-white shadow-md">
@@ -258,7 +257,6 @@ export function AlumniForm({ schoolId }: Props) {
       <div ref={formRef}>
         <form onSubmit={handleSubmit}>
           <Card className="overflow-hidden border-0 shadow-sm">
-            <div className="h-1 bg-gradient-to-r from-slate-400 to-slate-500" />
             <CardHeader className="pb-3 pt-5 px-5">
               <div className="flex items-center justify-between">
                 <div>
@@ -423,7 +421,6 @@ export function AlumniForm({ schoolId }: Props) {
 
       {/* ── Records Table ── */}
       <Card className="overflow-hidden border-0 shadow-sm">
-        <div className="h-1 bg-gradient-to-r from-slate-400 to-slate-500" />
         <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
           <div className="flex items-center gap-2">
             <UserCheck size={18} className="text-slate-500" />

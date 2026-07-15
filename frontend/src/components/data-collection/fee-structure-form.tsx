@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import api from '@/lib/api';
+import { useAuthStore } from '@/store/auth-store';
 import type { DcSchool, DcFeeStructure, DcFeeStructureLog } from '@/types';
 
 /* ─── Constants ──────────────────────────────────────────── */
@@ -63,13 +64,13 @@ const BLANK_AMOUNTS: FeeAmounts = {
 
 interface Props {
   schoolId: string;
-  userRoles?: string[];
 }
 
 /* ─── Component ─────────────────────────────────────────── */
 
-export function FeeStructureForm({ schoolId, userRoles = [] }: Props) {
+export function FeeStructureForm({ schoolId }: Props) {
   const router = useRouter();
+  const { hasPermission } = useAuthStore();
   const [school, setSchool] = useState<DcSchool | null>(null);
   const [selectedMonths, setSelectedMonths] = useState<string[]>([...MONTHS]);
   const [grade, setGrade] = useState('');
@@ -85,7 +86,7 @@ export function FeeStructureForm({ schoolId, userRoles = [] }: Props) {
   const [showLogs, setShowLogs] = useState(false);
   const [loadingLogs, setLoadingLogs] = useState(false);
 
-  const isAdmin = userRoles.includes('Admin') || userRoles.includes('Super Admin');
+  const isAdmin = hasPermission('data-collection', 'update');
 
   const showToast = useCallback((type: 'success' | 'error', msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -225,7 +226,6 @@ export function FeeStructureForm({ schoolId, userRoles = [] }: Props) {
 
       {/* ── School Info Card ── */}
       <Card className="overflow-hidden border-0 shadow-sm">
-        <div className="h-1.5 bg-gradient-to-r from-amber-500 to-amber-600" />
         <CardContent className="p-5">
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500 to-amber-700 text-white shadow-md">
@@ -267,7 +267,6 @@ export function FeeStructureForm({ schoolId, userRoles = [] }: Props) {
       {/* ── Entry Form ── */}
       <form onSubmit={handleSubmit}>
         <Card className="overflow-hidden border-0 shadow-sm">
-          <div className="h-1 bg-gradient-to-r from-amber-400 to-yellow-500" />
           <CardHeader className="pb-3 pt-5 px-5">
             <CardTitle className="text-base font-semibold text-gray-800">Fee Structure Entry</CardTitle>
           </CardHeader>
@@ -387,7 +386,6 @@ export function FeeStructureForm({ schoolId, userRoles = [] }: Props) {
       {/* ── All Records Table ── */}
       {grade && (
         <Card className="overflow-hidden border-0 shadow-sm">
-          <div className="h-1 bg-gradient-to-r from-amber-400 to-yellow-500" />
           <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
             <div className="flex items-center gap-2">
               <BookOpen size={18} className="text-amber-600" />
@@ -455,7 +453,6 @@ export function FeeStructureForm({ schoolId, userRoles = [] }: Props) {
       {/* ── Edit Log (Admin only) ── */}
       {isAdmin && (
         <Card className="overflow-hidden border-0 shadow-sm">
-          <div className="h-1 bg-gradient-to-r from-gray-300 to-gray-400" />
           <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
             <div className="flex items-center gap-2">
               <History size={18} className="text-gray-500" />

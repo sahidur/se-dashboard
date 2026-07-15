@@ -458,3 +458,72 @@ export class UpsertCocurricularDto {
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(100) outdoorGame?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(100) others?: number;
 }
+
+// ===================== Students' Performance =====================
+
+export class UpsertStudentsPerformanceDto {
+  @IsUUID() schoolId: string;
+
+  @IsString()
+  @IsIn(['Play & Learn', 'Nursery', 'G1', 'G2', 'G3', 'G4', 'G5'])
+  grade: string;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) numberOfStudents?: number;
+
+  @IsString()
+  @IsIn(['Half-yearly', 'Annual'])
+  examName: string;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(100) studentsAppearedPercent?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) gradeAPlus?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) gradeA?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) gradeAMinus?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) gradeB?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) gradeC?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) gradeD?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) gradeF?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) progressGood?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) progressSatisfactory?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) progressNeedImprove?: number;
+}
+
+// ===================== Activity Participation (Corner/Club/Library/Lab) =====================
+
+export class UpsertActivityParticipationDto {
+  @IsUUID() schoolId: string;
+
+  @IsString()
+  @IsIn(['Corner Activity', 'Club Activity', 'Library Activity', 'Lab Activity'])
+  item: string;
+
+  @IsString() @IsNotEmpty() month: string;
+
+  @IsString()
+  @IsIn(['Play & Learn', 'Nursery', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10'])
+  grade: string;
+
+  @IsOptional() @IsString() activityName?: string;
+  @IsOptional() @IsString() photoUrl?: string;
+  @IsOptional() @IsString() photoKey?: string;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) conductedCount?: number;
+}
+
+// ===================== Event Participation =====================
+
+export class CreateEventParticipationDto {
+  @IsUUID() schoolId: string;
+
+  @IsString() @IsNotEmpty() eventName: string;
+
+  @IsString()
+  @IsIn(['Upazila', 'Zila', 'National'])
+  awardLevel: string;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) maleAwarded?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) femaleAwarded?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) othersAwarded?: number;
+}
+
+export class UpdateEventParticipationDto extends PartialType(CreateEventParticipationDto) {}

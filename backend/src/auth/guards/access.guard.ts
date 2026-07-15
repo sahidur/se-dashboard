@@ -8,15 +8,20 @@ import {
 import { UsersService } from '../../users/users.service';
 
 /**
- * Unified access guard that checks BOTH @Roles() and @Permissions() decorators.
+ * Unified access guard that checks @Roles() and @Permissions() decorators.
  *
  * Logic:
- * - If neither @Roles nor @Permissions is present → ALLOW (open to authenticated users)
+ * - If neither @Roles nor @Permissions is present -> ALLOW (open to authenticated users)
  * - Super Admin always passes
- * - If @Roles matches the user's role names (from JWT) → ALLOW
- * - If @Permissions matches the user's permission matrix (from DB) → ALLOW
- * - If both decorators are present, EITHER one passing is sufficient
- * - If decorator(s) present but none match → DENY
+ * - If only @Roles exists -> user must match one required role
+ * - If only @Permissions exists -> user must satisfy AT LEAST ONE required permission (OR).
+ *   Passing multiple permission objects to a single @Permissions(...) call lets a route be
+ *   reachable via any one of several granular modules (e.g. the broad 'data-collection' module
+ *   OR the narrower 'programme-overview' module), without requiring every module at once.
+ * - If BOTH decorators exist -> user must pass EITHER check (role match OR granted permission).
+ *   @Roles here acts as a hardcoded fallback allowlist (e.g. built-in Admin roles), while
+ *   @Permissions is what lets custom roles configured in Role Management gain access purely
+ *   via granted module permissions, without also needing one of the hardcoded role names.
  */
 @Injectable()
 export class AccessGuard implements CanActivate {
@@ -54,16 +59,17 @@ export class AccessGuard implements CanActivate {
     }
 
     // Check role names from JWT (fast, no DB query)
+    let roleCheckPassed = false;
     if (requiredRoles) {
-      const hasRole = requiredRoles.some((role) =>
+      roleCheckPassed = requiredRoles.some((role) =>
         user.roles?.some((r: any) =>
           typeof r === 'string' ? r === role : r.name === role,
         ),
       );
-      if (hasRole) return true;
     }
 
     // Check permission matrix from DB (slower, full user load)
+    let permissionCheckPassed = false;
     if (requiredPermissions) {
       try {
         const fullUser = await this.usersService.findOneById(user.id);
@@ -71,18 +77,30 @@ export class AccessGuard implements CanActivate {
           const userPermissions = fullUser.roles.flatMap(
             (role) => role.permissions || [],
           );
-          const hasPermission = requiredPermissions.every((required) =>
+          // OR semantics: passing granted with ANY one of the required permissions.
+          permissionCheckPassed = requiredPermissions.some((required) =>
             userPermissions.some(
               (perm) =>
                 perm.module === required.module &&
                 perm.action === required.action,
             ),
           );
-          if (hasPermission) return true;
         }
       } catch {
-        // If DB query fails, fall through to deny
+        permissionCheckPassed = false;
       }
+    }
+
+    if (requiredRoles && requiredPermissions) {
+      return roleCheckPassed || permissionCheckPassed;
+    }
+
+    if (requiredRoles) {
+      return roleCheckPassed;
+    }
+
+    if (requiredPermissions) {
+      return permissionCheckPassed;
     }
 
     return false;

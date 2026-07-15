@@ -18,10 +18,8 @@ import type { Survey } from '@/types';
 
 export default function AssignedSurveysPage() {
   const router = useRouter();
-  const { hasAnyRole, hasPermission } = useAuthStore();
-  const canAccessSurveyManagement =
-    hasAnyRole('Super Admin', 'Admin', 'Survey Creator') ||
-    hasPermission('surveys', 'read');
+  const { hasPermission } = useAuthStore();
+  const canAccessSurveyManagement = hasPermission('surveys', 'read');
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
 

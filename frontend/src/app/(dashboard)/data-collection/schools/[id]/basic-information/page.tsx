@@ -129,7 +129,6 @@ export default function BasicInformationPage() {
       <div className="p-4 sm:p-6">
         {/* Summary Card */}
         <Card className="mb-6 overflow-hidden">
-          <div className="h-2 bg-gradient-to-r from-blue-500 to-blue-600" />
           <CardContent className="p-5">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-4">
@@ -204,7 +203,6 @@ export default function BasicInformationPage() {
                     submitted ? 'ring-2 ring-green-200' : 'ring-1 ring-gray-100'
                   }`}
                 >
-                  <div className={`h-1.5 bg-gradient-to-r ${sf.color}`} />
                   <CardContent className="p-5">
                     <div className="mb-3 flex items-start justify-between">
                       <div

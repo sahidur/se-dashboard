@@ -5,7 +5,6 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth-store';
 import {
-  LayoutDashboard,
   Users,
   Shield,
   ClipboardList,
@@ -25,6 +24,7 @@ import {
   Database,
   BarChart3,
   BookOpen,
+  Activity,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
@@ -32,16 +32,14 @@ interface NavItem {
   label: string;
   href: string;
   icon: React.ElementType;
-  roles?: string[];
-  module?: string; // permission module to check
+  module?: string | string[]; // permission module(s) to check (array = OR)
   exact?: boolean;
 }
 
 interface NavGroup {
   label: string;
   icon: React.ElementType;
-  roles?: string[];
-  module?: string;
+  module?: string | string[];
   children: NavItem[];
 }
 
@@ -53,42 +51,33 @@ function isNavGroup(entry: NavEntry): entry is NavGroup {
 
 const navigation: NavEntry[] = [
   {
-    label: 'Dashboard',
-    href: '/dashboard',
-    icon: LayoutDashboard,
-    module: 'dashboard',
-  },
-  {
     label: 'Programme Overview',
     href: '/data-collection/programme-overview',
     icon: BarChart3,
-    module: 'data-collection',
+    module: ['data-collection', 'programme-overview'],
   },
   {
     label: 'School Information',
     href: '/data-collection/school-information',
     icon: BookOpen,
-    module: 'data-collection',
+    module: ['data-collection', 'school-information'],
   },
   {
     label: 'Users',
     href: '/users',
     icon: Users,
-    roles: ['Super Admin', 'Admin'],
     module: 'users',
   },
   {
     label: 'Roles',
     href: '/roles',
     icon: Shield,
-    roles: ['Super Admin', 'Admin'],
     module: 'roles',
   },
   {
     label: 'Surveys',
     href: '/surveys',
     icon: ClipboardList,
-    roles: ['Super Admin', 'Admin', 'Survey Creator'],
     module: 'surveys',
     exact: false,
   },
@@ -102,28 +91,31 @@ const navigation: NavEntry[] = [
   {
     label: 'Admin Tools',
     icon: Settings,
-    roles: ['Super Admin', 'Admin'],
     module: 'admin-tools',
     children: [
       {
         label: 'Categories',
         href: '/categories',
         icon: Tag,
-        roles: ['Super Admin', 'Admin'],
         module: 'categories',
       },
       {
         label: 'Geo Locations',
         href: '/geo-locations',
         icon: MapPin,
-        roles: ['Super Admin', 'Admin'],
         module: 'geo-locations',
+      },
+      {
+        label: 'Activity Logs',
+        href: '/activity-logs',
+        icon: Activity,
+        module: ['admin-tools', 'activity-logs'],
       },
       {
         label: 'Recycle Bin',
         href: '/recycle-bin',
         icon: Trash2,
-        roles: ['Super Admin'],
+        module: 'recycle-bin',
       },
     ],
   },
@@ -176,20 +168,15 @@ export function Sidebar() {
     setExpandedGroups((prev) => ({ ...prev, [label]: !prev[label] }));
   };
 
-  const canAccess = (item: { roles?: string[]; module?: string }) => {
-    // Items without roles or module restrictions are visible to all
-    if (!item.roles && !item.module) return true;
+  const canAccess = (item: { module?: string | string[] }) => {
+    // Items without a module restriction are visible to all authenticated users
+    if (!item.module) return true;
     // Super Admin always sees everything
     if (hasAnyRole('Super Admin')) return true;
-    // Check role-based access
-    if (item.roles && !hasAnyRole(...item.roles)) return false;
-    // Check module permission (read access)
-    if (item.module && !hasPermission(item.module, 'read')) {
-      // Special modules that don't have explicit permissions
-      const openModules = ['dashboard', 'assigned-surveys', 'admin-tools', 'data-collection'];
-      if (!openModules.includes(item.module)) return false;
-    }
-    return true;
+    // Every other item is purely permission-driven via Role Management.
+    // An array means OR — any one granted module unlocks the item.
+    const modules = Array.isArray(item.module) ? item.module : [item.module];
+    return modules.some((m) => hasPermission(m, 'read'));
   };
 
   const isActive = (href: string) =>

@@ -10,11 +10,12 @@ import {
   DeleteDateColumn,
 } from 'typeorm';
 
+// Hierarchy: Area (root) > Division > District > Thana/Upazilla.
 export enum GeoLocationType {
+  AREA = 'area',
   DIVISION = 'division',
   DISTRICT = 'district',
   THANA = 'thana',
-  AREA = 'area',
 }
 
 @Entity('geo_locations')

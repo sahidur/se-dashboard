@@ -1,10 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { Modal } from '@/components/ui/modal';
+import { GeoLocationSelect } from '@/components/forms/geo-location-select';
+import { UserProfileModal } from '@/components/users/user-profile-modal';
 import { formatDate } from '@/lib/utils';
 import {
   Plus,
@@ -23,15 +26,19 @@ import {
   Copy,
   Check,
   Filter,
+  Upload,
+  ImageOff,
+  Power,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth-store';
-import type { User, Role, PaginatedResponse } from '@/types';
+import type { User, Role, GeoLocation, PaginatedResponse } from '@/types';
+import { USER_DESIGNATIONS } from '@/types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 export default function UsersPage() {
-  const { hasAnyRole } = useAuthStore();
-  const isSuperAdmin = hasAnyRole('Super Admin');
+  const { hasPermission } = useAuthStore();
+  const canResetPassword = hasPermission('users', 'update');
   const queryClient = useQueryClient();
 
   // Filters
@@ -71,8 +78,15 @@ export default function UsersPage() {
     password: '',
     phone: '',
     roleIds: [] as string[],
+    pin: '',
+    designation: '',
+    base: '',
+    geoLocationId: null as string | null,
+    profilePicture: '',
   });
   const [saving, setSaving] = useState(false);
+  const [uploadingPicture, setUploadingPicture] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Reset password modal
   const [resetModal, setResetModal] = useState<{ open: boolean; userId: string; userName: string }>({
@@ -84,9 +98,33 @@ export default function UsersPage() {
   const [newPassword, setNewPassword] = useState('');
   const [copied, setCopied] = useState(false);
 
+  // Status (active/deactivate) confirmation modal
+  const [statusConfirm, setStatusConfirm] = useState<{
+    open: boolean;
+    userId: string;
+    userName: string;
+    nextActive: boolean;
+  }>({ open: false, userId: '', userName: '', nextActive: true });
+  const [statusSaving, setStatusSaving] = useState(false);
+
+  // User profile view modal
+  const [profileUser, setProfileUser] = useState<User | null>(null);
+
   const openCreateModal = () => {
     setEditingUser(null);
-    setFormData({ firstName: '', lastName: '', email: '', password: '', phone: '', roleIds: [] });
+    setFormData({
+      firstName: '',
+      lastName: '',
+      email: '',
+      password: '',
+      phone: '',
+      roleIds: [],
+      pin: '',
+      designation: '',
+      base: '',
+      geoLocationId: null,
+      profilePicture: '',
+    });
     setShowModal(true);
   };
 
@@ -99,23 +137,58 @@ export default function UsersPage() {
       password: '',
       phone: user.phone || '',
       roleIds: user.roles?.map((r) => r.id) || [],
+      pin: user.pin != null ? String(user.pin) : '',
+      designation: user.designation || '',
+      base: user.base || '',
+      geoLocationId: user.geoLocationId || null,
+      profilePicture: user.profilePicture || '',
     });
     setShowModal(true);
+  };
+
+  const handleProfilePictureChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!['image/jpeg', 'image/png'].includes(file.type)) {
+      alert('Only JPG and PNG images are supported');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    try {
+      setUploadingPicture(true);
+      const uploadData = new FormData();
+      uploadData.append('file', file);
+      const { data } = await api.post('/files/upload?folder=profile-pictures', uploadData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setFormData((prev) => ({ ...prev, profilePicture: data.url }));
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to upload profile picture');
+    } finally {
+      setUploadingPicture(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const handleSave = async () => {
     try {
       setSaving(true);
+      const payload: Record<string, any> = {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        phone: formData.phone,
+        roleIds: formData.roleIds,
+        pin: formData.pin ? Number(formData.pin) : undefined,
+        designation: formData.designation || undefined,
+        base: formData.base || undefined,
+        geoLocationId: formData.geoLocationId || undefined,
+        profilePicture: formData.profilePicture || undefined,
+      };
       if (editingUser) {
-        await api.patch(`/users/${editingUser.id}`, {
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          email: formData.email,
-          phone: formData.phone,
-          roleIds: formData.roleIds,
-        });
+        await api.patch(`/users/${editingUser.id}`, payload);
       } else {
-        await api.post('/users', formData);
+        await api.post('/users', { ...payload, password: formData.password });
       }
       setShowModal(false);
       queryClient.invalidateQueries({ queryKey: ['users'] });
@@ -133,6 +206,28 @@ export default function UsersPage() {
       queryClient.invalidateQueries({ queryKey: ['users'] });
     } catch (error: any) {
       alert(error.response?.data?.message || 'Failed to delete user');
+    }
+  };
+
+  const openStatusConfirm = (user: User) => {
+    setStatusConfirm({
+      open: true,
+      userId: user.id,
+      userName: `${user.firstName} ${user.lastName}`,
+      nextActive: !user.isActive,
+    });
+  };
+
+  const handleConfirmStatus = async () => {
+    try {
+      setStatusSaving(true);
+      await api.patch(`/users/${statusConfirm.userId}/status`, { isActive: statusConfirm.nextActive });
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      setStatusConfirm({ open: false, userId: '', userName: '', nextActive: true });
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to update status');
+    } finally {
+      setStatusSaving(false);
     }
   };
 
@@ -158,15 +253,6 @@ export default function UsersPage() {
     navigator.clipboard.writeText(newPassword);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const toggleRole = (roleId: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      roleIds: prev.roleIds.includes(roleId)
-        ? prev.roleIds.filter((id) => id !== roleId)
-        : [...prev.roleIds, roleId],
-    }));
   };
 
   const activeCount = users.filter((u) => u.isActive).length;
@@ -311,15 +397,27 @@ export default function UsersPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {users.map((user, idx) => (
-                    <tr key={user.id} className="group transition-colors hover:bg-gray-50/60">
+                    <tr
+                      key={user.id}
+                      className="group cursor-pointer transition-colors hover:bg-gray-50/60"
+                      onClick={() => setProfileUser(user)}
+                    >
                       <td className="px-4 py-3 text-xs text-gray-400">
                         {(page - 1) * 20 + idx + 1}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 text-xs font-bold text-white shadow-sm">
-                            {user.firstName[0]}{user.lastName[0]}
-                          </div>
+                          {user.profilePicture ? (
+                            <img
+                              src={user.profilePicture}
+                              alt=""
+                              className="h-9 w-9 shrink-0 rounded-xl object-cover shadow-sm"
+                            />
+                          ) : (
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 text-xs font-bold text-white shadow-sm">
+                              {user.firstName[0]}{user.lastName[0]}
+                            </div>
+                          )}
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-gray-900">
                               {user.firstName} {user.lastName}
@@ -356,16 +454,24 @@ export default function UsersPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${user.isActive ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openStatusConfirm(user);
+                          }}
+                          title={user.isActive ? 'Deactivate user' : 'Activate user'}
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${user.isActive ? 'bg-green-50 text-green-700 hover:bg-green-100' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}
+                        >
+                          <Power size={9} />
                           {user.isActive ? 'Active' : 'Inactive'}
-                        </span>
+                        </button>
                       </td>
                       <td className="hidden px-4 py-3 text-xs text-gray-500 xl:table-cell">
                         {formatDate(user.createdAt)}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          {isSuperAdmin && (
+                        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                          {canResetPassword && (
                             <button
                               onClick={() => openResetModal(user)}
                               className="rounded-lg p-1.5 bg-amber-50 text-amber-600 transition-colors hover:bg-amber-100"
@@ -452,6 +558,39 @@ export default function UsersPage() {
         className="max-w-xl"
       >
         <div className="space-y-4">
+          <div className="flex items-center gap-4">
+            {formData.profilePicture ? (
+              <img
+                src={formData.profilePicture}
+                alt="Profile"
+                className="h-16 w-16 shrink-0 rounded-2xl object-cover shadow-sm border border-gray-200"
+              />
+            ) : (
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-gray-50 text-gray-300">
+                <ImageOff size={20} />
+              </div>
+            )}
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png"
+                className="hidden"
+                onChange={handleProfilePictureChange}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                loading={uploadingPicture}
+              >
+                <Upload size={13} className="mr-1.5" /> Upload Photo
+              </Button>
+              <p className="mt-1 text-[11px] text-gray-400">JPG or PNG only (optional)</p>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               label="First Name"
@@ -478,30 +617,57 @@ export default function UsersPage() {
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
             />
           )}
-          <Input
-            label="Phone"
-            value={formData.phone}
-            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-          />
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">Roles</label>
-            <div className="flex flex-wrap gap-2">
-              {roles.map((role) => (
-                <button
-                  key={role.id}
-                  type="button"
-                  onClick={() => toggleRole(role.id)}
-                  className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                    formData.roleIds.includes(role.id)
-                      ? 'bg-brand-600 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  {role.name}
-                </button>
-              ))}
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Phone"
+              value={formData.phone}
+              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+            />
+            <Input
+              label="PIN"
+              type="number"
+              min={1}
+              step={1}
+              value={formData.pin}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === '' || Number(v) > 0) setFormData({ ...formData, pin: v });
+              }}
+              placeholder="Positive number only"
+            />
           </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Select
+              label="Designation"
+              placeholder="Select designation"
+              value={formData.designation}
+              onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
+              options={USER_DESIGNATIONS.map((d) => ({ value: d, label: d }))}
+            />
+            <Input
+              label="Base"
+              value={formData.base}
+              onChange={(e) => setFormData({ ...formData, base: e.target.value })}
+              placeholder="e.g. Dhaka Regional Office"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700">Geo Location</label>
+            <GeoLocationSelect
+              value={formData.geoLocationId}
+              onChange={(geoLocationId) => setFormData({ ...formData, geoLocationId })}
+            />
+          </div>
+
+          <Select
+            label="Role"
+            placeholder="Select a role"
+            value={formData.roleIds[0] || ''}
+            onChange={(e) => setFormData({ ...formData, roleIds: e.target.value ? [e.target.value] : [] })}
+            options={roles.map((role) => ({ value: role.id, label: role.name }))}
+          />
+
           <div className="flex justify-end gap-3 pt-4">
             <Button variant="outline" onClick={() => setShowModal(false)}>Cancel</Button>
             <Button onClick={handleSave} loading={saving}>
@@ -568,6 +734,49 @@ export default function UsersPage() {
           )}
         </div>
       </Modal>
+
+      {/* Activate/Deactivate Confirmation Modal */}
+      <Modal
+        isOpen={statusConfirm.open}
+        onClose={() => setStatusConfirm({ open: false, userId: '', userName: '', nextActive: true })}
+        title={statusConfirm.nextActive ? 'Activate User' : 'Deactivate User'}
+        className="max-w-sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Are you sure you want to{' '}
+            <span className="font-semibold text-gray-900">{statusConfirm.nextActive ? 'activate' : 'deactivate'}</span>{' '}
+            <span className="font-semibold text-gray-900">{statusConfirm.userName}</span>?
+            {!statusConfirm.nextActive && ' They will no longer be able to log in.'}
+          </p>
+          <div className="flex justify-end gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setStatusConfirm({ open: false, userId: '', userName: '', nextActive: true })}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant={statusConfirm.nextActive ? 'default' : 'destructive'}
+              onClick={handleConfirmStatus}
+              loading={statusSaving}
+            >
+              {statusConfirm.nextActive ? 'Activate' : 'Deactivate'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* User Profile Modal */}
+      <UserProfileModal
+        isOpen={!!profileUser}
+        onClose={() => setProfileUser(null)}
+        user={profileUser}
+        onEdit={(u) => {
+          setProfileUser(null);
+          openEditModal(u);
+        }}
+      />
     </>
   );
 }

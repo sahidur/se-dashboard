@@ -159,7 +159,6 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
 
       {/* ── School Info ── */}
       <Card className="overflow-hidden border-0 shadow-sm">
-        <div className={`h-1.5 bg-gradient-to-r ${accentClasses.bar}`} />
         <CardContent className="p-5">
           <div className="flex flex-wrap items-center gap-4">
             <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${accentClasses.bar} text-white shadow-md`}>
@@ -188,7 +187,6 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
       {/* ── Form ── */}
       <form onSubmit={handleSubmit}>
         <Card className="overflow-hidden border-0 shadow-sm">
-          <div className={`h-1 bg-gradient-to-r ${accentClasses.bar}`} />
           <CardHeader className="pb-3 pt-5 px-5">
             <CardTitle className="text-base font-semibold text-gray-800">
               Revenue Collection — {mode === 'budget' ? 'Budget' : 'Actual Student'} (Yearly)
