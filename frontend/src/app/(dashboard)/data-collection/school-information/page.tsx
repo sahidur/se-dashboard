@@ -1,99 +1,101 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Header } from '@/components/layout/header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer, PieChart, Pie, Cell,
-} from 'recharts';
-import {
-  School, Users, GraduationCap, MapPin, Phone, Mail, ChevronDown,
-  BookOpen, Building2, Award, ClipboardList, TrendingUp, Search,
-  DollarSign, RefreshCw,
+  School, Users, GraduationCap, MapPin, Phone, Mail,
+  Building2, Award, TrendingUp, Wallet, Search, RefreshCw,
+  CalendarDays, ShieldCheck, ShieldX, BookOpen, Filter, ChevronRight,
+  ArrowLeft, Layers, X,
 } from 'lucide-react';
 import api from '@/lib/api';
 
 /* ─── Types ─────────────────────────────────────────────── */
 
-interface SchoolOption {
+interface SchoolListItem {
   id: string;
   name: string;
   code: string;
+  address?: string;
+  district?: string;
+  division?: string;
+  upazila?: string;
+  phone?: string;
+  email?: string;
+  principalName?: string;
+  establishedYear?: number;
+  schoolType?: string;
   schoolCategory?: string;
+  governmentApproval?: boolean;
+  totalTeachers?: number;
+  totalStudents?: number;
+  gradeCoverage?: string;
+}
+
+interface InfraData {
+  campusStatus?: string;
+  buildingStatus?: string;
+  roomHeadTeachers: number; roomTeachers: number; roomClassroom: number;
+  roomPlayroom: number; roomLibrary: number; roomLab: number;
+  roomStoreroom: number; roomKitchen: number; roomSickbay: number;
+  roomOthers: number; roomTotal: number;
+  washroomMale: number; washroomFemale: number;
+  hasHandWashPoint: boolean; hasPlayground: boolean; hasSchoolGarden: boolean;
+  infraRenovationRequired: boolean;
+  digitallyEquippedClassrooms: number; floorSittingClassrooms: number;
+  classroomsWithWhiteboard: number; classroomsWithBlackboard: number;
+  classroomNewFurniture: boolean; classroomRenovationRequired: boolean;
+}
+
+interface StudentRow {
+  id: string; grade: string; month: string;
+  boys: number; girls: number; total: number;
+  personsWithDisability: number; ethnic: number;
+}
+
+interface TeacherRow {
+  id: string; name: string; designation?: string; gender?: string;
+  educationalQualification?: string; experienceYears?: number; subjectExpertise?: string;
+}
+
+interface FeeRow {
+  id: string; month: string; grade: string;
+  admissionFee: number; tuitionFee: number; sessionFee: number;
+  assessmentFee: number; sportsFee: number; othersFee: number; transportFee: number;
+}
+
+interface PedagAchievementRow {
+  id: string; year: number;
+  kgScholarship: number; primaryScholarship: number; jrScholarship: number;
+  sscScholarship: number; othersScholarship: number;
+}
+
+interface AlumniRow {
+  id: string; alumniName: string; graduationYear?: number;
+  currentOccupation?: string; higherEducation?: string;
+  institution?: string; contactPhone?: string;
 }
 
 interface SchoolProfile {
-  school: {
-    id: string;
-    name: string;
-    code: string;
-    address?: string;
-    district?: string;
-    division?: string;
-    upazila?: string;
-    phone?: string;
-    email?: string;
-    principalName?: string;
-    establishedYear?: number;
-    schoolType?: string;
-    schoolCategory?: string;
-    governmentApproval?: boolean;
-    totalTeachers?: number;
-    totalStudents?: number;
-    gradeCoverage?: string;
-  };
-  basicInfo?: Record<string, any> | null;
-  infrastructure?: Record<string, any> | null;
-  teachers: {
-    total: number;
-    male: number;
-    female: number;
-    list: Array<{
-      id: string;
-      name: string;
-      designation?: string;
-      gender?: string;
-      educationalQualification?: string;
-      experienceYears?: number;
-      subjectExpertise?: string;
-      trainingReceived?: boolean;
-    }>;
-  };
-  students: {
-    total: number;
-    boys: number;
-    girls: number;
-    pwd: number;
-    ethnic: number;
-    byGrade: Record<string, { boys: number; girls: number; total: number; pwd: number; ethnic: number }>;
-  };
-  revenue: {
-    budgetTotal?: Record<string, any> | null;
-    actualTotal?: Record<string, any> | null;
-  };
-  alumni: Array<{
-    id: string;
-    alumniName: string;
-    graduationYear?: number;
-    currentOccupation?: string;
-    institution?: string;
-    contactPhone?: string;
-  }>;
-  pedagogicalAchievements: Array<{
-    id: string;
-    year: number;
-    kgScholarship?: number;
-    primaryScholarship?: number;
-    jrScholarship?: number;
-    sscScholarship?: number;
-    othersScholarship?: number;
-  }>;
+  school: SchoolListItem;
+  infrastructure: InfraData | null;
+  students: StudentRow[];
+  studentTotals: { boys: number; girls: number; pwd: number; ethnic: number; total: number };
+  teachers: TeacherRow[];
+  teacherTotals: { male: number; female: number; total: number };
+  feeStructures: FeeRow[];
+  revenueBudgetTotal: Record<string, any> | null;
+  revenueActualTotal: Record<string, any> | null;
+  pedagogicalAchievements: PedagAchievementRow[];
+  performance: Record<string, any> | null;
+  alumni: AlumniRow[];
+  meta: { categoriesWithData: number; totalCategories: number };
 }
 
-/* ─── Helpers ───────────────────────────────────────────── */
+/* ─── Constants / helpers ───────────────────────────────── */
 
 const CATEGORY_LABELS: Record<string, string> = {
   brac_primary: 'BRAC Primary',
@@ -101,129 +103,225 @@ const CATEGORY_LABELS: Record<string, string> = {
   brac_academy: 'BRAC Academy',
 };
 
-const GRADE_ORDER = ['Play', 'Nursery', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5',
-  'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10'];
+const TYPE_LABELS: Record<string, string> = {
+  plain_land: 'Plain Land',
+  haor: 'Haor',
+};
 
-const sortGrades = (grades: string[]) =>
-  grades.sort((a, b) => {
-    const ia = GRADE_ORDER.indexOf(a);
-    const ib = GRADE_ORDER.indexOf(b);
+const GRADE_LABELS: Record<string, string> = {
+  play_learn: 'Play & Learn', nursery: 'Nursery',
+  g1: 'Grade 1', g2: 'Grade 2', g3: 'Grade 3', g4: 'Grade 4', g5: 'Grade 5',
+  Play: 'Play',
+};
+const gradeLabel = (g: string) => GRADE_LABELS[g] ?? g;
+
+const GRADE_ORDER = ['play_learn', 'nursery', 'g1', 'g2', 'g3', 'g4', 'g5',
+  'Play', 'Nursery', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5'];
+const sortByGrade = <T extends { grade: string }>(rows: T[]) =>
+  [...rows].sort((a, b) => {
+    const ia = GRADE_ORDER.indexOf(a.grade); const ib = GRADE_ORDER.indexOf(b.grade);
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
   });
+
+const categoryLabel = (c?: string) => (c ? CATEGORY_LABELS[c] ?? c : '—');
+const typeLabel = (t?: string) => (t ? TYPE_LABELS[t] ?? t : '—');
 
 const fmtTaka = (n: number) =>
   n >= 10_000_000 ? `৳${(n / 10_000_000).toFixed(2)} Cr` :
   n >= 100_000 ? `৳${(n / 100_000).toFixed(1)} L` :
   n >= 1_000 ? `৳${(n / 1_000).toFixed(1)}K` : `৳${n}`;
 
-const pct = (a: number, b: number) => (b > 0 ? Math.min((a / b) * 100, 100).toFixed(1) : '0');
+const yn = (b?: boolean | null) => (b == null ? '—' : b ? 'Yes' : 'No');
 
-/* ─── Custom tooltip ───────────────────────────────────── */
+/* ─── Placeholder grade (until a real rating system exists) ─
+   Derived from how many of the 6 form categories carry data. */
+type GradeName = 'Green' | 'Yellow' | 'Orange';
+interface GradeStyle {
+  panel: string; glow: string; text: string; ring: string; sub: string;
+}
+const GRADE_STYLES: Record<GradeName, GradeStyle> = {
+  Green: {
+    panel: 'bg-gradient-to-br from-green-100 via-emerald-50 to-green-100',
+    glow: 'bg-green-300/40', text: 'text-green-600', ring: 'ring-green-200', sub: 'text-green-500',
+  },
+  Yellow: {
+    panel: 'bg-gradient-to-br from-yellow-100 via-amber-50 to-yellow-100',
+    glow: 'bg-yellow-300/40', text: 'text-yellow-600', ring: 'ring-yellow-200', sub: 'text-yellow-500',
+  },
+  Orange: {
+    panel: 'bg-gradient-to-br from-orange-100 via-orange-50 to-amber-100',
+    glow: 'bg-orange-300/40', text: 'text-orange-600', ring: 'ring-orange-200', sub: 'text-orange-500',
+  },
+};
+const computeGrade = (withData: number, total: number): GradeName => {
+  const pct = total > 0 ? withData / total : 0;
+  if (pct >= 0.67) return 'Green';
+  if (pct >= 0.34) return 'Yellow';
+  return 'Orange';
+};
 
-function ChartTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null;
+/* ─── Grade badge (animated faded background) ───────────── */
+
+function GradeBadge({ grade, withData, total }: { grade: GradeName; withData: number; total: number }) {
+  const s = GRADE_STYLES[grade];
   return (
-    <div className="rounded-xl border border-gray-100 bg-white p-3 shadow-lg text-xs">
-      <p className="mb-1 font-semibold text-gray-700">{label}</p>
-      {payload.map((p: any) => (
-        <div key={p.name} className="flex items-center gap-1.5">
-          <div className="h-2 w-2 rounded-full" style={{ background: p.color }} />
-          <span className="text-gray-500">{p.name}:</span>
-          <span className="font-semibold text-gray-700">{p.value}</span>
-        </div>
-      ))}
+    <div className={`relative flex h-full min-h-[180px] flex-col items-center justify-center overflow-hidden rounded-2xl ring-1 ${s.ring} ${s.panel} p-6`}>
+      {/* animated faded shade */}
+      <div className={`pointer-events-none absolute -right-8 -top-8 h-40 w-40 rounded-full ${s.glow} blur-2xl animate-pulse`} />
+      <div className={`pointer-events-none absolute -bottom-10 -left-6 h-32 w-32 rounded-full ${s.glow} blur-2xl animate-pulse [animation-delay:700ms]`} />
+      <div className="relative flex flex-col items-center text-center">
+        <span className={`text-[11px] font-semibold uppercase tracking-[0.2em] ${s.sub}`}>Grade</span>
+        <span className={`mt-1 text-5xl font-black tracking-tight ${s.text} drop-shadow-sm`}>{grade}</span>
+        <span className="mt-3 text-[11px] font-medium text-gray-500">
+          {withData}/{total} categories reported
+        </span>
+      </div>
     </div>
   );
 }
 
-/* ─── Section Card ─────────────────────────────────────── */
+/* ─── Generic table (matches Programme Overview breakdown) ─ */
 
-function Section({ title, icon: Icon, gradient, children }: {
-  title: string; icon: React.ElementType; gradient: string; children: React.ReactNode;
+interface Col {
+  key: string;
+  label: string;
+  align?: 'left' | 'right';
+  render: (row: any, idx: number) => React.ReactNode;
+}
+
+function CategoryTable({
+  title, icon: Icon, accent, count, columns, rows, footer, emptyText,
+}: {
+  title: string;
+  icon: React.ElementType;
+  accent: string;
+  count?: number;
+  columns: Col[];
+  rows: any[];
+  footer?: React.ReactNode[] | null;
+  emptyText: string;
 }) {
   return (
     <Card className="border-0 shadow-sm overflow-hidden">
-      <div className={`h-1 ${gradient}`} />
-      <CardHeader className="px-5 pt-4 pb-3">
+      <div className={`h-1 ${accent}`} />
+      <CardHeader className="px-5 pb-2 pt-4">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold text-gray-700">
           <Icon size={15} className="text-gray-500" />
           {title}
+          {count != null && <Badge variant="default" className="ml-1">{count}</Badge>}
         </CardTitle>
       </CardHeader>
-      <CardContent className="px-5 pb-5">{children}</CardContent>
+      <CardContent className="px-0 pb-0">
+        {rows.length === 0 ? (
+          <p className="px-5 py-10 text-center text-sm text-gray-400">{emptyText}</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="border-y border-gray-100 bg-gray-50">
+                <tr>
+                  {columns.map((c) => (
+                    <th
+                      key={c.key}
+                      className={`py-2.5 px-3 text-xs font-semibold uppercase tracking-wider text-gray-500 first:pl-5 ${c.align === 'right' ? 'text-right' : 'text-left'}`}
+                    >
+                      {c.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {rows.map((row, idx) => (
+                  <tr key={row.id ?? idx} className="transition-colors hover:bg-indigo-50/30">
+                    {columns.map((c) => (
+                      <td
+                        key={c.key}
+                        className={`py-3 px-3 first:pl-5 ${c.align === 'right' ? 'text-right text-gray-700' : 'text-left text-gray-700'}`}
+                      >
+                        {c.render(row, idx)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+              {footer && (
+                <tfoot className="border-t border-gray-200 bg-gray-50">
+                  <tr className="font-semibold text-gray-800">
+                    {footer.map((cell, i) => (
+                      <td
+                        key={i}
+                        className={`py-3 px-3 first:pl-5 ${columns[i]?.align === 'right' ? 'text-right' : 'text-left'}`}
+                      >
+                        {cell}
+                      </td>
+                    ))}
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        )}
+      </CardContent>
     </Card>
   );
 }
 
-/* ─── Info Row ─────────────────────────────────────────── */
+/* ─── Filter select ─────────────────────────────────────── */
 
-function InfoRow({ label, value }: { label: string; value?: string | number | boolean | null }) {
-  if (value == null || value === '') return null;
-  const display = typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value);
+function FilterSelect({
+  label, value, onChange, options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
   return (
-    <div className="flex items-start gap-2 py-1.5 border-b border-gray-50 last:border-0">
-      <span className="min-w-[160px] text-xs text-gray-400 font-medium shrink-0">{label}</span>
-      <span className="text-xs text-gray-700 font-medium">{display}</span>
+    <div className="flex flex-col gap-1">
+      <label className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
     </div>
   );
 }
 
-/* ─── Revenue Row ──────────────────────────────────────── */
-
-function RevRow({ label, target, achievement }: { label: string; target: number; achievement: number }) {
-  const p = Number(pct(achievement, target));
-  return (
-    <div className="py-2.5 border-b border-gray-50 last:border-0">
-      <div className="flex items-center justify-between text-xs mb-1.5">
-        <span className="text-gray-600 font-medium">{label}</span>
-        <div className="flex gap-4">
-          <span className="text-gray-400">Target: <strong className="text-gray-700">{fmtTaka(target)}</strong></span>
-          <span className="text-gray-400">Achieved: <strong className={p >= 80 ? 'text-green-600' : p >= 50 ? 'text-amber-500' : 'text-red-500'}>{fmtTaka(achievement)}</strong></span>
-          <Badge variant="default" className={`text-[10px] ${p >= 80 ? 'border-green-200 text-green-700 bg-green-50' : p >= 50 ? 'border-amber-200 text-amber-700 bg-amber-50' : 'border-red-200 text-red-700 bg-red-50'}`}>
-            {p}%
-          </Badge>
-        </div>
-      </div>
-      <div className="h-1.5 rounded-full bg-gray-100">
-        <div
-          className={`h-1.5 rounded-full transition-all duration-700 ${p >= 80 ? 'bg-green-500' : p >= 50 ? 'bg-amber-400' : 'bg-red-400'}`}
-          style={{ width: `${Math.min(p, 100)}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-const REV_FIELDS: { key: string; label: string }[] = [
-  { key: 'admissionFee', label: 'Admission Fee' },
-  { key: 'sessionFee', label: 'Session Fee' },
-  { key: 'assessmentFee', label: 'Assessment Fee' },
-  { key: 'sportsFee', label: 'Sports Fee' },
-  { key: 'syllabusFee', label: 'Syllabus Fee' },
-  { key: 'testimonialFee', label: 'Testimonial Fee' },
-  { key: 'othersFee', label: 'Others Fee' },
-  { key: 'transportFee', label: 'Transport Fee' },
-];
-
-/* ─── Main Page ─────────────────────────────────────────── */
+/* ─── Main page ─────────────────────────────────────────── */
 
 export default function SchoolInformationPage() {
-  const [schools, setSchools] = useState<SchoolOption[]>([]);
+  const [schools, setSchools] = useState<SchoolListItem[]>([]);
   const [loadingSchools, setLoadingSchools] = useState(true);
+
   const [search, setSearch] = useState('');
-  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [fCategory, setFCategory] = useState('all');
+  const [fType, setFType] = useState('all');
+  const [fDivision, setFDivision] = useState('all');
+  const [fDistrict, setFDistrict] = useState('all');
+  const [fUpazila, setFUpazila] = useState('all');
+  const [fApproval, setFApproval] = useState('all');
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [profile, setProfile] = useState<SchoolProfile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
 
-  // Load school list
+  // Preselect from URL (?school=...)
   useEffect(() => {
-    api.get('/data-collection/schools').then(({ data }) => {
-      setSchools(data?.data ?? data ?? []);
-    }).catch(() => {}).finally(() => setLoadingSchools(false));
+    const p = new URLSearchParams(window.location.search).get('school');
+    if (p) setSelectedId(p);
   }, []);
 
-  // Load profile when school selected
+  useEffect(() => {
+    api.get('/data-collection/schools')
+      .then(({ data }) => setSchools(data?.data ?? data ?? []))
+      .catch(() => {})
+      .finally(() => setLoadingSchools(false));
+  }, []);
+
   const loadProfile = useCallback((id: string) => {
     setLoadingProfile(true);
     setProfile(null);
@@ -237,484 +335,329 @@ export default function SchoolInformationPage() {
     if (selectedId) loadProfile(selectedId);
   }, [selectedId, loadProfile]);
 
-  const filteredSchools = schools.filter(
-    (s) => !search || s.name.toLowerCase().includes(search.toLowerCase()) || s.code.toLowerCase().includes(search.toLowerCase()),
-  );
+  /* ── Filter option lists (derived from data) ── */
+  const categoryOptions = useMemo(() => {
+    const set = new Set(schools.map((s) => s.schoolCategory).filter(Boolean) as string[]);
+    return [{ value: 'all', label: 'All Categories' },
+      ...[...set].map((v) => ({ value: v, label: categoryLabel(v) }))];
+  }, [schools]);
 
-  const selectedSchool = schools.find((s) => s.id === selectedId);
+  const typeOptions = useMemo(() => {
+    const set = new Set(schools.map((s) => s.schoolType).filter(Boolean) as string[]);
+    return [{ value: 'all', label: 'All Types' },
+      ...[...set].map((v) => ({ value: v, label: typeLabel(v) }))];
+  }, [schools]);
 
-  /* Derived chart data */
-  const studentGradeData = profile
-    ? sortGrades(Object.keys(profile.students.byGrade)).map((g) => ({
-        name: g,
-        boys: profile.students.byGrade[g].boys,
-        girls: profile.students.byGrade[g].girls,
-        total: profile.students.byGrade[g].total,
-      }))
-    : [];
+  const divisionOptions = useMemo(() => {
+    const set = new Set(schools.map((s) => s.division).filter(Boolean) as string[]);
+    return [{ value: 'all', label: 'All Divisions' },
+      ...[...set].sort().map((v) => ({ value: v, label: v }))];
+  }, [schools]);
 
-  const teacherPieData = profile
-    ? [
-        { name: 'Male', value: profile.teachers.male, fill: '#6366f1' },
-        { name: 'Female', value: profile.teachers.female, fill: '#ec4899' },
-      ]
-    : [];
+  const districtOptions = useMemo(() => {
+    const set = new Set(
+      schools
+        .filter((s) => fDivision === 'all' || s.division === fDivision)
+        .map((s) => s.district).filter(Boolean) as string[],
+    );
+    return [{ value: 'all', label: 'All Districts' },
+      ...[...set].sort().map((v) => ({ value: v, label: v }))];
+  }, [schools, fDivision]);
 
-  const sumRevField = (obj: Record<string, any> | null | undefined, suffix: string) =>
-    REV_FIELDS.reduce((acc, f) => acc + parseFloat(String(obj?.[`${f.key}${suffix}`] ?? 0)), 0);
+  const upazilaOptions = useMemo(() => {
+    const set = new Set(
+      schools
+        .filter((s) => (fDivision === 'all' || s.division === fDivision) && (fDistrict === 'all' || s.district === fDistrict))
+        .map((s) => s.upazila).filter(Boolean) as string[],
+    );
+    return [{ value: 'all', label: 'All Thanas' },
+      ...[...set].sort().map((v) => ({ value: v, label: v }))];
+  }, [schools, fDivision, fDistrict]);
 
+  const filteredSchools = useMemo(() => schools.filter((s) => {
+    if (search && !(`${s.name} ${s.code}`.toLowerCase().includes(search.toLowerCase()))) return false;
+    if (fCategory !== 'all' && s.schoolCategory !== fCategory) return false;
+    if (fType !== 'all' && s.schoolType !== fType) return false;
+    if (fDivision !== 'all' && s.division !== fDivision) return false;
+    if (fDistrict !== 'all' && s.district !== fDistrict) return false;
+    if (fUpazila !== 'all' && s.upazila !== fUpazila) return false;
+    if (fApproval === 'yes' && s.governmentApproval !== true) return false;
+    if (fApproval === 'no' && s.governmentApproval === true) return false;
+    return true;
+  }), [schools, search, fCategory, fType, fDivision, fDistrict, fUpazila, fApproval]);
+
+  const anyFilter = fCategory !== 'all' || fType !== 'all' || fDivision !== 'all' ||
+    fDistrict !== 'all' || fUpazila !== 'all' || fApproval !== 'all' || !!search;
+
+  const clearFilters = () => {
+    setSearch(''); setFCategory('all'); setFType('all');
+    setFDivision('all'); setFDistrict('all'); setFUpazila('all'); setFApproval('all');
+  };
+
+  /* ── Detail view ── */
+  if (selectedId) {
+    return (
+      <>
+        <Header title="School Information" subtitle="Detailed school profile" />
+        <div className="space-y-5 p-4 sm:p-6">
+          <Button
+            variant="outline" size="sm"
+            onClick={() => { setSelectedId(null); setProfile(null); }}
+            className="gap-1.5"
+          >
+            <ArrowLeft size={14} /> Back to list
+          </Button>
+
+          {loadingProfile && (
+            <div className="flex items-center justify-center py-24">
+              <div className="flex flex-col items-center gap-3">
+                <div className="h-10 w-10 animate-spin rounded-full border-4 border-indigo-200 border-t-indigo-600" />
+                <p className="text-sm text-gray-400">Loading school profile…</p>
+              </div>
+            </div>
+          )}
+
+          {profile && !loadingProfile && <ProfileDetail profile={profile} onReload={() => loadProfile(selectedId)} />}
+        </div>
+      </>
+    );
+  }
+
+  /* ── List + filters view ── */
   return (
     <>
-      <Header title="School Information" subtitle="Detailed profile view for individual schools" />
+      <Header title="School Information" subtitle="Filter and select a school to view its full profile" />
 
       <div className="space-y-6 p-4 sm:p-6">
-        {/* School Selector */}
+        {/* Filters */}
         <Card className="border-0 shadow-sm">
-          <CardContent className="p-5">
-            <p className="mb-2 text-sm font-semibold text-gray-700 flex items-center gap-2">
-              <Search size={14} />
-              Select a School
-            </p>
-            <div className="relative max-w-lg">
-              <button
-                onClick={() => setDropdownOpen((v) => !v)}
-                className="flex w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm shadow-sm hover:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200 transition"
-              >
-                <span className={selectedSchool ? 'text-gray-800 font-medium' : 'text-gray-400'}>
-                  {selectedSchool ? `${selectedSchool.name} (${selectedSchool.code})` : 'Choose a school…'}
-                </span>
-                <ChevronDown size={15} className="text-gray-400 shrink-0" />
-              </button>
-
-              {dropdownOpen && (
-                <div className="absolute left-0 right-0 top-full z-30 mt-1 rounded-xl border border-gray-100 bg-white shadow-xl">
-                  <div className="p-2 border-b border-gray-100">
-                    <input
-                      autoFocus
-                      type="text"
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      placeholder="Search name or code…"
-                      className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                    />
-                  </div>
-                  <div className="max-h-60 overflow-y-auto p-1">
-                    {loadingSchools ? (
-                      <p className="py-4 text-center text-xs text-gray-400">Loading…</p>
-                    ) : filteredSchools.length === 0 ? (
-                      <p className="py-4 text-center text-xs text-gray-400">No schools found.</p>
-                    ) : (
-                      filteredSchools.map((s) => (
-                        <button
-                          key={s.id}
-                          onClick={() => { setSelectedId(s.id); setDropdownOpen(false); setSearch(''); }}
-                          className={`flex w-full items-start gap-2 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-indigo-50 ${selectedId === s.id ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-gray-700'}`}
-                        >
-                          <School size={13} className="mt-0.5 shrink-0 text-gray-400" />
-                          <div>
-                            <p className="font-medium leading-tight">{s.name}</p>
-                            <p className="text-xs text-gray-400 font-mono">{s.code}</p>
-                          </div>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                </div>
+          <CardHeader className="px-5 pb-2 pt-5">
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                <Filter size={15} className="text-gray-500" /> Filters
+              </CardTitle>
+              {anyFilter && (
+                <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1 text-xs text-gray-400 hover:text-gray-700">
+                  <X size={12} /> Clear
+                </Button>
               )}
             </div>
-
-            {selectedId && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => loadProfile(selectedId)}
-                className="mt-2 gap-1.5 text-xs text-gray-400 hover:text-gray-700"
-              >
-                <RefreshCw size={12} />
-                Reload
-              </Button>
-            )}
+          </CardHeader>
+          <CardContent className="px-5 pb-5">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+              <FilterSelect label="School Category" value={fCategory} onChange={setFCategory} options={categoryOptions} />
+              <FilterSelect label="Type of School" value={fType} onChange={setFType} options={typeOptions} />
+              <FilterSelect label="Division" value={fDivision} onChange={(v) => { setFDivision(v); setFDistrict('all'); setFUpazila('all'); }} options={divisionOptions} />
+              <FilterSelect label="District" value={fDistrict} onChange={(v) => { setFDistrict(v); setFUpazila('all'); }} options={districtOptions} />
+              <FilterSelect label="Thana / Upazila" value={fUpazila} onChange={setFUpazila} options={upazilaOptions} />
+              <FilterSelect label="Govt. Approval" value={fApproval} onChange={setFApproval} options={[
+                { value: 'all', label: 'All' },
+                { value: 'yes', label: 'Approved' },
+                { value: 'no', label: 'Not Approved' },
+              ]} />
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Search</label>
+                <div className="relative">
+                  <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Name or code…"
+                    className="w-full rounded-lg border border-gray-200 py-2 pl-8 pr-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  />
+                </div>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
-        {/* Loading state */}
-        {loadingProfile && (
-          <div className="flex items-center justify-center py-20">
-            <div className="flex flex-col items-center gap-3">
-              <div className="h-10 w-10 animate-spin rounded-full border-4 border-indigo-200 border-t-indigo-600" />
-              <p className="text-sm text-gray-400">Loading school profile…</p>
-            </div>
-          </div>
-        )}
+        {/* Results */}
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-gray-500">
+            <span className="font-semibold text-gray-700">{filteredSchools.length}</span> school{filteredSchools.length !== 1 ? 's' : ''} found
+          </p>
+        </div>
 
-        {/* Empty state */}
-        {!selectedId && !loadingProfile && (
-          <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+        {loadingSchools ? (
+          <div className="flex items-center justify-center py-20">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-indigo-200 border-t-indigo-600" />
+          </div>
+        ) : filteredSchools.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-50">
               <BookOpen size={28} className="text-indigo-400" />
             </div>
-            <p className="text-gray-500 font-medium">Select a school to view its full profile</p>
-            <p className="text-xs text-gray-400 max-w-xs">Choose a school from the dropdown above to see detailed information including teachers, students, revenue, and more.</p>
+            <p className="font-medium text-gray-500">No schools match your filters</p>
+            {anyFilter && (
+              <Button variant="outline" size="sm" onClick={clearFilters}>Clear filters</Button>
+            )}
           </div>
-        )}
-
-        {profile && !loadingProfile && (
-          <div className="space-y-5">
-            {/* School Header Card */}
-            <Card className="border-0 shadow-md overflow-hidden">
-              <CardContent className="p-6">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex items-start gap-4">
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg">
-                      <School size={26} className="text-white" />
-                    </div>
-                    <div>
-                      <h2 className="text-xl font-bold text-gray-900">{profile.school.name}</h2>
-                      <p className="text-sm font-mono text-gray-500 mt-0.5">{profile.school.code}</p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {profile.school.schoolCategory && (
-                          <Badge className="bg-indigo-100 text-indigo-700 hover:bg-indigo-100 border-0">
-                            {CATEGORY_LABELS[profile.school.schoolCategory] ?? profile.school.schoolCategory}
-                          </Badge>
-                        )}
-                        {profile.school.schoolType && (
-                          <Badge variant="default">{profile.school.schoolType}</Badge>
-                        )}
-                        {profile.school.governmentApproval && (
-                          <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-0">Govt. Approved</Badge>
-                        )}
-                      </div>
-                    </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredSchools.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setSelectedId(s.id)}
+                className="group flex flex-col rounded-2xl border border-gray-100 bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-1 hover:border-indigo-200 hover:shadow-lg"
+              >
+                <div className="mb-3 flex items-start justify-between">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow">
+                    <School size={20} className="text-white" />
                   </div>
-                  <div className="flex flex-col gap-1 text-xs text-gray-500">
-                    {profile.school.address && (
-                      <div className="flex items-start gap-1.5">
-                        <MapPin size={12} className="mt-0.5 shrink-0" />
-                        <span>{[profile.school.address, profile.school.upazila, profile.school.district, profile.school.division].filter(Boolean).join(', ')}</span>
-                      </div>
-                    )}
-                    {profile.school.phone && (
-                      <div className="flex items-center gap-1.5">
-                        <Phone size={12} />
-                        <span>{profile.school.phone}</span>
-                      </div>
-                    )}
-                    {profile.school.email && (
-                      <div className="flex items-center gap-1.5">
-                        <Mail size={12} />
-                        <span>{profile.school.email}</span>
-                      </div>
-                    )}
-                    {profile.school.principalName && (
-                      <div className="flex items-center gap-1.5">
-                        <Users size={12} />
-                        <span>Principal: <strong>{profile.school.principalName}</strong></span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Stats quick row */}
-            <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
-              {[
-                { label: 'Teachers', value: profile.teachers.total, icon: Users, color: 'bg-purple-50 text-purple-600' },
-                { label: 'Students', value: profile.students.total, icon: GraduationCap, color: 'bg-blue-50 text-blue-600' },
-                { label: 'PWD', value: profile.students.pwd, icon: Users, color: 'bg-amber-50 text-amber-600' },
-                { label: 'Ethnic', value: profile.students.ethnic, icon: Users, color: 'bg-green-50 text-green-600' },
-              ].map((stat) => (
-                <Card key={stat.label} className="border-0 shadow-sm">
-                  <CardContent className="flex items-center gap-3 p-4">
-                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${stat.color}`}>
-                      <stat.icon size={18} />
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-400">{stat.label}</p>
-                      <p className="text-xl font-bold text-gray-900">{stat.value.toLocaleString()}</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-
-            {/* Teachers section */}
-            <div className="grid gap-5 lg:grid-cols-2">
-              <Section title="Teachers" icon={Users} gradient="bg-gradient-to-r from-purple-400 to-purple-600">
-                <div className="mb-4 flex gap-6">
-                  <div className="text-center">
-                    <p className="text-2xl font-bold text-purple-700">{profile.teachers.male}</p>
-                    <p className="text-xs text-gray-400">Male</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-2xl font-bold text-pink-600">{profile.teachers.female}</p>
-                    <p className="text-xs text-gray-400">Female</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-2xl font-bold text-gray-800">{profile.teachers.total}</p>
-                    <p className="text-xs text-gray-400">Total</p>
-                  </div>
-                </div>
-
-                {teacherPieData.some((d) => d.value > 0) && (
-                  <ResponsiveContainer width="100%" height={160}>
-                    <PieChart>
-                      <Pie data={teacherPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={45} outerRadius={70}>
-                        {teacherPieData.map((d, i) => <Cell key={i} fill={d.fill} />)}
-                      </Pie>
-                      <Tooltip content={<ChartTooltip />} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                )}
-
-                {profile.teachers.list.length > 0 && (
-                  <div className="mt-3 overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-gray-100">
-                          <th className="pb-2 text-left font-semibold text-gray-500">Name</th>
-                          <th className="pb-2 text-left font-semibold text-gray-500">Designation</th>
-                          <th className="pb-2 text-left font-semibold text-gray-500">Gender</th>
-                          <th className="pb-2 text-right font-semibold text-gray-500">Exp.</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50">
-                        {profile.teachers.list.map((t) => (
-                          <tr key={t.id} className="hover:bg-gray-50">
-                            <td className="py-2 font-medium text-gray-800">{t.name}</td>
-                            <td className="py-2 text-gray-500">{t.designation ?? '—'}</td>
-                            <td className="py-2">
-                              <Badge variant="default" className={t.gender === 'Male' ? 'border-indigo-200 text-indigo-600' : 'border-pink-200 text-pink-600'}>
-                                {t.gender ?? '—'}
-                              </Badge>
-                            </td>
-                            <td className="py-2 text-right text-gray-500">{t.experienceYears != null ? `${t.experienceYears}y` : '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </Section>
-
-              {/* Students by grade */}
-              <Section title="Students by Grade" icon={GraduationCap} gradient="bg-gradient-to-r from-blue-400 to-blue-600">
-                <div className="mb-3 flex gap-6 text-center">
-                  <div>
-                    <p className="text-2xl font-bold text-blue-700">{profile.students.boys}</p>
-                    <p className="text-xs text-gray-400">Boys</p>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-pink-600">{profile.students.girls}</p>
-                    <p className="text-xs text-gray-400">Girls</p>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-gray-800">{profile.students.total}</p>
-                    <p className="text-xs text-gray-400">Total</p>
-                  </div>
-                </div>
-
-                {studentGradeData.length > 0 && (
-                  <ResponsiveContainer width="100%" height={200}>
-                    <BarChart data={studentGradeData} margin={{ top: 0, right: 0, bottom: 20, left: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis dataKey="name" tick={{ fontSize: 9 }} angle={-30} textAnchor="end" height={45} />
-                      <YAxis tick={{ fontSize: 10 }} />
-                      <Tooltip content={<ChartTooltip />} />
-                      <Legend wrapperStyle={{ fontSize: 10 }} />
-                      <Bar dataKey="boys" name="Boys" fill="#3b82f6" radius={[2, 2, 0, 0]} />
-                      <Bar dataKey="girls" name="Girls" fill="#f472b6" radius={[2, 2, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-
-                {Object.keys(profile.students.byGrade).length > 0 && (
-                  <div className="mt-3 overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-gray-100">
-                          <th className="pb-2 text-left font-semibold text-gray-500">Grade</th>
-                          <th className="pb-2 text-right font-semibold text-gray-500">Boys</th>
-                          <th className="pb-2 text-right font-semibold text-gray-500">Girls</th>
-                          <th className="pb-2 text-right font-semibold text-gray-500">PWD</th>
-                          <th className="pb-2 text-right font-semibold text-gray-500">Ethnic</th>
-                          <th className="pb-2 text-right font-semibold text-gray-500">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50">
-                        {sortGrades(Object.keys(profile.students.byGrade)).map((grade) => {
-                          const row = profile.students.byGrade[grade];
-                          return (
-                            <tr key={grade} className="hover:bg-gray-50">
-                              <td className="py-1.5 font-medium text-gray-700">{grade}</td>
-                              <td className="py-1.5 text-right text-blue-700">{row.boys}</td>
-                              <td className="py-1.5 text-right text-pink-600">{row.girls}</td>
-                              <td className="py-1.5 text-right text-amber-600">{row.pwd}</td>
-                              <td className="py-1.5 text-right text-green-600">{row.ethnic}</td>
-                              <td className="py-1.5 text-right font-semibold text-gray-800">{row.total}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </Section>
-            </div>
-
-            {/* Revenue section */}
-            <Section title="Revenue" icon={DollarSign} gradient="bg-gradient-to-r from-emerald-400 to-emerald-600">
-              <div className="grid gap-6 lg:grid-cols-2">
-                <div>
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Budget Estimates</p>
-                  {REV_FIELDS.map((f) => {
-                    const target = parseFloat(String(profile.revenue.budgetTotal?.[`${f.key}Target`] ?? 0));
-                    const ach = parseFloat(String(profile.revenue.budgetTotal?.[`${f.key}Achievement`] ?? 0));
-                    if (!target && !ach) return null;
-                    return <RevRow key={f.key} label={f.label} target={target} achievement={ach} />;
-                  })}
-                  {!profile.revenue.budgetTotal && (
-                    <p className="text-xs text-gray-400 italic">No budget data recorded.</p>
+                  {s.governmentApproval === true && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-medium text-green-700">
+                      <ShieldCheck size={10} /> Approved
+                    </span>
                   )}
                 </div>
-                <div>
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Actual Collection</p>
-                  {REV_FIELDS.map((f) => {
-                    const target = parseFloat(String(profile.revenue.actualTotal?.[`${f.key}Target`] ?? 0));
-                    const ach = parseFloat(String(profile.revenue.actualTotal?.[`${f.key}Achievement`] ?? 0));
-                    if (!target && !ach) return null;
-                    return <RevRow key={f.key} label={f.label} target={target} achievement={ach} />;
-                  })}
-                  {!profile.revenue.actualTotal && (
-                    <p className="text-xs text-gray-400 italic">No actual collection data recorded.</p>
+                <h3 className="font-semibold text-gray-900 group-hover:text-indigo-600">{s.name}</h3>
+                <p className="font-mono text-xs text-gray-400">{s.code}</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {s.schoolCategory && (
+                    <Badge className="border-0 bg-indigo-50 text-indigo-700 hover:bg-indigo-50">{categoryLabel(s.schoolCategory)}</Badge>
+                  )}
+                  {s.schoolType && (
+                    <Badge variant="default">{typeLabel(s.schoolType)}</Badge>
                   )}
                 </div>
-              </div>
-
-              {/* Summary progress bar */}
-              <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                {[
-                  { label: 'Budget Achievement', target: sumRevField(profile.revenue.budgetTotal, 'Target'), ach: sumRevField(profile.revenue.budgetTotal, 'Achievement'), color: 'emerald' },
-                  { label: 'Actual Achievement', target: sumRevField(profile.revenue.actualTotal, 'Target'), ach: sumRevField(profile.revenue.actualTotal, 'Achievement'), color: 'teal' },
-                ].map((item) => {
-                  const p = Number(pct(item.ach, item.target));
-                  return (
-                    <div key={item.label} className="rounded-xl bg-gray-50 p-3">
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-gray-600 font-medium">{item.label}</span>
-                        <span className="font-bold text-gray-800">{p}%</span>
-                      </div>
-                      <div className="h-2 rounded-full bg-gray-200">
-                        <div className={`h-2 rounded-full bg-${item.color}-500 transition-all duration-700`} style={{ width: `${Math.min(p, 100)}%` }} />
-                      </div>
-                      <div className="mt-1 flex justify-between text-xs text-gray-400">
-                        <span>Achieved: {fmtTaka(item.ach)}</span>
-                        <span>Target: {fmtTaka(item.target)}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </Section>
-
-            {/* Alumni */}
-            {profile.alumni.length > 0 && (
-              <Section title={`Alumni (${profile.alumni.length})`} icon={Award} gradient="bg-gradient-to-r from-indigo-400 to-indigo-600">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-gray-100">
-                        <th className="pb-2 text-left font-semibold text-gray-500">#</th>
-                        <th className="pb-2 text-left font-semibold text-gray-500">Name</th>
-                        <th className="pb-2 text-left font-semibold text-gray-500">Grad. Year</th>
-                        <th className="pb-2 text-left font-semibold text-gray-500">Occupation</th>
-                        <th className="pb-2 text-left font-semibold text-gray-500">Institution</th>
-                        <th className="pb-2 text-left font-semibold text-gray-500">Contact</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {profile.alumni.map((a, idx) => (
-                        <tr key={a.id} className="hover:bg-gray-50">
-                          <td className="py-2 text-gray-400">{idx + 1}</td>
-                          <td className="py-2 font-medium text-gray-800">{a.alumniName}</td>
-                          <td className="py-2">
-                            {a.graduationYear ? (
-                              <Badge variant="default" className="font-mono">{a.graduationYear}</Badge>
-                            ) : '—'}
-                          </td>
-                          <td className="py-2 text-gray-600">{a.currentOccupation ?? '—'}</td>
-                          <td className="py-2 text-gray-600">{a.institution ?? '—'}</td>
-                          <td className="py-2 text-gray-500">{a.contactPhone ?? '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="mt-3 flex items-center gap-1.5 text-xs text-gray-400">
+                  <MapPin size={11} />
+                  <span className="truncate">{[s.upazila, s.district, s.division].filter(Boolean).join(', ') || 'Location not set'}</span>
                 </div>
-              </Section>
-            )}
-
-            {/* Pedagogical achievements */}
-            {profile.pedagogicalAchievements.length > 0 && (
-              <Section title={`Pedagogical Achievements (${profile.pedagogicalAchievements.length} years)`} icon={ClipboardList} gradient="bg-gradient-to-r from-violet-400 to-violet-600">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-gray-100">
-                        <th className="pb-2 text-left font-semibold text-gray-500">Year</th>
-                        <th className="pb-2 text-right font-semibold text-gray-500">KG</th>
-                        <th className="pb-2 text-right font-semibold text-gray-500">Primary</th>
-                        <th className="pb-2 text-right font-semibold text-gray-500">Junior</th>
-                        <th className="pb-2 text-right font-semibold text-gray-500">SSC</th>
-                        <th className="pb-2 text-right font-semibold text-gray-500">Others</th>
-                        <th className="pb-2 text-right font-semibold text-gray-500">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {profile.pedagogicalAchievements.map((pa) => {
-                        const total = (pa.kgScholarship ?? 0) + (pa.primaryScholarship ?? 0) +
-                          (pa.jrScholarship ?? 0) + (pa.sscScholarship ?? 0) + (pa.othersScholarship ?? 0);
-                        return (
-                          <tr key={pa.id} className="hover:bg-gray-50">
-                            <td className="py-2"><Badge variant="default" className="font-mono">{pa.year}</Badge></td>
-                            <td className="py-2 text-right text-gray-700">{pa.kgScholarship ?? 0}</td>
-                            <td className="py-2 text-right text-gray-700">{pa.primaryScholarship ?? 0}</td>
-                            <td className="py-2 text-right text-gray-700">{pa.jrScholarship ?? 0}</td>
-                            <td className="py-2 text-right text-gray-700">{pa.sscScholarship ?? 0}</td>
-                            <td className="py-2 text-right text-gray-700">{pa.othersScholarship ?? 0}</td>
-                            <td className="py-2 text-right font-bold text-violet-700">{total}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                <div className="mt-3 flex items-center gap-1 text-xs font-medium text-indigo-600 opacity-0 transition-opacity group-hover:opacity-100">
+                  View profile <ChevronRight size={13} />
                 </div>
-              </Section>
-            )}
-
-            {/* Basic info and infrastructure side by side */}
-            <div className="grid gap-5 lg:grid-cols-2">
-              {profile.basicInfo && (
-                <Section title="Basic Information" icon={Building2} gradient="bg-gradient-to-r from-sky-400 to-sky-600">
-                  {Object.entries(profile.basicInfo)
-                    .filter(([k]) => !['id', 'schoolId', 'createdById', 'createdAt', 'updatedAt'].includes(k))
-                    .map(([k, v]) => (
-                      <InfoRow key={k} label={k.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase())} value={v as any} />
-                    ))}
-                </Section>
-              )}
-              {profile.infrastructure && (
-                <Section title="Infrastructure" icon={Building2} gradient="bg-gradient-to-r from-orange-400 to-orange-600">
-                  {Object.entries(profile.infrastructure)
-                    .filter(([k]) => !['id', 'schoolId', 'createdById', 'createdAt', 'updatedAt'].includes(k))
-                    .map(([k, v]) => (
-                      <InfoRow key={k} label={k.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase())} value={v as any} />
-                    ))}
-                </Section>
-              )}
-            </div>
+              </button>
+            ))}
           </div>
         )}
       </div>
     </>
+  );
+}
+
+/* ─── Profile detail (header + grade + 6 tables) ────────── */
+
+function ProfileDetail({ profile, onReload }: { profile: SchoolProfile; onReload: () => void }) {
+  const { school } = profile;
+  const grade = computeGrade(profile.meta.categoriesWithData, profile.meta.totalCategories);
+
+  const totalTeachers = school.totalTeachers ?? profile.teacherTotals.total;
+  const totalStudents = school.totalStudents ?? profile.studentTotals.total;
+
+  const headerFields = [
+    { label: 'Type of School', value: typeLabel(school.schoolType), icon: Layers },
+    { label: 'Establishment Year', value: school.establishedYear ?? '—', icon: CalendarDays },
+    { label: 'Division', value: school.division ?? '—', icon: MapPin },
+    { label: 'District', value: school.district ?? '—', icon: MapPin },
+    { label: 'Thana', value: school.upazila ?? '—', icon: MapPin },
+    { label: 'Govt. Approval', value: yn(school.governmentApproval), icon: school.governmentApproval ? ShieldCheck : ShieldX },
+    { label: 'Total Teachers', value: totalTeachers, icon: GraduationCap },
+    { label: 'Total Students', value: totalStudents, icon: Users },
+    { label: 'Grade Coverage', value: school.gradeCoverage ?? '—', icon: BookOpen },
+  ];
+
+  /* ── Table column defs ── */
+  const studentRows = sortByGrade(profile.students);
+  const feeRows = sortByGrade(profile.feeStructures);
+
+  const infraRows = profile.infrastructure ? [
+    { id: 'campus', label: 'Campus Status', value: profile.infrastructure.campusStatus || '—' },
+    { id: 'rht', label: 'Head Teacher Rooms', value: profile.infrastructure.roomHeadTeachers },
+    { id: 'rt', label: 'Teacher Rooms', value: profile.infrastructure.roomTeachers },
+    { id: 'rc', label: 'Classrooms', value: profile.infrastructure.roomClassroom },
+    { id: 'rp', label: 'Playrooms', value: profile.infrastructure.roomPlayroom },
+    { id: 'rl', label: 'Library Rooms', value: profile.infrastructure.roomLibrary },
+    { id: 'rlab', label: 'Lab Rooms', value: profile.infrastructure.roomLab },
+    { id: 'rs', label: 'Storerooms', value: profile.infrastructure.roomStoreroom },
+    { id: 'rk', label: 'Kitchens', value: profile.infrastructure.roomKitchen },
+    { id: 'rsb', label: 'Sickbays', value: profile.infrastructure.roomSickbay },
+    { id: 'ro', label: 'Other Rooms', value: profile.infrastructure.roomOthers },
+    { id: 'rtot', label: 'Total Rooms', value: profile.infrastructure.roomTotal },
+    { id: 'wm', label: 'Washrooms (Male)', value: profile.infrastructure.washroomMale },
+    { id: 'wf', label: 'Washrooms (Female)', value: profile.infrastructure.washroomFemale },
+    { id: 'dec', label: 'Digitally Equipped Classrooms', value: profile.infrastructure.digitallyEquippedClassrooms },
+    { id: 'fsc', label: 'Floor-sitting Classrooms', value: profile.infrastructure.floorSittingClassrooms },
+    { id: 'cwb', label: 'Classrooms w/ Whiteboard', value: profile.infrastructure.classroomsWithWhiteboard },
+    { id: 'cbb', label: 'Classrooms w/ Blackboard', value: profile.infrastructure.classroomsWithBlackboard },
+    { id: 'hwp', label: 'Hand Wash Point', value: yn(profile.infrastructure.hasHandWashPoint) },
+    { id: 'pg', label: 'Playground', value: yn(profile.infrastructure.hasPlayground) },
+    { id: 'sg', label: 'School Garden', value: yn(profile.infrastructure.hasSchoolGarden) },
+    { id: 'nf', label: 'New Furniture Needed', value: yn(profile.infrastructure.classroomNewFurniture) },
+    { id: 'rr', label: 'Renovation Required', value: yn(profile.infrastructure.infraRenovationRequired || profile.infrastructure.classroomRenovationRequired) },
+  ] : [];
+
+  const st = profile.studentTotals;
+  const tt = profile.teacherTotals;
+
+  const pedagTotal = (r: PedagAchievementRow) =>
+    (r.kgScholarship ?? 0) + (r.primaryScholarship ?? 0) + (r.jrScholarship ?? 0) +
+    (r.sscScholarship ?? 0) + (r.othersScholarship ?? 0);
+
+  return (
+    <div className="space-y-5">
+      {/* Header + Grade */}
+      <div className="grid gap-5 lg:grid-cols-[1fr_260px]">
+        <Card className="border-0 shadow-md overflow-hidden">
+          <CardContent className="p-6">
+            <div className="flex items-start gap-4">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg">
+                <School size={26} className="text-white" />
+              </div>
+              <div className="flex-1">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">{school.name}</h2>
+                    <p className="mt-0.5 font-mono text-sm text-gray-500">{school.code}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {school.schoolCategory && (
+                      <Badge className="border-0 bg-indigo-100 text-indigo-700 hover:bg-indigo-100">{categoryLabel(school.schoolCategory)}</Badge>
+                    )}
+                    {school.governmentApproval && (
+                      <Badge className="border-0 bg-green-100 text-green-700 hover:bg-green-100">Govt. Approved</Badge>
+                    )}
+                    <Button variant="ghost" size="sm" onClick={onReload} className="gap-1 text-xs text-gray-400 hover:text-gray-700">
+                      <RefreshCw size={12} /> Reload
+                    </Button>
+                  </div>
+                </div>
+
+                {/* contact line */}
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                  {school.address && (
+                    <span className="flex items-center gap-1"><MapPin size={11} />{school.address}</span>
+                  )}
+                  {school.phone && <span className="flex items-center gap-1"><Phone size={11} />{school.phone}</span>}
+                  {school.email && <span className="flex items-center gap-1"><Mail size={11} />{school.email}</span>}
+                  {school.principalName && <span className="flex items-center gap-1"><Users size={11} />Principal: <strong>{school.principalName}</strong></span>}
+                </div>
+              </div>
+            </div>
+
+            {/* field grid */}
+            <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-3">
+              {headerFields.map((f) => {
+                const Icon = f.icon;
+                return (
+                  <div key={f.label} className="flex flex-col gap-0.5">
+                    <span className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-gray-400">
+                      <Icon size={12} /> {f.label}
+                    </span>
+                    <span className="text-sm font-semibold text-gray-800">{f.value}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Grade */}
+        <GradeBadge grade={grade} withData={profile.meta.categoriesWithData} total={profile.meta.totalCategories} />
+      </div>
+
+
+    </div>
   );
 }

@@ -58,6 +58,9 @@ S3_BUCKET="${S3_BUCKET:-dev-shomadhanhobe-resources}"
 S3_FOLDER="${S3_FOLDER:-bep-se}"
 S3_ACCESS_KEY="${S3_ACCESS_KEY:-}"
 S3_SECRET_KEY="${S3_SECRET_KEY:-}"
+WEBAUTHN_RP_ID="${WEBAUTHN_RP_ID:-${DOMAIN}}"
+WEBAUTHN_RP_NAME="${WEBAUTHN_RP_NAME:-BEP Social Enterprise Platform}"
+WEBAUTHN_ORIGIN="${WEBAUTHN_ORIGIN:-https://${DOMAIN}}"
 
 # =============================================================================
 #  Step 0 – Collect secrets interactively (skip if already exported)
@@ -202,6 +205,11 @@ S3_SECRET_KEY=${S3_SECRET_KEY}
 
 # ── CORS ─────────────────────────────────────────────────────────────────────
 CORS_ORIGIN=https://${DOMAIN}
+
+# ── WebAuthn / Passkeys ──────────────────────────────────────────────────────
+WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID}
+WEBAUTHN_RP_NAME=${WEBAUTHN_RP_NAME}
+WEBAUTHN_ORIGIN=${WEBAUTHN_ORIGIN}
 ENV
 
 chmod 600 "${APP_DIR}/backend/.env"

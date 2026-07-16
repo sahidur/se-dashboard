@@ -703,10 +703,22 @@ export class DataCollectionService {
 
   async getProgrammeOverview(userId: string, roles: string[], category?: string) {
     const admin = this.isAdminRole(roles);
-    const schoolWhere: any = admin ? {} : { createdById: userId };
-    if (category) schoolWhere.schoolCategory = category;
+    const categoryWhere = category ? { schoolCategory: category } : {};
 
-    const schools = await this.schoolRepo.find({ where: schoolWhere });
+    let where: any;
+    if (admin) {
+      where = { ...categoryWhere };
+    } else {
+      const assignedIds = await this.getAssignedSchoolIds(userId);
+      where = assignedIds.length
+        ? [
+            { createdById: userId, ...categoryWhere },
+            { id: In(assignedIds), ...categoryWhere },
+          ]
+        : [{ createdById: userId, ...categoryWhere }];
+    }
+
+    const schools = await this.schoolRepo.find({ where });
     const schoolIds = schools.map((s) => s.id);
 
     if (schoolIds.length === 0) {
@@ -797,6 +809,9 @@ export class DataCollectionService {
         category: school.schoolCategory ?? 'Unknown',
         district: school.district,
         division: school.division,
+        upazila: school.upazila,
+        establishedYear: school.establishedYear ?? null,
+        governmentApproval: school.governmentApproval ?? null,
         teachers: { male: t.male, female: t.female, total: t.male + t.female },
         students: s,
         yearlyStudentTarget: b?.totalStudentsTarget ?? a?.totalStudentsTarget ?? 0,
@@ -879,62 +894,105 @@ export class DataCollectionService {
   async getSchoolProfile(schoolId: string, userId: string, roles: string[]) {
     const school = await this.validateSchoolAccess(schoolId, userId, roles);
 
-    const [basicInfo, infra, teachers, studentRows, budgetTotal, actualTotal,
-           alumni, pedagAchievements] = await Promise.all([
-      this.basicInfoRepo.findOne({ where: { schoolId } }),
+    const [
+      infrastructure,
+      students,
+      teachers,
+      teachersDevelopment,
+      feeStructures,
+      revenueBudgetTotal,
+      revenueActualTotal,
+      pedagogicalAchievements,
+      performance,
+      cocurricular,
+      studentsPerformance,
+      activityParticipation,
+      eventParticipation,
+      alumni,
+    ] = await Promise.all([
       this.infraRepo.findOne({ where: { schoolId } }),
-      this.teacherIndividualRepo.find({ where: { schoolId } }),
       this.studentsRepo.find({ where: { schoolId } }),
+      this.teacherIndividualRepo.find({ where: { schoolId }, order: { name: 'ASC' } }),
+      this.teachersDevRepo.find({ where: { schoolId } }),
+      this.feeStructureRepo.find({ where: { schoolId } }),
       this.revBudgetTotalRepo.findOne({ where: { schoolId } }),
       this.revActualTotalRepo.findOne({ where: { schoolId } }),
-      this.alumniRepo.find({ where: { schoolId }, order: { createdAt: 'DESC' } }),
       this.pedagAchievRepo.find({ where: { schoolId }, order: { year: 'DESC' } }),
+      this.performanceRepo.findOne({ where: { schoolId } }),
+      this.cocurricularRepo.find({ where: { schoolId } }),
+      this.studentsPerfRepo.find({ where: { schoolId } }),
+      this.activityPartRepo.find({ where: { schoolId } }),
+      this.eventPartRepo.find({ where: { schoolId } }),
+      this.alumniRepo.find({ where: { schoolId }, order: { graduationYear: 'DESC' } }),
     ]);
 
-    // Aggregate students by grade
-    const byGrade: Record<string, { boys: number; girls: number; total: number; pwd: number; ethnic: number }> = {};
-    let totalBoys = 0, totalGirls = 0, totalStudents = 0, totalPWD = 0, totalEthnic = 0;
-    for (const row of studentRows) {
-      if (!byGrade[row.grade]) byGrade[row.grade] = { boys: 0, girls: 0, total: 0, pwd: 0, ethnic: 0 };
-      byGrade[row.grade].boys += row.boys;
-      byGrade[row.grade].girls += row.girls;
-      byGrade[row.grade].total += row.total;
-      byGrade[row.grade].pwd += row.personsWithDisability;
-      byGrade[row.grade].ethnic += row.ethnic;
-      totalBoys += row.boys;
-      totalGirls += row.girls;
-      totalStudents += row.total;
-      totalPWD += row.personsWithDisability;
-      totalEthnic += row.ethnic;
+    // ── Aggregate students by grade (latest month snapshot per grade) ──
+    const MONTH_ORDER = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December',
+    ];
+    const latestByGrade = new Map<string, DcStudentsInfo>();
+    for (const rec of students) {
+      const current = latestByGrade.get(rec.grade);
+      if (!current || MONTH_ORDER.indexOf(rec.month) >= MONTH_ORDER.indexOf(current.month)) {
+        latestByGrade.set(rec.grade, rec);
+      }
     }
+    const studentsByGrade = [...latestByGrade.values()];
+    const studentTotals = studentsByGrade.reduce(
+      (acc, r) => ({
+        boys: acc.boys + (r.boys || 0),
+        girls: acc.girls + (r.girls || 0),
+        pwd: acc.pwd + (r.personsWithDisability || 0),
+        ethnic: acc.ethnic + (r.ethnic || 0),
+        total: acc.total + (r.total || 0),
+      }),
+      { boys: 0, girls: 0, pwd: 0, ethnic: 0, total: 0 },
+    );
 
-    const maleTeachers = teachers.filter((t) => t.gender === 'Male').length;
-    const femaleTeachers = teachers.filter((t) => t.gender === 'Female').length;
+    // ── Teacher gender split ──
+    const teacherTotals = teachers.reduce(
+      (acc, t) => ({
+        male: acc.male + (t.gender === 'Male' ? 1 : 0),
+        female: acc.female + (t.gender === 'Female' ? 1 : 0),
+        total: acc.total + 1,
+      }),
+      { male: 0, female: 0, total: 0 },
+    );
+
+    // Count of the 6 categories that have at least one record (used for the
+    // placeholder grade / completeness indicator until a real rating exists).
+    const categoriesWithData = [
+      !!infrastructure,
+      studentsByGrade.length > 0,
+      teachers.length > 0,
+      feeStructures.length > 0 || !!revenueBudgetTotal || !!revenueActualTotal,
+      pedagogicalAchievements.length > 0 || !!performance,
+      alumni.length > 0,
+    ].filter(Boolean).length;
 
     return {
       school,
-      basicInfo,
-      infrastructure: infra,
-      teachers: {
-        total: teachers.length,
-        male: maleTeachers,
-        female: femaleTeachers,
-        list: teachers,
-      },
-      students: {
-        total: totalStudents,
-        boys: totalBoys,
-        girls: totalGirls,
-        pwd: totalPWD,
-        ethnic: totalEthnic,
-        byGrade,
-      },
-      revenue: {
-        budgetTotal,
-        actualTotal,
-      },
+      infrastructure,
+      students: studentsByGrade,
+      studentTotals,
+      teachers,
+      teacherTotals,
+      teachersDevelopment,
+      feeStructures,
+      revenueBudgetTotal,
+      revenueActualTotal,
+      pedagogicalAchievements,
+      performance,
+      cocurricular,
+      studentsPerformance,
+      activityParticipation,
+      eventParticipation,
       alumni,
-      pedagogicalAchievements: pedagAchievements,
+      meta: {
+        categoriesWithData,
+        totalCategories: 6,
+      },
     };
   }
 }

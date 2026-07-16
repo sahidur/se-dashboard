@@ -1,23 +1,19 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/header';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area,
-  RadialBarChart, RadialBar,
-} from 'recharts';
-import {
-  School, Users, GraduationCap, TrendingUp, TrendingDown, DollarSign,
-  Filter, RefreshCw, ArrowUpRight, ArrowDownRight,
-  BarChart3, Target, Sparkles,
+  School, Users, GraduationCap, TrendingUp,
+  Filter, RefreshCw, ArrowUpRight, BarChart3, Target, Sparkles,
+  User, Globe, MapPin, CheckCircle2, XCircle, ChevronRight,
 } from 'lucide-react';
 import api from '@/lib/api';
 
-/* ─── Types ─────────────────────────────────────────────── */
+/* â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 interface CategoryTotals {
   totalSchools: number;
@@ -36,13 +32,22 @@ interface CategoryTotals {
   actualRevenueAchievement: number;
 }
 
+interface OverviewData {
+  totals: CategoryTotals;
+  categories: Record<string, CategoryTotals>;
+  schools: SchoolRow[];
+}
+
 interface SchoolRow {
   id: string;
   name: string;
   code: string;
   category: string;
-  district?: string;
-  division?: string;
+  district?: string | null;
+  division?: string | null;
+  upazila?: string | null;
+  establishedYear?: number | null;
+  governmentApproval?: boolean | null;
   teachers: { male: number; female: number; total: number };
   students: { boys: number; girls: number; total: number; pwd: number; ethnic: number };
   yearlyStudentTarget: number;
@@ -52,32 +57,34 @@ interface SchoolRow {
   actualRevenueAchievement: number;
 }
 
-interface OverviewData {
-  totals: CategoryTotals;
-  categories: Record<string, CategoryTotals>;
-  schools: SchoolRow[];
-}
-
-/* ─── Constants ─────────────────────────────────────────── */
+/* â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 const CATEGORY_OPTIONS = [
-  { value: '', label: 'All Categories' },
-  { value: 'brac_primary', label: 'BRAC Primary' },
-  { value: 'brac_secondary', label: 'BRAC Secondary' },
-  { value: 'brac_academy', label: 'BRAC Academy' },
+  { value: '', label: 'All Schools', color: 'indigo' },
+  { value: 'brac_primary', label: 'BRAC Primary', color: 'blue' },
+  { value: 'brac_secondary', label: 'BRAC Secondary', color: 'purple' },
+  { value: 'brac_academy', label: 'BRAC Academy', color: 'emerald' },
+];
+
+const CHIP_STYLES: Record<string, { active: string; idle: string }> = {
+  indigo: { active: 'bg-indigo-600 text-white shadow-md shadow-indigo-200', idle: 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100' },
+  blue: { active: 'bg-blue-600 text-white shadow-md shadow-blue-200', idle: 'bg-blue-50 text-blue-700 hover:bg-blue-100' },
+  purple: { active: 'bg-purple-600 text-white shadow-md shadow-purple-200', idle: 'bg-purple-50 text-purple-700 hover:bg-purple-100' },
+  emerald: { active: 'bg-emerald-600 text-white shadow-md shadow-emerald-200', idle: 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' },
+};
+
+/* Category tables config: order + header styling matching the three school types */
+const CATEGORY_TABLES: { key: string; label: string; header: string; accent: string }[] = [
+  { key: 'brac_primary', label: 'BRAC Primary', header: 'bg-amber-100 text-amber-900', accent: 'text-amber-700' },
+  { key: 'brac_secondary', label: 'BRAC Secondary', header: 'bg-orange-100 text-orange-900', accent: 'text-orange-700' },
+  { key: 'brac_academy', label: 'BRAC Academy', header: 'bg-blue-100 text-blue-900', accent: 'text-blue-700' },
 ];
 
 const CATEGORY_LABELS: Record<string, string> = {
   brac_primary: 'BRAC Primary',
   brac_secondary: 'BRAC Secondary',
   brac_academy: 'BRAC Academy',
-  Unknown: 'Uncategorized',
 };
-
-const CATEGORY_COLORS = ['#6366f1', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444'];
-
-const fmt = (n: number) =>
-  n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}K` : String(n);
 
 const fmtTaka = (n: number) =>
   n >= 10_000_000 ? `৳${(n / 10_000_000).toFixed(2)} Cr` :
@@ -86,9 +93,22 @@ const fmtTaka = (n: number) =>
 
 const pct = (a: number, b: number) => (b > 0 ? Math.min((a / b) * 100, 100).toFixed(1) : '0');
 
-/* ─── Animated Counter ─────────────────────────────────── */
+/* BDT Taka currency icon (lucide has no Taka glyph) */
+function TakaIcon({ size = 22, className }: { size?: number; className?: string }) {
+  return (
+    <span
+      className={className}
+      style={{ fontSize: size, lineHeight: 1, fontWeight: 700 }}
+      aria-hidden
+    >
+      ৳
+    </span>
+  );
+}
 
-function AnimatedNumber({ value, prefix = '' }: { value: number; prefix?: string }) {
+/* â”€â”€â”€ Animated Counter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+function AnimatedNumber({ value }: { value: number }) {
   const [display, setDisplay] = useState(0);
   useEffect(() => {
     let start = 0;
@@ -101,81 +121,229 @@ function AnimatedNumber({ value, prefix = '' }: { value: number; prefix?: string
     }, 30);
     return () => clearInterval(timer);
   }, [value]);
-  return <span>{prefix}{display.toLocaleString()}</span>;
+  return <span>{display.toLocaleString()}</span>;
 }
 
-/* ─── KPI Card ─────────────────────────────────────────── */
+/* â”€â”€â”€ KPI Card (clickable) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+interface StatChip { label: string; value: string; icon: React.ElementType }
 
 function KpiCard({
-  title, value, sub, icon: Icon, gradient, badge, pctVal,
+  title, value, valueDisplay, icon: Icon, gradient, badge, pctVal, href, stats,
 }: {
-  title: string; value: number; sub?: string; icon: React.ElementType;
-  gradient: string; badge?: string; pctVal?: number;
+  title: string; value: number; valueDisplay?: string; icon: React.ElementType;
+  gradient: string; badge?: string; pctVal?: number; href: string; stats?: StatChip[];
 }) {
   return (
-    <Card className={`relative overflow-hidden border-0 shadow-md ${gradient}`}>
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-xs font-medium text-white/80 uppercase tracking-wider">{title}</p>
-            <p className="mt-1 text-3xl font-bold text-white">
-              <AnimatedNumber value={value} />
-            </p>
-            {sub && <p className="mt-0.5 text-xs text-white/70">{sub}</p>}
-          </div>
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20">
-            <Icon size={20} className="text-white" />
-          </div>
-        </div>
-        {pctVal !== undefined && (
-          <div className="mt-3">
-            <div className="flex items-center justify-between text-xs text-white/80 mb-1">
-              <span>Achievement</span>
-              <span>{pctVal}%</span>
+    <Link href={href} className="block group h-full">
+      <Card className={`relative flex h-full min-h-[196px] flex-col overflow-hidden border-0 shadow-md transition-all duration-200 group-hover:-translate-y-1 group-hover:shadow-xl ${gradient}`}>
+        <CardContent className="flex flex-1 flex-col p-5">
+          <div className="flex items-start justify-between">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-white/80 uppercase tracking-wider">{title}</p>
+              <p className="mt-1 text-3xl font-extrabold text-white">
+                {valueDisplay ?? <AnimatedNumber value={value} />}
+              </p>
             </div>
-            <div className="h-1.5 rounded-full bg-white/20">
-              <div
-                className="h-1.5 rounded-full bg-white transition-all duration-1000"
-                style={{ width: `${Math.min(Number(pctVal), 100)}%` }}
-              />
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/20">
+              <Icon size={22} className="text-white" />
             </div>
           </div>
-        )}
-        {badge && (
-          <div className="mt-2">
-            <span className="inline-block rounded-full bg-white/20 px-2 py-0.5 text-xs text-white">{badge}</span>
+
+          {stats && stats.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {stats.map((s) => (
+                <div key={s.label} className="flex items-center gap-1.5 rounded-lg bg-white/20 px-2.5 py-1.5">
+                  <s.icon size={15} className="text-white/90" />
+                  <span className="text-[11px] font-medium text-white/80">{s.label}</span>
+                  <span className="text-sm font-extrabold text-white">{s.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {pctVal !== undefined && (
+            <div className="mt-3">
+              <div className="mb-1 flex items-center justify-between text-xs font-semibold text-white/90">
+                <span>Achievement</span>
+                <span>{pctVal}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-white/20">
+                <div
+                  className="h-2 rounded-full bg-white transition-all duration-1000"
+                  style={{ width: `${Math.min(Number(pctVal), 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {badge && (
+            <div className="mt-3">
+              <span className="inline-block rounded-full bg-white/20 px-2.5 py-1 text-xs font-semibold text-white">{badge}</span>
+            </div>
+          )}
+
+          <div className="mt-auto pt-3 flex items-center gap-1 text-xs font-semibold text-white/90 opacity-80 transition-opacity group-hover:opacity-100">
+            View details
+            <ArrowUpRight size={14} className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
           </div>
-        )}
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </Link>
   );
 }
 
-/* ─── Custom tooltip ───────────────────────────────────── */
+/* â”€â”€â”€ Category Summary Table (Title | Value) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
-function ChartTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null;
+function MetricRow({ label, value, indent, strong }: { label: string; value: string; indent?: boolean; strong?: boolean }) {
   return (
-    <div className="rounded-xl border border-gray-100 bg-white p-3 shadow-lg text-xs">
-      <p className="mb-1 font-semibold text-gray-700">{label}</p>
-      {payload.map((p: any) => (
-        <div key={p.name} className="flex items-center gap-1.5">
-          <div className="h-2 w-2 rounded-full" style={{ background: p.color }} />
-          <span className="text-gray-500">{p.name}:</span>
-          <span className="font-semibold text-gray-700">{typeof p.value === 'number' && p.value > 1000 ? fmtTaka(p.value) : p.value?.toLocaleString()}</span>
-        </div>
-      ))}
+    <div className="flex items-center justify-between gap-3 border-b border-gray-50 px-4 py-2 last:border-0">
+      <span className={`text-xs sm:text-sm ${indent ? 'pl-3 text-gray-500' : 'text-gray-700'} ${strong ? 'font-semibold text-gray-800' : 'font-medium'}`}>
+        {label}
+      </span>
+      <span className={`shrink-0 text-xs sm:text-sm tabular-nums ${strong ? 'font-bold text-gray-900' : 'font-semibold text-gray-700'}`}>
+        {value}
+      </span>
     </div>
   );
 }
 
-/* ─── Main Page ─────────────────────────────────────────── */
+function CategorySummaryTable({ label, header, totals }: { label: string; header: string; totals?: CategoryTotals }) {
+  const t = totals ?? {
+    totalSchools: 0, totalTeachersMale: 0, totalTeachersFemale: 0, totalTeachers: 0,
+    totalStudentsBoys: 0, totalStudentsGirls: 0, totalStudents: 0, totalPWD: 0, totalEthnic: 0,
+    yearlyStudentTarget: 0, budgetRevenueTarget: 0, budgetRevenueAchievement: 0,
+    actualRevenueTarget: 0, actualRevenueAchievement: 0,
+  };
+  const n = (v: number) => v.toLocaleString();
+  return (
+    <Card className="border-0 shadow-sm overflow-hidden h-full">
+      <div className={`px-4 py-3 text-center text-sm font-bold ${header}`}>{label}</div>
+      <div className="divide-y divide-gray-50">
+        <MetricRow label="Total Number of Schools" value={n(t.totalSchools)} strong />
+        <MetricRow label="Total Number of Teachers" value={n(t.totalTeachers)} strong />
+        <MetricRow label="Male" value={n(t.totalTeachersMale)} indent />
+        <MetricRow label="Female" value={n(t.totalTeachersFemale)} indent />
+        <MetricRow label="Total Number of Students" value={n(t.totalStudents)} strong />
+        <MetricRow label="Girls" value={n(t.totalStudentsGirls)} indent />
+        <MetricRow label="Boys" value={n(t.totalStudentsBoys)} indent />
+        <MetricRow label="PWD" value={n(t.totalPWD)} indent />
+        <MetricRow label="Ethnic" value={n(t.totalEthnic)} indent />
+        <MetricRow label="Yearly Student Target" value={n(t.yearlyStudentTarget)} strong />
+        <MetricRow label="Revenue target as per the budget" value={fmtTaka(t.budgetRevenueTarget)} />
+        <MetricRow label="Revenue achievement as per the budget" value={fmtTaka(t.budgetRevenueAchievement)} />
+        <MetricRow label="Revenue target as per the actual student" value={fmtTaka(t.actualRevenueTarget)} />
+        <MetricRow label="Revenue achievement as per the actual student" value={fmtTaka(t.actualRevenueAchievement)} />
+      </div>
+    </Card>
+  );
+}
+
+/* â”€â”€â”€ Schools List Table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+function SchoolsListTable({ schools, onRowClick }: { schools: SchoolRow[]; onRowClick: (id: string) => void }) {
+  const location = (s: SchoolRow) =>
+    [s.upazila, s.district, s.division].filter(Boolean).join(', ') || 'â€”';
+
+  return (
+    <Card className="border-0 shadow-sm overflow-hidden">
+      <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-3 sm:px-5">
+        <School size={16} className="text-indigo-500" />
+        <h3 className="text-sm font-semibold text-gray-700">Schools ({schools.length})</h3>
+        <span className="ml-auto hidden text-xs text-gray-400 sm:inline">Click a school to open its full profile</span>
+      </div>
+
+      {schools.length === 0 ? (
+        <p className="py-10 text-center text-sm text-gray-400">No schools found.</p>
+      ) : (
+        <>
+          {/* Desktop / tablet table */}
+          <div className="hidden overflow-x-auto sm:block">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50/60 text-left">
+                  <th className="px-4 py-2.5 font-semibold text-gray-500">Name</th>
+                  <th className="px-4 py-2.5 font-semibold text-gray-500">Category</th>
+                  <th className="px-4 py-2.5 font-semibold text-gray-500">Location</th>
+                  <th className="px-4 py-2.5 text-center font-semibold text-gray-500">Est. Year</th>
+                  <th className="px-4 py-2.5 text-center font-semibold text-gray-500">Govt. Approval</th>
+                  <th className="px-4 py-2.5 text-right font-semibold text-gray-500">Total Students</th>
+                  <th className="px-2 py-2.5" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {schools.map((s) => (
+                  <tr
+                    key={s.id}
+                    onClick={() => onRowClick(s.id)}
+                    className="group cursor-pointer transition hover:bg-indigo-50/60"
+                  >
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-gray-800 group-hover:text-indigo-700">{s.name}</p>
+                      <p className="font-mono text-xs text-gray-400">{s.code}</p>
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">{CATEGORY_LABELS[s.category] ?? s.category}</td>
+                    <td className="px-4 py-3 text-gray-600">{location(s)}</td>
+                    <td className="px-4 py-3 text-center text-gray-600">{s.establishedYear ?? 'â€”'}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-center">
+                        {s.governmentApproval ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600"><CheckCircle2 size={14} /> Yes</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-400"><XCircle size={14} /> No</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right font-semibold tabular-nums text-gray-800">{s.students.total.toLocaleString()}</td>
+                    <td className="px-2 py-3 text-right">
+                      <ChevronRight size={16} className="text-gray-300 transition group-hover:translate-x-0.5 group-hover:text-indigo-500" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile stacked cards */}
+          <div className="divide-y divide-gray-50 sm:hidden">
+            {schools.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => onRowClick(s.id)}
+                className="flex w-full items-center gap-3 px-4 py-3 text-left transition active:bg-indigo-50"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium text-gray-800">{s.name}</p>
+                  <p className="font-mono text-xs text-gray-400">{s.code}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500">
+                    <span>{CATEGORY_LABELS[s.category] ?? s.category}</span>
+                    <span className="inline-flex items-center gap-1"><MapPin size={11} />{location(s)}</span>
+                    {s.establishedYear ? <span>Est. {s.establishedYear}</span> : null}
+                    <span className="inline-flex items-center gap-1">
+                      {s.governmentApproval
+                        ? <><CheckCircle2 size={11} className="text-green-600" /> Approved</>
+                        : <><XCircle size={11} className="text-gray-400" /> Not approved</>}
+                    </span>
+                    <span className="font-semibold text-gray-700">{s.students.total.toLocaleString()} students</span>
+                  </div>
+                </div>
+                <ChevronRight size={18} className="shrink-0 text-gray-300" />
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
+/* â”€â”€â”€ Main Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 export default function ProgrammeOverviewPage() {
   const [data, setData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState('');
-  const [schoolSearch, setSchoolSearch] = useState('');
+  const router = useRouter();
 
   const load = useCallback(() => {
     setLoading(true);
@@ -188,53 +356,11 @@ export default function ProgrammeOverviewPage() {
   useEffect(() => { load(); }, [load]);
 
   const t = data?.totals;
-  const schools = data?.schools ?? [];
   const categories = data?.categories ?? {};
+  const q = category ? `?category=${category}` : '';
+  const detailHref = (metric: string) => `/data-collection/programme-overview/${metric}${q}`;
 
-  /* Chart data */
-  const categoryChartData = Object.entries(categories).map(([cat, vals], idx) => ({
-    name: CATEGORY_LABELS[cat] ?? cat,
-    schools: vals.totalSchools,
-    students: vals.totalStudents,
-    teachers: vals.totalTeachers,
-    color: CATEGORY_COLORS[idx % CATEGORY_COLORS.length],
-  }));
-
-  const teacherGenderData = t ? [
-    { name: 'Male', value: t.totalTeachersMale, fill: '#6366f1' },
-    { name: 'Female', value: t.totalTeachersFemale, fill: '#ec4899' },
-  ] : [];
-
-  const studentBreakdownData = t ? [
-    { name: 'Boys', value: t.totalStudentsBoys, fill: '#3b82f6' },
-    { name: 'Girls', value: t.totalStudentsGirls, fill: '#f472b6' },
-    { name: 'PWD', value: t.totalPWD, fill: '#f59e0b' },
-    { name: 'Ethnic', value: t.totalEthnic, fill: '#10b981' },
-  ] : [];
-
-  const revenueBarData = Object.entries(categories).map(([cat, vals]) => ({
-    name: CATEGORY_LABELS[cat] ?? cat,
-    'Budget Target': vals.budgetRevenueTarget,
-    'Budget Achievement': vals.budgetRevenueAchievement,
-    'Actual Target': vals.actualRevenueTarget,
-    'Actual Achievement': vals.actualRevenueAchievement,
-  }));
-
-  const schoolsBarData = schools.slice(0, 15).map((s) => ({
-    name: s.code,
-    fullName: s.name,
-    students: s.students.total,
-    teachers: s.teachers.total,
-  }));
-
-  const filteredSchools = schools.filter(
-    (s) =>
-      !schoolSearch ||
-      s.name.toLowerCase().includes(schoolSearch.toLowerCase()) ||
-      s.code.toLowerCase().includes(schoolSearch.toLowerCase()),
-  );
-
-  if (loading) {
+  if (loading && !data) {
     return (
       <>
         <Header title="Programme Overview" />
@@ -266,399 +392,146 @@ export default function ProgrammeOverviewPage() {
         <Card className="border-0 shadow-sm bg-white">
           <CardContent className="p-4">
             <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
-                <Filter size={14} />
+              <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                <Filter size={16} />
                 Filter by:
               </div>
-              <div className="flex flex-wrap gap-2">
-                {CATEGORY_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setCategory(opt.value)}
-                    className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
-                      category === opt.value
-                        ? 'bg-indigo-600 text-white shadow-sm'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+              <div className="flex flex-wrap gap-2.5">
+                {CATEGORY_OPTIONS.map((opt) => {
+                  const style = CHIP_STYLES[opt.color];
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => setCategory(opt.value)}
+                      className={`rounded-full px-4 py-2 text-sm font-semibold transition-all ${
+                        category === opt.value ? style.active : style.idle
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
               </div>
-              <div className="ml-auto text-xs text-gray-400">
+              <div className="ml-auto text-sm font-medium text-gray-500">
                 {t?.totalSchools ?? 0} school{(t?.totalSchools ?? 0) !== 1 ? 's' : ''} shown
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* KPI Row 1 — Schools & Teachers */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <p className="text-sm text-gray-500">
+          Click any card to see the school-by-school breakdown behind the number.
+        </p>
+
+        {/* KPI Row 1 — Schools, Teachers, Students, Target */}
+        <div className={`grid gap-4 sm:grid-cols-2 lg:grid-cols-4 transition-opacity duration-200 ${loading ? 'pointer-events-none opacity-50' : ''}`}>
           <KpiCard
             title="Total Schools"
             value={t?.totalSchools ?? 0}
             icon={School}
             gradient="bg-gradient-to-br from-indigo-500 to-indigo-700"
-            badge={`${Object.keys(categories).length} categories`}
+            badge={`${Object.keys(categories).length} School ${Object.keys(categories).length === 1 ? 'Category' : 'Categories'}`}
+            href={detailHref('schools')}
           />
           <KpiCard
             title="Total Teachers"
             value={t?.totalTeachers ?? 0}
-            sub={`${t?.totalTeachersMale ?? 0} Male · ${t?.totalTeachersFemale ?? 0} Female`}
             icon={Users}
             gradient="bg-gradient-to-br from-purple-500 to-purple-700"
+            href={detailHref('teachers')}
+            stats={[
+              { label: 'Male', value: (t?.totalTeachersMale ?? 0).toLocaleString(), icon: User },
+              { label: 'Female', value: (t?.totalTeachersFemale ?? 0).toLocaleString(), icon: User },
+            ]}
           />
           <KpiCard
             title="Total Students"
             value={t?.totalStudents ?? 0}
-            sub={`${t?.totalStudentsBoys ?? 0} Boys · ${t?.totalStudentsGirls ?? 0} Girls`}
             icon={GraduationCap}
             gradient="bg-gradient-to-br from-blue-500 to-blue-700"
+            href={detailHref('students')}
+            stats={[
+              { label: 'Boys', value: (t?.totalStudentsBoys ?? 0).toLocaleString(), icon: User },
+              { label: 'Girls', value: (t?.totalStudentsGirls ?? 0).toLocaleString(), icon: User },
+              { label: 'PWD', value: (t?.totalPWD ?? 0).toLocaleString(), icon: User },
+              { label: 'Ethnic', value: (t?.totalEthnic ?? 0).toLocaleString(), icon: Globe },
+            ]}
           />
           <KpiCard
             title="Yearly Student Target"
             value={t?.yearlyStudentTarget ?? 0}
-            sub={`${pct(t?.totalStudents ?? 0, t?.yearlyStudentTarget ?? 0)}% achieved`}
             icon={Target}
             gradient="bg-gradient-to-br from-cyan-500 to-cyan-700"
             pctVal={Number(pct(t?.totalStudents ?? 0, t?.yearlyStudentTarget ?? 0))}
+            href={detailHref('student-target')}
           />
         </div>
 
         {/* KPI Row 2 — Revenue */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className={`grid gap-4 sm:grid-cols-2 lg:grid-cols-4 transition-opacity duration-200 ${loading ? 'pointer-events-none opacity-50' : ''}`}>
           <KpiCard
             title="Budget Revenue Target"
             value={t?.budgetRevenueTarget ?? 0}
-            sub={fmtTaka(t?.budgetRevenueTarget ?? 0)}
-            icon={DollarSign}
+            valueDisplay={fmtTaka(t?.budgetRevenueTarget ?? 0)}
+            icon={TakaIcon}
             gradient="bg-gradient-to-br from-emerald-500 to-emerald-700"
+            href={detailHref('budget-target')}
           />
           <KpiCard
             title="Budget Revenue Achievement"
             value={t?.budgetRevenueAchievement ?? 0}
-            sub={`${pct(t?.budgetRevenueAchievement ?? 0, t?.budgetRevenueTarget ?? 0)}% of target`}
+            valueDisplay={fmtTaka(t?.budgetRevenueAchievement ?? 0)}
             icon={TrendingUp}
             gradient="bg-gradient-to-br from-teal-500 to-teal-700"
             pctVal={Number(pct(t?.budgetRevenueAchievement ?? 0, t?.budgetRevenueTarget ?? 0))}
+            href={detailHref('budget-achievement')}
           />
           <KpiCard
             title="Actual Revenue Target"
             value={t?.actualRevenueTarget ?? 0}
-            sub={fmtTaka(t?.actualRevenueTarget ?? 0)}
+            valueDisplay={fmtTaka(t?.actualRevenueTarget ?? 0)}
             icon={BarChart3}
             gradient="bg-gradient-to-br from-orange-500 to-orange-700"
+            href={detailHref('actual-target')}
           />
           <KpiCard
             title="Actual Revenue Achievement"
             value={t?.actualRevenueAchievement ?? 0}
-            sub={`${pct(t?.actualRevenueAchievement ?? 0, t?.actualRevenueTarget ?? 0)}% of target`}
+            valueDisplay={fmtTaka(t?.actualRevenueAchievement ?? 0)}
             icon={Sparkles}
             gradient="bg-gradient-to-br from-rose-500 to-rose-700"
             pctVal={Number(pct(t?.actualRevenueAchievement ?? 0, t?.actualRevenueTarget ?? 0))}
+            href={detailHref('actual-achievement')}
           />
         </div>
 
-        {/* PWD + Ethnic highlight row */}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Card className="border-0 shadow-sm overflow-hidden">
-            <CardContent className="flex items-center gap-4 p-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-amber-100">
-                <Users size={22} className="text-amber-600" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">Students with Disability (PWD)</p>
-                <p className="text-2xl font-bold text-gray-900 mt-0.5">
-                  <AnimatedNumber value={t?.totalPWD ?? 0} />
-                </p>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {pct(t?.totalPWD ?? 0, t?.totalStudents ?? 0)}% of total students
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-0 shadow-sm overflow-hidden">
-            <CardContent className="flex items-center gap-4 p-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-green-100">
-                <Sparkles size={22} className="text-green-600" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">Ethnic Minority Students</p>
-                <p className="text-2xl font-bold text-gray-900 mt-0.5">
-                  <AnimatedNumber value={t?.totalEthnic ?? 0} />
-                </p>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {pct(t?.totalEthnic ?? 0, t?.totalStudents ?? 0)}% of total students
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+        {/* Category summary tables */}
+        <div className={`space-y-3 transition-opacity duration-200 ${loading ? 'pointer-events-none opacity-50' : ''}`}>
+          <div className="flex items-center gap-2">
+            <BarChart3 size={18} className="text-indigo-500" />
+            <h2 className="text-base font-bold text-gray-800">Category Breakdown</h2>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {CATEGORY_TABLES
+              .filter((c) => !category || c.key === category)
+              .map((c) => (
+                <CategorySummaryTable
+                  key={c.key}
+                  label={c.label}
+                  header={c.header}
+                  totals={categories[c.key]}
+                />
+              ))}
+          </div>
         </div>
 
-        {/* Charts Row 1 */}
-        <div className="grid gap-6 lg:grid-cols-3">
-          {/* Category distribution — schools */}
-          <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-2 pt-5 px-5">
-              <CardTitle className="text-sm font-semibold text-gray-700">Schools by Category</CardTitle>
-            </CardHeader>
-            <CardContent className="px-5 pb-5">
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie data={categoryChartData} dataKey="schools" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, value }) => `${name}: ${value}`} labelLine={false}>
-                    {categoryChartData.map((entry, i) => (
-                      <Cell key={i} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip content={<ChartTooltip />} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="mt-2 flex flex-wrap gap-2 justify-center">
-                {categoryChartData.map((entry, i) => (
-                  <div key={i} className="flex items-center gap-1 text-xs text-gray-600">
-                    <div className="h-2 w-2 rounded-full" style={{ background: entry.color }} />
-                    {entry.name}: <strong>{entry.schools}</strong>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Teacher gender */}
-          <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-2 pt-5 px-5">
-              <CardTitle className="text-sm font-semibold text-gray-700">Teacher Gender Distribution</CardTitle>
-            </CardHeader>
-            <CardContent className="px-5 pb-5">
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie data={teacherGenderData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={85}>
-                    {teacherGenderData.map((entry, i) => (
-                      <Cell key={i} fill={entry.fill} />
-                    ))}
-                  </Pie>
-                  <Tooltip content={<ChartTooltip />} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="mt-2 flex justify-center gap-4">
-                {teacherGenderData.map((d) => (
-                  <div key={d.name} className="text-center">
-                    <div className="flex items-center gap-1 text-xs text-gray-500">
-                      <div className="h-2 w-2 rounded-full" style={{ background: d.fill }} />
-                      {d.name}
-                    </div>
-                    <p className="font-bold text-gray-800">{d.value.toLocaleString()}</p>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Student breakdown */}
-          <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-2 pt-5 px-5">
-              <CardTitle className="text-sm font-semibold text-gray-700">Student Breakdown</CardTitle>
-            </CardHeader>
-            <CardContent className="px-5 pb-5">
-              <ResponsiveContainer width="100%" height={220}>
-                <RadialBarChart cx="50%" cy="50%" innerRadius={20} outerRadius={90} data={studentBreakdownData}>
-                  <RadialBar dataKey="value" background>
-                    {studentBreakdownData.map((entry, i) => (
-                      <Cell key={i} fill={entry.fill} />
-                    ))}
-                  </RadialBar>
-                  <Tooltip content={<ChartTooltip />} />
-                </RadialBarChart>
-              </ResponsiveContainer>
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                {studentBreakdownData.map((d) => (
-                  <div key={d.name} className="flex items-center gap-1.5 text-xs">
-                    <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: d.fill }} />
-                    <span className="text-gray-500">{d.name}:</span>
-                    <span className="font-semibold text-gray-700">{d.value.toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+        {/* Schools list */}
+        <div className={`transition-opacity duration-200 ${loading ? 'pointer-events-none opacity-50' : ''}`}>
+          <SchoolsListTable
+            schools={data?.schools ?? []}
+            onRowClick={(id) => router.push(`/data-collection/school-information?school=${id}`)}
+          />
         </div>
-
-        {/* Charts Row 2 — Category comparison bars */}
-        {categoryChartData.length > 0 && (
-          <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-2 pt-5 px-5">
-              <CardTitle className="text-sm font-semibold text-gray-700">Students & Teachers by Category</CardTitle>
-            </CardHeader>
-            <CardContent className="px-5 pb-5">
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={categoryChartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Bar dataKey="students" name="Students" fill="#6366f1" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="teachers" name="Teachers" fill="#06b6d4" radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Revenue chart */}
-        {revenueBarData.length > 0 && (
-          <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-2 pt-5 px-5">
-              <CardTitle className="text-sm font-semibold text-gray-700">Revenue — Target vs Achievement by Category</CardTitle>
-            </CardHeader>
-            <CardContent className="px-5 pb-5">
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={revenueBarData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => fmtTaka(v).replace('৳', '')} />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Bar dataKey="Budget Target" fill="#10b981" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="Budget Achievement" fill="#34d399" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="Actual Target" fill="#f59e0b" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="Actual Achievement" fill="#fbbf24" radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Top schools by student count */}
-        {schoolsBarData.length > 0 && (
-          <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-2 pt-5 px-5">
-              <CardTitle className="text-sm font-semibold text-gray-700">Schools — Students & Teachers (top 15)</CardTitle>
-            </CardHeader>
-            <CardContent className="px-5 pb-5">
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={schoolsBarData} margin={{ top: 5, right: 20, bottom: 20, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-30} textAnchor="end" height={50} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip content={(props) => {
-                    const p = props as any;
-                    if (!p.active || !p.payload?.length) return null;
-                    const row = schoolsBarData.find((s) => s.name === p.label);
-                    return (
-                      <div className="rounded-xl border border-gray-100 bg-white p-3 shadow-lg text-xs">
-                        <p className="mb-1 font-semibold text-gray-700">{row?.fullName ?? p.label}</p>
-                        {p.payload.map((pl: any) => (
-                          <div key={pl.name} className="flex items-center gap-1.5">
-                            <div className="h-2 w-2 rounded-full" style={{ background: pl.color }} />
-                            <span className="text-gray-500">{pl.name}:</span>
-                            <span className="font-semibold">{pl.value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  }} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Bar dataKey="students" name="Students" fill="#8b5cf6" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="teachers" name="Teachers" fill="#06b6d4" radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* School Table */}
-        <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-2 pt-5 px-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle className="text-sm font-semibold text-gray-700">
-                All Schools
-                <Badge variant="default" className="ml-2">{filteredSchools.length}</Badge>
-              </CardTitle>
-              <input
-                type="text"
-                value={schoolSearch}
-                onChange={(e) => setSchoolSearch(e.target.value)}
-                placeholder="Search school name or code…"
-                className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 sm:w-64"
-              />
-            </div>
-          </CardHeader>
-          <CardContent className="px-0 pb-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead className="border-y border-gray-100 bg-gray-50">
-                  <tr>
-                    <th className="py-2.5 pl-5 pr-3 text-left font-semibold text-gray-500 uppercase tracking-wider">#</th>
-                    <th className="py-2.5 pr-3 text-left font-semibold text-gray-500 uppercase tracking-wider">School</th>
-                    <th className="py-2.5 pr-3 text-left font-semibold text-gray-500 uppercase tracking-wider">Category</th>
-                    <th className="py-2.5 pr-3 text-right font-semibold text-gray-500 uppercase tracking-wider">Male T.</th>
-                    <th className="py-2.5 pr-3 text-right font-semibold text-gray-500 uppercase tracking-wider">Female T.</th>
-                    <th className="py-2.5 pr-3 text-right font-semibold text-gray-500 uppercase tracking-wider">Boys</th>
-                    <th className="py-2.5 pr-3 text-right font-semibold text-gray-500 uppercase tracking-wider">Girls</th>
-                    <th className="py-2.5 pr-3 text-right font-semibold text-gray-500 uppercase tracking-wider">PWD</th>
-                    <th className="py-2.5 pr-3 text-right font-semibold text-gray-500 uppercase tracking-wider">Ethnic</th>
-                    <th className="py-2.5 pr-3 text-right font-semibold text-gray-500 uppercase tracking-wider">Student Target</th>
-                    <th className="py-2.5 pr-3 text-right font-semibold text-gray-500 uppercase tracking-wider">Budget Target</th>
-                    <th className="py-2.5 pr-3 text-right font-semibold text-gray-500 uppercase tracking-wider">Budget Ach.</th>
-                    <th className="py-2.5 pr-3 text-right font-semibold text-gray-500 uppercase tracking-wider">Actual Target</th>
-                    <th className="py-2.5 pr-3 text-right font-semibold text-gray-500 uppercase tracking-wider">Actual Ach.</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {filteredSchools.map((school, idx) => {
-                    const budgetPct = Number(pct(school.budgetRevenueAchievement, school.budgetRevenueTarget));
-                    const actualPct = Number(pct(school.actualRevenueAchievement, school.actualRevenueTarget));
-                    return (
-                      <tr key={school.id} className="hover:bg-indigo-50/30 transition-colors">
-                        <td className="py-3 pl-5 pr-3 text-gray-400">{idx + 1}</td>
-                        <td className="py-3 pr-3">
-                          <div>
-                            <p className="font-medium text-gray-800 leading-tight">{school.name}</p>
-                            <p className="text-gray-400 font-mono">{school.code}</p>
-                          </div>
-                        </td>
-                        <td className="py-3 pr-3">
-                          <Badge variant="default" className="text-indigo-700 border-indigo-200 bg-indigo-50">
-                            {CATEGORY_LABELS[school.category] ?? school.category}
-                          </Badge>
-                        </td>
-                        <td className="py-3 pr-3 text-right text-gray-700">{school.teachers.male}</td>
-                        <td className="py-3 pr-3 text-right text-gray-700">{school.teachers.female}</td>
-                        <td className="py-3 pr-3 text-right text-gray-700">{school.students.boys}</td>
-                        <td className="py-3 pr-3 text-right text-gray-700">{school.students.girls}</td>
-                        <td className="py-3 pr-3 text-right text-gray-700">{school.students.pwd}</td>
-                        <td className="py-3 pr-3 text-right text-gray-700">{school.students.ethnic}</td>
-                        <td className="py-3 pr-3 text-right font-medium text-gray-700">{school.yearlyStudentTarget.toLocaleString()}</td>
-                        <td className="py-3 pr-3 text-right text-gray-600">{fmtTaka(school.budgetRevenueTarget)}</td>
-                        <td className="py-3 pr-3 text-right">
-                          <span className={`font-medium ${budgetPct >= 80 ? 'text-green-600' : budgetPct >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
-                            {fmtTaka(school.budgetRevenueAchievement)}
-                          </span>
-                          <span className="ml-1 text-gray-400">({budgetPct}%)</span>
-                        </td>
-                        <td className="py-3 pr-3 text-right text-gray-600">{fmtTaka(school.actualRevenueTarget)}</td>
-                        <td className="py-3 pr-3 text-right">
-                          <span className={`font-medium ${actualPct >= 80 ? 'text-green-600' : actualPct >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
-                            {fmtTaka(school.actualRevenueAchievement)}
-                          </span>
-                          <span className="ml-1 text-gray-400">({actualPct}%)</span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {filteredSchools.length === 0 && (
-                    <tr>
-                      <td colSpan={14} className="py-12 text-center text-gray-400">
-                        No schools found.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </>
   );

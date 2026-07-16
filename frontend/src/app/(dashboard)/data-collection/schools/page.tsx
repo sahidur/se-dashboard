@@ -26,6 +26,9 @@ const PAGE_SIZE = 10;
 
 const emptyForm = {
   name: '',
+  schoolCategory: '',
+  schoolType: '',
+  establishedYear: '',
   areaId: '',
   divisionId: '',
   division: '',
@@ -33,6 +36,10 @@ const emptyForm = {
   district: '',
   upazilaId: '',
   upazila: '',
+  governmentApproval: '',
+  totalTeachers: '',
+  totalStudents: '',
+  gradeCoverage: '',
 };
 
 function normalizeName(value?: string | null): string {
@@ -216,6 +223,9 @@ export default function DcSchoolsPage() {
 
     setForm({
       name: s.name,
+      schoolCategory: s.schoolCategory || '',
+      schoolType: s.schoolType || '',
+      establishedYear: s.establishedYear != null ? String(s.establishedYear) : '',
       areaId: resolved.areaId,
       divisionId: resolved.divisionId,
       division: s.division || '',
@@ -223,6 +233,10 @@ export default function DcSchoolsPage() {
       district: s.district || '',
       upazilaId: resolved.upazilaId,
       upazila: s.upazila || '',
+      governmentApproval: s.governmentApproval == null ? '' : s.governmentApproval ? 'yes' : 'no',
+      totalTeachers: s.totalTeachers != null ? String(s.totalTeachers) : '',
+      totalStudents: s.totalStudents != null ? String(s.totalStudents) : '',
+      gradeCoverage: s.gradeCoverage || '',
     });
     setModalOpen(true);
   };
@@ -233,9 +247,17 @@ export default function DcSchoolsPage() {
     try {
       const payload: Record<string, any> = {
         name: form.name,
+        schoolCategory: form.schoolCategory || undefined,
+        schoolType: form.schoolType || undefined,
+        establishedYear: form.establishedYear ? Number(form.establishedYear) : undefined,
         division: form.division || undefined,
         district: form.district || undefined,
         upazila: form.upazila || undefined,
+        governmentApproval:
+          form.governmentApproval === '' ? undefined : form.governmentApproval === 'yes',
+        totalTeachers: form.totalTeachers ? Number(form.totalTeachers) : undefined,
+        totalStudents: form.totalStudents ? Number(form.totalStudents) : undefined,
+        gradeCoverage: form.gradeCoverage || undefined,
       };
       if (editSchool) {
         await api.patch(`/data-collection/schools/${editSchool.id}`, payload);
@@ -483,6 +505,45 @@ export default function DcSchoolsPage() {
             placeholder="e.g. BRAC Primary School Dhaka"
           />
 
+          {/* Category / Type / Establishment Year */}
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div>
+              <label className={labelClass}>School Category</label>
+              <select
+                value={form.schoolCategory}
+                onChange={(e) => setForm({ ...form, schoolCategory: e.target.value })}
+                className={selectClass}
+              >
+                <option value="">Select category...</option>
+                <option value="brac_primary">BRAC Primary</option>
+                <option value="brac_secondary">BRAC Secondary</option>
+                <option value="brac_academy">BRAC Academy</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>School Type</label>
+              <select
+                value={form.schoolType}
+                onChange={(e) => setForm({ ...form, schoolType: e.target.value })}
+                className={selectClass}
+              >
+                <option value="">Select type...</option>
+                <option value="plain_land">Plain Land</option>
+                <option value="haor">Haor</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>School Establishment Year</label>
+              <input
+                type="number"
+                value={form.establishedYear}
+                onChange={(e) => setForm({ ...form, establishedYear: e.target.value })}
+                placeholder="e.g. 2010"
+                className={selectClass}
+              />
+            </div>
+          </div>
+
           {/* Cascading Location */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
@@ -575,6 +636,50 @@ export default function DcSchoolsPage() {
               </select>
             </div>
           </div>
+
+          {/* Government Approval / Teachers / Students */}
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div>
+              <label className={labelClass}>Government Approval Status</label>
+              <select
+                value={form.governmentApproval}
+                onChange={(e) => setForm({ ...form, governmentApproval: e.target.value })}
+                className={selectClass}
+              >
+                <option value="">Select...</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>Total Number of Teachers</label>
+              <input
+                type="number"
+                value={form.totalTeachers}
+                onChange={(e) => setForm({ ...form, totalTeachers: e.target.value })}
+                placeholder="0"
+                className={selectClass}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Total Number of Students</label>
+              <input
+                type="number"
+                value={form.totalStudents}
+                onChange={(e) => setForm({ ...form, totalStudents: e.target.value })}
+                placeholder="0"
+                className={selectClass}
+              />
+            </div>
+          </div>
+
+          {/* Grade Coverage */}
+          <Input
+            label="Grade Coverage"
+            value={form.gradeCoverage}
+            onChange={(e) => setForm({ ...form, gradeCoverage: e.target.value })}
+            placeholder="e.g. Class 1 - Class 10"
+          />
 
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => { setModalOpen(false); resetForm(); }}>
