@@ -8,7 +8,7 @@ import { Select } from '@/components/ui/select';
 import { Modal } from '@/components/ui/modal';
 import { GeoLocationSelect } from '@/components/forms/geo-location-select';
 import { UserProfileModal } from '@/components/users/user-profile-modal';
-import { formatDate } from '@/lib/utils';
+import { formatDate, resolveAssetUrl } from '@/lib/utils';
 import {
   Plus,
   Edit,
@@ -409,7 +409,7 @@ export default function UsersPage() {
                         <div className="flex items-center gap-3">
                           {user.profilePicture ? (
                             <img
-                              src={user.profilePicture}
+                              src={resolveAssetUrl(user.profilePicture)}
                               alt=""
                               className="h-9 w-9 shrink-0 rounded-xl object-cover shadow-sm"
                             />
@@ -561,7 +561,7 @@ export default function UsersPage() {
           <div className="flex items-center gap-4">
             {formData.profilePicture ? (
               <img
-                src={formData.profilePicture}
+                src={resolveAssetUrl(formData.profilePicture)}
                 alt="Profile"
                 className="h-16 w-16 shrink-0 rounded-2xl object-cover shadow-sm border border-gray-200"
               />

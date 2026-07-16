@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuthStore } from '@/store/auth-store';
 import { Bell, User, LogOut } from 'lucide-react';
-import { getInitials } from '@/lib/utils';
+import { getInitials, resolveAssetUrl } from '@/lib/utils';
 
 interface HeaderProps {
   title: string;
@@ -52,7 +52,7 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
           >
             {user?.profilePicture ? (
               <img
-                src={user.profilePicture}
+                src={resolveAssetUrl(user.profilePicture)}
                 alt="Profile"
                 className="h-8 w-8 rounded-full object-cover ring-2 ring-gray-200"
               />

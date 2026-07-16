@@ -24,6 +24,7 @@ import {
   Info,
 } from 'lucide-react';
 import api from '@/lib/api';
+import { resolveAssetUrl } from '@/lib/utils';
 import type { Survey, SurveyField, SurveySection, SurveyAnswer, GeoLocation, SchoolRecord } from '@/types';
 
 interface FieldAnswer {
@@ -97,7 +98,7 @@ function FileUploader({
               {fileName || 'Uploaded file'}
             </p>
             <a
-              href={value}
+              href={resolveAssetUrl(value)}
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs text-green-600 underline"

@@ -36,7 +36,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth-store';
-import { formatDate, getInitials } from '@/lib/utils';
+import { formatDate, getInitials, resolveAssetUrl } from '@/lib/utils';
 import api from '@/lib/api';
 import type { GeoLocation, PaginatedAuditLogs, User } from '@/types';
 import { USER_DESIGNATIONS } from '@/types';
@@ -219,7 +219,7 @@ export default function ProfilePage() {
               <div className="relative group">
                 {displayUser?.profilePicture ? (
                   <img
-                    src={displayUser.profilePicture}
+                    src={resolveAssetUrl(displayUser.profilePicture)}
                     alt={`${displayUser.firstName} ${displayUser.lastName}`}
                     className="h-24 w-24 rounded-2xl border-4 border-white/30 object-cover shadow-xl transition-transform duration-300 group-hover:scale-105"
                   />

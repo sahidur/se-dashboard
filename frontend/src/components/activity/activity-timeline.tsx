@@ -18,7 +18,7 @@ import {
   Tablet,
   Trash2,
 } from 'lucide-react';
-import { cn, formatDayLabel, formatRelativeTime, formatTime, parseUserAgent } from '@/lib/utils';
+import { cn, formatDayLabel, formatRelativeTime, formatTime, parseUserAgent, resolveAssetUrl } from '@/lib/utils';
 import type { AuditLogEntry } from '@/types';
 
 // ── Action + category presentation config ────────────────────────────────
@@ -250,7 +250,7 @@ function TimelineItem({ log, showActor }: { log: AuditLogEntry; showActor?: bool
               <span className="inline-flex items-center gap-1.5 font-medium text-gray-900">
                 {log.user?.profilePicture ? (
                   <img
-                    src={log.user.profilePicture}
+                    src={resolveAssetUrl(log.user.profilePicture)}
                     alt=""
                     className="h-5 w-5 rounded-full object-cover"
                   />

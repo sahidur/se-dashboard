@@ -21,10 +21,12 @@ import { AuditModule } from './common/audit/audit.module';
       isGlobal: true,
       envFilePath: '.env',
     }),
-    // Serve locally-stored uploads (used when S3 credentials are not configured)
+    // Serve locally-stored uploads (used when S3 credentials are not configured).
+    // Served under the /api prefix so the existing reverse-proxy /api route
+    // handles it in production (no separate nginx location needed).
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'uploads'),
-      serveRoot: '/uploads',
+      serveRoot: '/api/uploads',
     }),
     // Rate limiting: 100 req per 60 s globally (OWASP: A04 – Insecure Design)
     ThrottlerModule.forRoot([{

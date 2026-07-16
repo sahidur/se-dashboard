@@ -38,6 +38,48 @@ export function getInitials(firstName: string, lastName: string) {
   return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
 }
 
+/**
+ * Resolve a stored file/image URL into one the browser can actually load.
+ *
+ * Locally-stored uploads are saved with a relative path (e.g. `/api/uploads/..`)
+ * so they are domain-agnostic. This prefixes them with the API origin. It also
+ * rewrites legacy absolute `http://localhost:PORT/uploads/..` URLs (persisted
+ * before this fix) to the current API origin, while leaving remote absolute
+ * URLs (e.g. S3 / DigitalOcean Spaces) untouched.
+ */
+export function resolveAssetUrl(raw?: string | null): string {
+  if (!raw) return '';
+
+  const apiBase =
+    process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+  const origin = apiBase.replace(/\/api\/?$/, '');
+
+  // Absolute URL
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const u = new URL(raw);
+      // Legacy local-storage URLs pointed at localhost — repoint to API origin.
+      if (
+        (u.hostname === 'localhost' || u.hostname === '127.0.0.1') &&
+        u.pathname.includes('/uploads/')
+      ) {
+        const key = u.pathname.slice(
+          u.pathname.indexOf('/uploads/') + '/uploads/'.length,
+        );
+        return `${origin}/api/uploads/${key}`;
+      }
+      return raw; // remote (S3/Spaces) or already-correct absolute URL
+    } catch {
+      return raw;
+    }
+  }
+
+  // Relative path — normalise legacy `/uploads/..` to `/api/uploads/..`
+  let path = raw.startsWith('/') ? raw : `/${raw}`;
+  if (path.startsWith('/uploads/')) path = `/api${path}`;
+  return `${origin}${path}`;
+}
+
 /** Human-friendly "time ago" label (e.g. "3 min ago", "2 days ago"). */
 export function formatRelativeTime(date: string | Date): string {
   const d = new Date(date).getTime();

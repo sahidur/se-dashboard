@@ -86,9 +86,10 @@ export class FilesService {
     const filePath = path.join(dir, fileName);
     fs.writeFileSync(filePath, file.buffer);
 
-    const port = this.configService.get('APP_PORT', '4000');
     const key = `${subfolder}/${fileName}`;
-    const url = `http://localhost:${port}/uploads/${key}`;
+    // Return a domain-agnostic relative URL served through the API prefix so
+    // it works behind any reverse proxy / domain (not hardcoded to localhost).
+    const url = `/api/uploads/${key}`;
 
     this.logger.log(`File saved locally: ${filePath}`);
     return { url, key };
@@ -139,8 +140,7 @@ export class FilesService {
 
   async getSignedUrl(key: string, expiresIn = 3600): Promise<string> {
     if (this.useLocal) {
-      const port = this.configService.get('APP_PORT', '4000');
-      return `http://localhost:${port}/uploads/${key}`;
+      return `/api/uploads/${key}`;
     }
     const command = new GetObjectCommand({
       Bucket: this.bucket,

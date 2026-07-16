@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import api from '@/lib/api';
+import { resolveAssetUrl } from '@/lib/utils';
 import type { DcSchool, DcActivityParticipation } from '@/types';
 
 /* ─── Constants ──────────────────────────────────────────── */
@@ -312,7 +313,7 @@ export function ActivityParticipationForm({ schoolId }: Props) {
                         </div>
                       ) : (
                         <img
-                          src={form.photoUrl}
+                          src={resolveAssetUrl(form.photoUrl)}
                           alt="Activity"
                           className="h-14 w-14 rounded-md object-cover"
                           onError={() => setBrokenPhotoIds((prev) => new Set(prev).add('preview'))}
@@ -400,7 +401,7 @@ export function ActivityParticipationForm({ schoolId }: Props) {
                       <td className="py-2.5 pr-3 text-center">
                         {rec.photoUrl && !brokenPhotoIds.has(rec.id) ? (
                           <img
-                            src={rec.photoUrl}
+                            src={resolveAssetUrl(rec.photoUrl)}
                             alt=""
                             className="inline-block h-8 w-8 rounded object-cover"
                             onError={() => setBrokenPhotoIds((prev) => new Set(prev).add(rec.id))}

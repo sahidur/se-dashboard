@@ -5,7 +5,7 @@ import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-quer
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { AssignSchoolsModal } from './assign-schools-modal';
-import { formatDate } from '@/lib/utils';
+import { formatDate, resolveAssetUrl } from '@/lib/utils';
 import {
   Mail,
   Phone,
@@ -185,7 +185,7 @@ export function UserProfileModal({ isOpen, onClose, user, onEdit }: UserProfileM
             <div className="flex items-center gap-4">
               {user.profilePicture ? (
                 <img
-                  src={user.profilePicture}
+                  src={resolveAssetUrl(user.profilePicture)}
                   alt={`${user.firstName} ${user.lastName}`}
                   className="h-16 w-16 shrink-0 rounded-2xl border-2 border-white/40 object-cover shadow-md"
                 />
