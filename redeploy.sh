@@ -306,6 +306,33 @@ fi
 chown -R "$APP_USER":"$APP_USER" "$APP_DIR"
 
 # =============================================================================
+#  Ensure backend env has WebAuthn keys (passkey login)
+# =============================================================================
+step "Ensuring backend WebAuthn env keys"
+BACKEND_ENV_FILE="${APP_DIR}/backend/.env"
+[[ -f "$BACKEND_ENV_FILE" ]] || die "Missing backend env file: ${BACKEND_ENV_FILE}"
+
+CORS_ORIGIN_VALUE="$(grep -E '^CORS_ORIGIN=' "$BACKEND_ENV_FILE" | tail -n 1 | cut -d'=' -f2- || true)"
+DEFAULT_WEBAUTHN_ORIGIN="${CORS_ORIGIN_VALUE:-https://${DOMAIN}}"
+
+if ! grep -q '^WEBAUTHN_RP_ID=' "$BACKEND_ENV_FILE"; then
+  echo "WEBAUTHN_RP_ID=${DOMAIN}" >> "$BACKEND_ENV_FILE"
+  ok "Added WEBAUTHN_RP_ID=${DOMAIN}"
+fi
+
+if ! grep -q '^WEBAUTHN_RP_NAME=' "$BACKEND_ENV_FILE"; then
+  echo "WEBAUTHN_RP_NAME=BEP Social Enterprise Platform" >> "$BACKEND_ENV_FILE"
+  ok "Added WEBAUTHN_RP_NAME"
+fi
+
+if ! grep -q '^WEBAUTHN_ORIGIN=' "$BACKEND_ENV_FILE"; then
+  echo "WEBAUTHN_ORIGIN=${DEFAULT_WEBAUTHN_ORIGIN}" >> "$BACKEND_ENV_FILE"
+  ok "Added WEBAUTHN_ORIGIN=${DEFAULT_WEBAUTHN_ORIGIN}"
+fi
+
+chown "$APP_USER":"$APP_USER" "$BACKEND_ENV_FILE"
+
+# =============================================================================
 #  Build backend
 # =============================================================================
 step "Rebuilding backend"
