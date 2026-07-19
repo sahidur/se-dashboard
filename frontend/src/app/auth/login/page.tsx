@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -27,7 +26,6 @@ const loginSchema = z.object({
 type LoginForm = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
-  const router = useRouter();
   const { setAuth, isAuthenticated } = useAuthStore();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -43,13 +41,19 @@ export default function LoginPage() {
     resolver: zodResolver(loginSchema),
   });
 
-  // If the user is already authenticated (e.g. navigated back to /auth/login
-  // manually), send them straight to the dashboard instead of showing the form.
+  // Whenever the user becomes authenticated — whether from submitting the form
+  // below or from arriving here already logged in — send them to the dashboard.
+  // We use a full-page navigation (window.location) rather than a client-side
+  // router push on purpose: a soft navigation kept the in-memory auth store but
+  // raced with Next.js' RSC prefetch/transition, which occasionally aborted and
+  // left the dashboard stuck on its loading spinner until a manual hard reload.
+  // A full navigation guarantees the dashboard mounts fresh with the auth store
+  // rehydrated from localStorage (the same path a hard reload takes).
   useEffect(() => {
     if (isAuthenticated) {
-      router.replace('/dashboard');
+      window.location.assign('/dashboard');
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated]);
 
   // WebAuthn is only available in the browser; check after mount.
   useEffect(() => {
@@ -62,8 +66,9 @@ export default function LoginPage() {
       setError('');
       const response = await api.post('/auth/login', data);
       const { user, accessToken, refreshToken } = response.data;
+      // setAuth flips isAuthenticated -> the effect above performs the redirect.
+      // Keep `loading` true so the button stays disabled until the page unloads.
       setAuth(user, accessToken, refreshToken);
-      router.replace('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Login failed');
       setLoading(false);
@@ -78,8 +83,8 @@ export default function LoginPage() {
       // the browser offers any discoverable passkey for this site.
       const email = getValues('email')?.trim() || undefined;
       const { user, accessToken, refreshToken } = await loginWithPasskey(email);
+      // setAuth flips isAuthenticated -> the effect above performs the redirect.
       setAuth(user, accessToken, refreshToken);
-      router.replace('/dashboard');
     } catch (err: any) {
       if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') {
         setError('Passkey sign-in was cancelled.');
