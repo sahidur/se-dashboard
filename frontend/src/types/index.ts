@@ -2,6 +2,55 @@
 // Type definitions for Social Enterprise Platform
 // ============================================
 
+// ── School Monitoring ────────────────────────────────
+export type MonitoringResult = 'yes' | 'no' | 'na' | '';
+
+export interface MonitoringAnswer {
+  code: string;
+  section: string;
+  result: MonitoringResult;
+  comment?: string;
+}
+
+export interface MonitoringAttachment {
+  url: string;
+  key: string;
+  name: string;
+  type?: string;
+}
+
+export interface MonitoringSubmission {
+  id: string;
+  schoolId: string;
+  school?: DcSchool;
+  formType: 'combined' | 'quality' | 'operations';
+  observerName?: string | null;
+  observationDate?: string | null;
+  className?: string | null;
+  teacherName?: string | null;
+  answers: MonitoringAnswer[];
+  attachments: MonitoringAttachment[];
+  generalRemarks?: string | null;
+  submittedById?: string;
+  submittedBy?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    profilePicture?: string;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaginatedMonitoring {
+  items: MonitoringSubmission[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 export interface User {
   id: string;
   firstName: string;
@@ -439,6 +488,9 @@ export interface DcTeachersDevelopment {
   subjectBasedTraining: number;
   leadershipTraining: number;
   others: number;
+  teacherDropoutRate?: number | null;
+  headTeacherDropoutRate?: number | null;
+  headTeacherLeadershipGood?: boolean | null;
   createdById: string;
   createdBy?: { id: string; firstName: string; lastName: string };
   createdAt: string;
@@ -584,6 +636,7 @@ export interface DcActivityParticipation {
   photoUrl?: string;
   photoKey?: string;
   conductedCount: number;
+  participationRate?: number | null;
   createdById: string;
   createdAt: string;
   updatedAt: string;

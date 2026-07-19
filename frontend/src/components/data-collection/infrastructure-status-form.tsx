@@ -10,6 +10,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
+import { FormTabs } from '@/components/data-collection/form-tabs';
+import { useFormDraft } from '@/hooks/use-form-draft';
 import api from '@/lib/api';
 import type { DcSchool } from '@/types';
 
@@ -102,6 +105,9 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const draft = useFormDraft<FormState>('infrastructure', schoolId);
+  const [tab, setTab] = useState<'entry' | 'data'>('entry');
+  const [savedRecord, setSavedRecord] = useState<FormState | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -113,7 +119,7 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
         setSchool(dashRes.data.school);
         const d = infraRes.data;
         if (d) {
-          setForm({
+          const loaded: FormState = {
             campusStatus: d.campusStatus || '',
             buildingStatus: d.buildingStatus ? JSON.parse(d.buildingStatus) : [],
             roomHeadTeachers: d.roomHeadTeachers ?? 0,
@@ -132,7 +138,9 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
             hasPlayground: d.hasPlayground ?? null,
             hasSchoolGarden: d.hasSchoolGarden ?? null,
             infraRenovationRequired: d.infraRenovationRequired ?? null,
-          });
+          };
+          setForm(loaded);
+          setSavedRecord(loaded);
         }
       } catch {
         router.push('/data-collection/schools');
@@ -142,6 +150,29 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
     }
     load();
   }, [schoolId, router]);
+
+  // Overlay the user's private draft (if any) once initial data has loaded.
+  useEffect(() => {
+    if (loading) return;
+    (async () => {
+      const d = await draft.loadDraft();
+      if (d) setForm(d);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  const handleSaveDraft = async () => {
+    await draft.saveDraft(form);
+    setError('');
+    setFieldErrors({});
+  };
+
+  const handleClearDraft = async () => {
+    await draft.clearDraft();
+    setForm(defaultState);
+    setError('');
+    setFieldErrors({});
+  };
 
   const totalRooms = ROOM_TYPES.reduce(
     (sum, rt) => sum + (form[rt.key as RoomKey] || 0),
@@ -216,6 +247,8 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
         hasSchoolGarden: form.hasSchoolGarden ?? false,
         infraRenovationRequired: form.infraRenovationRequired ?? false,
       });
+      await draft.clearDraft();
+      setSavedRecord(form);
       setSaved(true);
     } catch (err: unknown) {
       const anyErr = err as { response?: { data?: { message?: string } } };
@@ -255,7 +288,7 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5 pb-10">
+    <div className="space-y-5 pb-10">
 
       {/* ── School Info ─────────────────────────── */}
       {school && (
@@ -294,6 +327,16 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
           </div>
         </div>
       )}
+
+      <FormTabs
+        active={tab}
+        onChange={setTab}
+        dataLabel="View Data"
+        dataCount={savedRecord ? 1 : 0}
+      />
+
+      {tab === 'entry' && (
+      <form onSubmit={handleSubmit} className="space-y-5">
 
       {/* Error */}
       {error && (
@@ -500,29 +543,71 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
       </Card>
 
       {/* Submit */}
-      <div className="flex justify-end gap-3 pt-2">
-        <Button type="button" variant="outline" onClick={() => router.back()}>
-          Cancel
-        </Button>
-        <Button
-          type="submit"
-          disabled={saving}
-          className="min-w-[160px] bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-sm"
-        >
-          {saving ? (
-            <>
-              <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-              Saving...
-            </>
-          ) : (
-            <>
-              <Save size={16} className="mr-1.5" />
-              Save Infrastructure
-            </>
-          )}
-        </Button>
+      <div className="pt-2">
+        <DraftActionBar
+          hasDraft={draft.hasDraft}
+          draftSavedAt={draft.draftSavedAt}
+          submitting={saving}
+          onSaveDraft={handleSaveDraft}
+          onClearDraft={handleClearDraft}
+          submitLabel="Submit Infrastructure"
+        />
       </div>
-    </form>
+      </form>
+      )}
+
+      {tab === 'data' && (
+        <Card className="overflow-hidden border-0 shadow-sm">
+          <CardHeader className="pb-3 pt-5 px-5">
+            <CardTitle className="text-base font-semibold text-gray-800">Submitted Infrastructure Data</CardTitle>
+          </CardHeader>
+          <CardContent className="px-5 pb-5">
+            {!savedRecord ? (
+              <div className="flex flex-col items-center justify-center py-14 text-gray-400">
+                <Building2 size={40} className="mb-3 opacity-20" />
+                <p className="text-sm font-medium">No infrastructure data submitted yet.</p>
+                <p className="text-xs mt-1 opacity-70">Use the Fill Form tab to add it.</p>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <SummaryItem label="Campus Status" value={savedRecord.campusStatus || '—'} />
+                  <SummaryItem label="Building Status" value={savedRecord.buildingStatus.join(', ') || '—'} />
+                </div>
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Rooms</p>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+                    {ROOM_TYPES.map(({ key, label }) => (
+                      <SummaryItem key={key} label={label} value={String(savedRecord[key as RoomKey] ?? 0)} />
+                    ))}
+                  </div>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <SummaryItem label="Washroom (Male)" value={String(savedRecord.washroomMale)} />
+                  <SummaryItem label="Washroom (Female)" value={String(savedRecord.washroomFemale)} />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <SummaryItem label="Hand Wash Point" value={savedRecord.hasHandWashPoint ? 'Yes' : 'No'} />
+                  <SummaryItem label="Play Ground" value={savedRecord.hasPlayground ? 'Yes' : 'No'} />
+                  <SummaryItem label="School Garden" value={savedRecord.hasSchoolGarden ? 'Yes' : 'No'} />
+                  <SummaryItem label="Renovation Required" value={savedRecord.infraRenovationRequired ? 'Yes' : 'No'} />
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ── Read-only summary item ─────────────────────────────── */
+function SummaryItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">{label}</p>
+      <p className="mt-0.5 text-sm font-semibold text-gray-800">{value}</p>
+    </div>
   );
 }
 

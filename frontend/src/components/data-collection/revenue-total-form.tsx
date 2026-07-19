@@ -11,6 +11,9 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
+import { FormTabs } from '@/components/data-collection/form-tabs';
+import { useFormDraft } from '@/hooks/use-form-draft';
 import api from '@/lib/api';
 import type { DcSchool, DcRevenueTotalRecord } from '@/types';
 
@@ -65,6 +68,8 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [record, setRecord] = useState<DcRevenueTotalRecord | null>(null);
+  const draft = useFormDraft<RevenueFormState>(`revenue-total-${mode}`, schoolId);
+  const [tab, setTab] = useState<'entry' | 'data'>('entry');
 
   const endpoint = mode === 'budget' ? '/data-collection/revenue/budget/total' : '/data-collection/revenue/actual/total';
   const getEndpoint = `${endpoint}/school/${schoolId}`;
@@ -100,9 +105,22 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
         setIsEditing(true);
       }
     } catch { /* no data yet */ }
+    // Overlay the user's private draft on top of any saved data.
+    const d = await draft.loadDraft();
+    if (d) setForm(d);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getEndpoint]);
 
   useEffect(() => { loadRecord(); }, [loadRecord]);
+
+  const handleSaveDraft = async () => {
+    await draft.saveDraft(form);
+  };
+
+  const handleClearDraft = async () => {
+    await draft.clearDraft();
+    setForm(buildBlank());
+  };
 
   const setField = (k: string, v: number) => setForm((prev) => ({ ...prev, [k]: v }));
 
@@ -114,6 +132,7 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
       const { data } = await api.post<DcRevenueTotalRecord>(endpoint, { schoolId, ...form });
       setRecord(data);
       setIsEditing(true);
+      await draft.clearDraft();
       showToast('success', `Revenue ${mode === 'budget' ? 'budget' : 'actual'} data saved successfully!`);
     } catch (err: unknown) {
       const anyErr = err as { response?: { data?: { message?: string } } };
@@ -185,6 +204,14 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
       </Card>
 
       {/* ── Form ── */}
+      <FormTabs
+        active={tab}
+        onChange={setTab}
+        dataLabel="View Data"
+        dataCount={record ? 1 : 0}
+      />
+
+      {tab === 'entry' && (
       <form onSubmit={handleSubmit}>
         <Card className="overflow-hidden border-0 shadow-sm">
           <CardHeader className="pb-3 pt-5 px-5">
@@ -295,20 +322,97 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
               </table>
             </div>
 
-            <div className="flex items-center gap-3 pt-2">
-              <Button type="submit" disabled={saving} className={`gap-2 text-white ${accentClasses.btn}`}>
-                {saving ? <><RefreshCw size={15} className="animate-spin" /> Saving...</> : <><Save size={15} /> {isEditing ? 'Update' : 'Save'} Revenue Data</>}
-              </Button>
+            <div className="flex flex-col gap-3 pt-2">
               {isEditing && (
                 <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
                   <TrendingUp size={14} />
                   Overall {calcPct(totalTarget, totalAchievement)} achieved
                 </div>
               )}
+              <DraftActionBar
+                hasDraft={draft.hasDraft}
+                draftSavedAt={draft.draftSavedAt}
+                submitting={saving}
+                onSaveDraft={handleSaveDraft}
+                onClearDraft={handleClearDraft}
+                submitLabel="Submit Revenue Data"
+              />
             </div>
           </CardContent>
         </Card>
       </form>
+      )}
+
+      {tab === 'data' && (
+        <Card className="overflow-hidden border-0 shadow-sm">
+          <CardHeader className="pb-3 pt-5 px-5">
+            <CardTitle className="text-base font-semibold text-gray-800">
+              Revenue Collection — {mode === 'budget' ? 'Budget' : 'Actual Student'} (Yearly) — Submitted Data
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-5 pb-5">
+            {!record ? (
+              <div className="flex flex-col items-center justify-center py-14 text-gray-400">
+                <Banknote size={40} className="mb-3 opacity-20" />
+                <p className="text-sm font-medium">No revenue data submitted yet.</p>
+                <p className="text-xs mt-1 opacity-70">Use the Fill Form tab to add it.</p>
+              </div>
+            ) : (() => {
+              const rec = record as unknown as Record<string, number>;
+              const savedTotalTarget = FEE_ROWS.reduce((s, { key }) => s + (Number(rec[`${key}Target`]) || 0), 0);
+              const savedTotalAchievement = FEE_ROWS.reduce((s, { key }) => s + (Number(rec[`${key}Achievement`]) || 0), 0);
+              return (
+                <div className="space-y-4">
+                  <div className="max-w-xs">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Total Students (Yearly Target)</p>
+                    <p className="mt-0.5 text-lg font-bold text-gray-800">{formatAmount(Number(record.totalStudentsTarget) || 0)}</p>
+                  </div>
+                  <div className="overflow-x-auto rounded-xl border border-gray-100">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50/70 border-b border-gray-100">
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 w-48">Fee Category</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Target — BDT</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Achievement — BDT</th>
+                          <th className="px-4 py-3 text-center text-xs font-semibold uppercase text-gray-500 w-28">% Collection</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {FEE_ROWS.map(({ key, label, hint }, idx) => {
+                          const target = Number(rec[`${key}Target`]) || 0;
+                          const achievement = Number(rec[`${key}Achievement`]) || 0;
+                          return (
+                            <tr key={key} className={idx % 2 === 0 ? 'bg-white' : `bg-${accentColor}-50/20`}>
+                              <td className="px-4 py-3">
+                                <p className="font-medium text-gray-800 text-sm">{label}</p>
+                                {hint && <p className="text-[10px] text-gray-400">{hint}</p>}
+                              </td>
+                              <td className="px-4 py-3 font-mono text-gray-800">{formatAmount(target)}</td>
+                              <td className="px-4 py-3 font-mono text-gray-800">{formatAmount(achievement)}</td>
+                              <td className="px-4 py-3 text-center font-bold text-gray-700">{calcPct(target, achievement)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr className={`border-t-2 border-${accentColor}-200 bg-${accentColor}-50/40 font-bold`}>
+                          <td className="px-4 py-3 text-sm text-gray-700">Total</td>
+                          <td className="px-4 py-3 text-sm font-mono text-gray-800">{formatAmount(savedTotalTarget)}</td>
+                          <td className="px-4 py-3 text-sm font-mono text-gray-800">{formatAmount(savedTotalAchievement)}</td>
+                          <td className="px-4 py-3 text-center text-sm font-bold text-gray-700">{calcPct(savedTotalTarget, savedTotalAchievement)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                  {record.updatedAt && (
+                    <p className="text-xs text-gray-400">Last updated: {formatDateTime(record.updatedAt)}</p>
+                  )}
+                </div>
+              );
+            })()}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import {
   IsUUID,
   IsEmail,
   IsNotEmpty,
+  IsObject,
   Min,
   Max,
   IsIn,
@@ -304,6 +305,10 @@ export class UpsertTeachersDevelopmentDto {
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) subjectBasedTraining?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) leadershipTraining?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) others?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(100) teacherDropoutRate?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(100) headTeacherDropoutRate?: number;
+  @IsOptional() @IsBoolean() headTeacherLeadershipGood?: boolean;
 }
 
 // ===================== Fee Structure =====================
@@ -508,6 +513,7 @@ export class UpsertActivityParticipationDto {
   @IsOptional() @IsString() photoUrl?: string;
   @IsOptional() @IsString() photoKey?: string;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) conductedCount?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(100) participationRate?: number;
 }
 
 // ===================== Event Participation =====================
@@ -527,3 +533,18 @@ export class CreateEventParticipationDto {
 }
 
 export class UpdateEventParticipationDto extends PartialType(CreateEventParticipationDto) {}
+
+// ===================== Form Draft (server-side, per-user) =====================
+
+export class UpsertFormDraftDto {
+  @IsUUID() schoolId: string;
+
+  @IsString() @IsNotEmpty() formKey: string;
+
+  // NOTE: must have at least one class-validator decorator or the global
+  // ValidationPipe's `whitelist`/`forbidNonWhitelisted` options strip/reject
+  // it as an "unknown" property (400 "property data should not exist"),
+  // even though it's intentionally an arbitrary JSON blob (jsonb column).
+  @IsObject()
+  data: Record<string, unknown>;
+}

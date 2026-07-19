@@ -23,6 +23,7 @@ import { DcCocurricular } from './entities/dc-cocurricular.entity';
 import { DcStudentsPerformance } from './entities/dc-students-performance.entity';
 import { DcActivityParticipation } from './entities/dc-activity-participation.entity';
 import { DcEventParticipation } from './entities/dc-event-participation.entity';
+import { DcFormDraft } from './entities/dc-form-draft.entity';
 import { UsersModule } from '../users/users.module';
 
 @Module({
@@ -49,6 +50,7 @@ import { UsersModule } from '../users/users.module';
       DcStudentsPerformance,
       DcActivityParticipation,
       DcEventParticipation,
+      DcFormDraft,
     ]),
     UsersModule,
   ],

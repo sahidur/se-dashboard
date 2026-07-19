@@ -56,6 +56,10 @@ export class DcActivityParticipation {
   @Column({ name: 'conducted_count', type: 'int', default: 0 })
   conductedCount: number;
 
+  /** % of students who used/participated in this activity (used for grading). */
+  @Column({ name: 'participation_rate', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  participationRate: number | null;
+
   // ── Audit ────────────────────────────────────────────────
   @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'created_by_id' })

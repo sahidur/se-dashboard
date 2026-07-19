@@ -12,6 +12,10 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
+import { FormTabs } from '@/components/data-collection/form-tabs';
+import { useFormDraft } from '@/hooks/use-form-draft';
+import { useAuthStore } from '@/store/auth-store';
 import api from '@/lib/api';
 import type { DcSchool, DcAlumni } from '@/types';
 
@@ -63,6 +67,7 @@ interface Props { schoolId: string }
 
 export function AlumniForm({ schoolId }: Props) {
   const router = useRouter();
+  const canEditSubmitted = useAuthStore((s) => s.hasPermission('data-collection-edit', 'update'));
   const [school, setSchool] = useState<DcSchool | null>(null);
   const [form, setForm] = useState<AlumniFormState>(BLANK_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -75,6 +80,9 @@ export function AlumniForm({ schoolId }: Props) {
   const [loadingRecords, setLoadingRecords] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
+  const draft = useFormDraft<AlumniFormState>('alumni-entry', schoolId);
+  const draftAppliedRef = useRef(false);
+  const [tab, setTab] = useState<'entry' | 'data'>('entry');
 
   const showToast = useCallback((type: 'success' | 'error', msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -98,6 +106,29 @@ export function AlumniForm({ schoolId }: Props) {
   }, [schoolId]);
 
   useEffect(() => { loadRecords(); }, [loadRecords]);
+
+  // Overlay the user's private draft (an in-progress unsubmitted new entry),
+  // if any, once the existing records have loaded.
+  useEffect(() => {
+    if (loadingRecords || draftAppliedRef.current) return;
+    (async () => {
+      const d = await draft.loadDraft();
+      if (d) {
+        draftAppliedRef.current = true;
+        setForm(d);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingRecords]);
+
+  const handleSaveDraft = async () => {
+    await draft.saveDraft(form);
+  };
+
+  const handleClearDraft = async () => {
+    await draft.clearDraft();
+    setForm(BLANK_FORM);
+  };
 
   const setField = <K extends keyof AlumniFormState>(key: K, value: AlumniFormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -150,6 +181,7 @@ export function AlumniForm({ schoolId }: Props) {
         await api.post('/data-collection/alumni', payload);
         showToast('success', 'Alumni record added successfully!');
       }
+      await draft.clearDraft();
       resetForm();
       await loadRecords();
     } catch (err: unknown) {
@@ -178,6 +210,7 @@ export function AlumniForm({ schoolId }: Props) {
     setEditingId(record.id);
     setError('');
     setFieldErrors({});
+    setTab('entry');
     formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
@@ -253,7 +286,10 @@ export function AlumniForm({ schoolId }: Props) {
         </CardContent>
       </Card>
 
+      <FormTabs active={tab} onChange={setTab} dataCount={records.length} />
+
       {/* ── Entry Form ── */}
+      {tab === 'entry' && (
       <div ref={formRef}>
         <form onSubmit={handleSubmit}>
           <Card className="overflow-hidden border-0 shadow-sm">
@@ -391,35 +427,47 @@ export function AlumniForm({ schoolId }: Props) {
               </div>
 
               {/* Submit */}
-              <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
-                <Button
-                  type="submit"
-                  disabled={saving}
-                  className="gap-2 bg-slate-600 hover:bg-slate-700 text-white"
-                >
-                  {saving
-                    ? <><RefreshCw size={15} className="animate-spin" /> Saving...</>
-                    : editingId
-                      ? <><Save size={15} /> Update Record</>
-                      : <><Plus size={15} /> Add Alumni</>}
-                </Button>
-                {editingId && (
+              {editingId ? (
+                <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
+                  <Button
+                    type="submit"
+                    disabled={saving}
+                    className="gap-2 bg-slate-600 hover:bg-slate-700 text-white"
+                  >
+                    {saving
+                      ? <><RefreshCw size={15} className="animate-spin" /> Saving...</>
+                      : <><Save size={15} /> Update Record</>}
+                  </Button>
                   <Button type="button" variant="outline" onClick={resetForm} className="gap-1.5 text-xs">
                     <X size={13} /> Cancel
                   </Button>
-                )}
-                {!editingId && records.length > 0 && (
-                  <span className="text-xs text-gray-400">
-                    {records.length} alumni record{records.length !== 1 ? 's' : ''} submitted
-                  </span>
-                )}
-              </div>
+                </div>
+              ) : (
+                <div className="pt-2 border-t border-gray-100">
+                  <DraftActionBar
+                    hasDraft={draft.hasDraft}
+                    draftSavedAt={draft.draftSavedAt}
+                    submitting={saving}
+                    onSaveDraft={handleSaveDraft}
+                    onClearDraft={handleClearDraft}
+                    submitLabel="Add Alumni"
+                    submittingLabel="Saving..."
+                  />
+                  {!editingId && records.length > 0 && (
+                    <span className="mt-2 block text-xs text-gray-400">
+                      {records.length} alumni record{records.length !== 1 ? 's' : ''} submitted
+                    </span>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         </form>
       </div>
+      )}
 
       {/* ── Records Table ── */}
+      {tab === 'data' && (
       <Card className="overflow-hidden border-0 shadow-sm">
         <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
           <div className="flex items-center gap-2">
@@ -501,9 +549,14 @@ export function AlumniForm({ schoolId }: Props) {
                       <div className="flex items-center justify-center gap-1.5">
                         <button
                           type="button"
-                          onClick={() => handleEdit(r)}
-                          className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50 transition-colors"
-                          title="Edit"
+                          onClick={() => canEditSubmitted && handleEdit(r)}
+                          disabled={!canEditSubmitted}
+                          className={`flex h-7 w-7 items-center justify-center rounded-md border transition-colors ${
+                            canEditSubmitted
+                              ? 'border-gray-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50'
+                              : 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
+                          }`}
+                          title={canEditSubmitted ? 'Edit' : 'You do not have permission to edit submitted data'}
                         >
                           <Pencil size={12} />
                         </button>
@@ -527,6 +580,7 @@ export function AlumniForm({ schoolId }: Props) {
           </div>
         )}
       </Card>
+      )}
     </div>
   );
 }

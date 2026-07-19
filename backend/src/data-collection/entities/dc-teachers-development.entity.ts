@@ -53,6 +53,18 @@ export class DcTeachersDevelopment {
   @Column({ name: 'others', type: 'int', default: 0 })
   others: number;
 
+  /** % of teachers who left during the year (school-level, reported monthly). */
+  @Column({ name: 'teacher_dropout_rate', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  teacherDropoutRate: number | null;
+
+  /** % of head teachers who left during the year. */
+  @Column({ name: 'head_teacher_dropout_rate', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  headTeacherDropoutRate: number | null;
+
+  /** Whether the head teacher's leadership is assessed as good/effective. */
+  @Column({ name: 'head_teacher_leadership_good', type: 'boolean', nullable: true, default: null })
+  headTeacherLeadershipGood: boolean | null;
+
   @ManyToOne(() => User)
   @JoinColumn({ name: 'created_by_id' })
   createdBy: User;

@@ -11,6 +11,9 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
+import { FormTabs } from '@/components/data-collection/form-tabs';
+import { useFormDraft } from '@/hooks/use-form-draft';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth-store';
 import type { DcSchool, DcFeeStructure, DcFeeStructureLog } from '@/types';
@@ -85,6 +88,10 @@ export function FeeStructureForm({ schoolId }: Props) {
   const [logs, setLogs] = useState<DcFeeStructureLog[]>([]);
   const [showLogs, setShowLogs] = useState(false);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const draft = useFormDraft<{ selectedMonths: string[]; grade: string; amounts: FeeAmounts }>('fee-structure', schoolId);
+  const draftAppliedRef = useRef(false);
+  const skipAmountsRef = useRef(false);
+  const [tab, setTab] = useState<'entry' | 'data'>('entry');
 
   const isAdmin = hasPermission('data-collection', 'update');
 
@@ -131,6 +138,7 @@ export function FeeStructureForm({ schoolId }: Props) {
 
   /* Load existing fee data when a single month + grade is selected */
   useEffect(() => {
+    if (skipAmountsRef.current) { skipAmountsRef.current = false; return; }
     if (selectedMonths.length === 1 && grade) {
       const existing = allRecords.find(
         (r) => r.month === selectedMonths[0] && r.grade === grade,
@@ -156,6 +164,31 @@ export function FeeStructureForm({ schoolId }: Props) {
     }
   }, [selectedMonths, grade, allRecords]);
 
+  /* Overlay the user's private draft (if any) once records have loaded. */
+  useEffect(() => {
+    if (loadingRecords || draftAppliedRef.current) return;
+    (async () => {
+      const d = await draft.loadDraft();
+      if (d) {
+        draftAppliedRef.current = true;
+        skipAmountsRef.current = true;
+        setSelectedMonths(d.selectedMonths);
+        setGrade(d.grade);
+        setAmounts(d.amounts);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingRecords]);
+
+  const handleSaveDraft = async () => {
+    await draft.saveDraft({ selectedMonths, grade, amounts });
+  };
+
+  const handleClearDraft = async () => {
+    await draft.clearDraft();
+    setAmounts(BLANK_AMOUNTS);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedMonths.length === 0) { setError('Please select at least one month.'); return; }
@@ -169,6 +202,7 @@ export function FeeStructureForm({ schoolId }: Props) {
         ),
       );
       showToast('success', `Fee data saved for ${selectedMonths.length} month(s) — ${grade}`);
+      draft.clearDraft();
       await loadRecords();
     } catch (err: unknown) {
       const anyErr = err as { response?: { data?: { message?: string } } };
@@ -264,7 +298,10 @@ export function FeeStructureForm({ schoolId }: Props) {
         </CardContent>
       </Card>
 
+      <FormTabs active={tab} onChange={setTab} dataCount={allRecords.length} />
+
       {/* ── Entry Form ── */}
+      {tab === 'entry' && (
       <form onSubmit={handleSubmit}>
         <Card className="overflow-hidden border-0 shadow-sm">
           <CardHeader className="pb-3 pt-5 px-5">
@@ -365,23 +402,46 @@ export function FeeStructureForm({ schoolId }: Props) {
               ))}
             </div>
 
-            <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
-              <Button
-                type="submit"
-                disabled={saving || selectedMonths.length === 0 || !grade}
-                className="gap-2 bg-amber-600 hover:bg-amber-700 text-white"
-              >
-                {saving
-                  ? <><RefreshCw size={15} className="animate-spin" /> Saving...</>
-                  : <><Save size={15} /> Save {selectedMonths.length > 1 ? `(${selectedMonths.length} Months)` : selectedMonths[0] || ''}</>}
-              </Button>
+            <div className="flex flex-col gap-3 pt-2 border-t border-gray-100">
               <p className="text-xs text-gray-400">
                 Total: BDT {formatAmount(Object.values(amounts).reduce((s, v) => s + v, 0))}
               </p>
+              <DraftActionBar
+                hasDraft={draft.hasDraft}
+                draftSavedAt={draft.draftSavedAt}
+                submitting={saving}
+                onSaveDraft={handleSaveDraft}
+                onClearDraft={handleClearDraft}
+                submitLabel={selectedMonths.length > 1 ? `Submit (${selectedMonths.length} Months)` : `Submit ${selectedMonths[0] || 'Data'}`}
+                disabled={selectedMonths.length === 0 || !grade}
+              />
             </div>
           </CardContent>
         </Card>
       </form>
+      )}
+
+      {tab === 'data' && (
+      <>
+      {!grade && (
+        <Card className="overflow-hidden border-0 shadow-sm">
+          <CardContent className="p-5">
+            <Label className="mb-2 block text-xs font-medium text-gray-600">Select a grade to view its records</Label>
+            <div className="flex flex-wrap gap-2">
+              {GRADES.map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => setGrade(g)}
+                  className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:border-amber-300 hover:text-amber-700"
+                >
+                  {g} {monthsDone[g]?.length ? `(${monthsDone[g].length})` : ''}
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── All Records Table ── */}
       {grade && (
@@ -429,7 +489,7 @@ export function FeeStructureForm({ schoolId }: Props) {
                           selectedMonths.length === 1 && selectedMonths[0] === m ? 'ring-inset ring-2 ring-amber-300' :
                           idx % 2 === 0 ? 'bg-white' : 'bg-amber-50/30'
                         }`}
-                        onClick={() => { setSelectedMonths([m]); setGrade(r.grade); }}
+                        onClick={() => { setSelectedMonths([m]); setGrade(r.grade); setTab('entry'); }}
                       >
                         <td className="px-3 py-3">
                           <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">{m}</span>
@@ -522,6 +582,8 @@ export function FeeStructureForm({ schoolId }: Props) {
             )
           )}
         </Card>
+      )}
+      </>
       )}
     </div>
   );

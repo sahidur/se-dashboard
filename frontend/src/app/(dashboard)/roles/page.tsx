@@ -22,6 +22,14 @@ const MODULE_GROUPS: { label: string; modules: { key: string; label: string; des
       { key: 'programme-overview', label: 'Programme Overview', description: 'Aggregated programme-wide stats page' },
       { key: 'school-information', label: 'School Information', description: 'Browse all schools + school profile view' },
       { key: 'data-collection', label: 'Data Collection (forms)', description: 'My Schools + all sub-forms: basic info, infrastructure, students, teachers, revenue, performance, alumni, activity/event participation, etc.' },
+      { key: 'data-collection-edit', label: 'Edit Submitted Data', description: 'Only the "Update" checkbox matters here. Without it, this role can still create new data-collection records but cannot modify one that has already been submitted.' },
+    ],
+  },
+  {
+    label: 'School Monitoring',
+    modules: [
+      { key: 'school-monitoring', label: 'School Monitoring', description: 'Submit and view observation feedback for assigned schools (Combined / Quality / Operations checklists).' },
+      { key: 'school-monitoring-edit', label: 'Edit / Delete Monitoring', description: 'Only "Update" and "Delete" matter. Submissions are immutable to their author — this permission lets a role edit or delete any submitted monitoring feedback.' },
     ],
   },
   {

@@ -10,6 +10,10 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
+import { FormTabs } from '@/components/data-collection/form-tabs';
+import { useFormDraft } from '@/hooks/use-form-draft';
+import { useAuthStore } from '@/store/auth-store';
 import api from '@/lib/api';
 import { resolveAssetUrl } from '@/lib/utils';
 import type { DcSchool, DcActivityParticipation } from '@/types';
@@ -35,10 +39,11 @@ interface FormState {
   photoUrl: string;
   photoKey: string;
   conductedCount: string;
+  participationRate: string;
 }
 
 const BLANK: FormState = {
-  item: '', month: '', grade: '', activityName: '', photoUrl: '', photoKey: '', conductedCount: '',
+  item: '', month: '', grade: '', activityName: '', photoUrl: '', photoKey: '', conductedCount: '', participationRate: '',
 };
 
 interface Props { schoolId: string }
@@ -46,6 +51,7 @@ interface Props { schoolId: string }
 /* ─── Component ─────────────────────────────────────────── */
 
 export function ActivityParticipationForm({ schoolId }: Props) {
+  const canEditSubmitted = useAuthStore((s) => s.hasPermission('data-collection-edit', 'update'));
   const [school, setSchool] = useState<DcSchool | null>(null);
   const [records, setRecords] = useState<DcActivityParticipation[]>([]);
   const [form, setForm] = useState<FormState>(BLANK);
@@ -58,6 +64,9 @@ export function ActivityParticipationForm({ schoolId }: Props) {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const draft = useFormDraft<FormState>('activity-participation-entry', schoolId);
+  const draftAppliedRef = useRef(false);
+  const [tab, setTab] = useState<'entry' | 'data'>('entry');
 
   const showToast = (type: 'success' | 'error', msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -69,6 +78,29 @@ export function ActivityParticipationForm({ schoolId }: Props) {
     api.get(`/data-collection/schools/${schoolId}`).then(({ data }) => setSchool(data)).catch(() => {});
     loadRecords();
   }, [schoolId]);
+
+  // Overlay the user's private draft (an in-progress unsubmitted new entry).
+  useEffect(() => {
+    if (draftAppliedRef.current) return;
+    (async () => {
+      const d = await draft.loadDraft();
+      if (d) {
+        draftAppliedRef.current = true;
+        setForm(d);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleSaveDraft = async () => {
+    await draft.saveDraft(form);
+  };
+
+  const handleClearDraft = async () => {
+    await draft.clearDraft();
+    setForm(BLANK);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const loadRecords = () => {
     api.get(`/data-collection/activity-participation/school/${schoolId}`)
@@ -125,9 +157,11 @@ export function ActivityParticipationForm({ schoolId }: Props) {
       activityName: rec.activityName ?? '',
       photoUrl: rec.photoUrl ?? '', photoKey: rec.photoKey ?? '',
       conductedCount: String(rec.conductedCount ?? ''),
+      participationRate: rec.participationRate != null ? String(rec.participationRate) : '',
     });
     setEditingId(rec.id);
     setError('');
+    setTab('entry');
     setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
   };
 
@@ -160,9 +194,11 @@ export function ActivityParticipationForm({ schoolId }: Props) {
         photoUrl: form.photoUrl || undefined,
         photoKey: form.photoKey || undefined,
         conductedCount: form.conductedCount !== '' ? Number(form.conductedCount) : 0,
+        participationRate: form.participationRate !== '' ? Number(form.participationRate) : undefined,
       };
       await api.post('/data-collection/activity-participation', payload);
       showToast('success', `Activity data for ${form.month} / ${form.grade} saved.`);
+      await draft.clearDraft();
       resetForm();
       loadRecords();
     } catch (err: any) {
@@ -216,7 +252,10 @@ export function ActivityParticipationForm({ schoolId }: Props) {
         </Card>
       )}
 
+      <FormTabs active={tab} onChange={setTab} dataCount={records.length} />
+
       <div ref={formRef}>
+        {tab === 'entry' && (
         <Card className="overflow-hidden">
           <CardHeader className="pb-2 pt-5 px-6">
             <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-800">
@@ -304,6 +343,21 @@ export function ActivityParticipationForm({ schoolId }: Props) {
                     className="disabled:opacity-50 mb-4"
                   />
 
+                  <Label className="mb-1.5 block text-sm font-medium text-gray-700">
+                    % of Students Participated
+                  </Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="0.1"
+                    disabled={fieldsDisabled}
+                    value={form.participationRate}
+                    onChange={(e) => set('participationRate', e.target.value)}
+                    placeholder="0"
+                    className="disabled:opacity-50 mb-4"
+                  />
+
                   <Label className="mb-1.5 block text-sm font-medium text-gray-700">Photo</Label>
                   {form.photoUrl ? (
                     <div className="flex items-center gap-3 rounded-lg border border-gray-200 p-2">
@@ -354,20 +408,36 @@ export function ActivityParticipationForm({ schoolId }: Props) {
               )}
 
               <div className="flex items-center gap-3">
-                <Button type="submit" disabled={saving || fieldsDisabled || uploading} className="gap-2">
-                  <Save size={15} />
-                  {saving ? 'Saving…' : editingId ? 'Update Record' : 'Save Record'}
-                </Button>
-                {editingId && (
-                  <Button type="button" variant="outline" onClick={resetForm}>Cancel</Button>
+                {editingId ? (
+                  <>
+                    <Button type="submit" disabled={saving || fieldsDisabled || uploading} className="gap-2">
+                      <Save size={15} />
+                      {saving ? 'Saving…' : 'Update Record'}
+                    </Button>
+                    <Button type="button" variant="outline" onClick={resetForm}>Cancel</Button>
+                  </>
+                ) : (
+                  <div className="w-full">
+                    <DraftActionBar
+                      hasDraft={draft.hasDraft}
+                      draftSavedAt={draft.draftSavedAt}
+                      submitting={saving}
+                      onSaveDraft={handleSaveDraft}
+                      onClearDraft={handleClearDraft}
+                      submitLabel="Save Record"
+                      submittingLabel="Saving…"
+                      disabled={fieldsDisabled || uploading}
+                    />
+                  </div>
                 )}
               </div>
             </form>
           </CardContent>
         </Card>
+        )}
       </div>
 
-      {groupedByItem.map(({ item, rows }) => (
+      {tab === 'data' && groupedByItem.map(({ item, rows }) => (
         <Card key={item} className="overflow-hidden">
           <CardHeader className="pb-2 pt-4 px-6">
             <CardTitle className="text-sm font-semibold text-gray-700 flex items-center gap-2">
@@ -413,7 +483,7 @@ export function ActivityParticipationForm({ schoolId }: Props) {
                       <td className="py-2.5 pr-3 text-right text-gray-700 font-medium">{rec.conductedCount}</td>
                       <td className="py-2.5 text-right">
                         <div className="flex justify-end gap-1">
-                          <Button size="sm" variant="ghost" onClick={() => handleEdit(rec)} className="h-6 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50">
+                          <Button size="sm" variant="ghost" disabled={!canEditSubmitted} onClick={() => handleEdit(rec)} title={canEditSubmitted ? undefined : 'You do not have permission to edit submitted data'} className="h-6 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50 disabled:opacity-40 disabled:cursor-not-allowed">
                             Edit
                           </Button>
                           <Button size="sm" variant="ghost" onClick={() => handleDelete(rec.id)} className="h-6 px-2 text-red-500 hover:text-red-700 hover:bg-red-50">
@@ -429,6 +499,16 @@ export function ActivityParticipationForm({ schoolId }: Props) {
           </CardContent>
         </Card>
       ))}
+
+      {tab === 'data' && groupedByItem.length === 0 && (
+        <Card className="overflow-hidden">
+          <CardContent className="flex flex-col items-center justify-center py-14 text-gray-400">
+            <Library size={40} className="mb-3 opacity-20" />
+            <p className="text-sm font-medium">No activity participation records yet.</p>
+            <p className="text-xs mt-1 opacity-70">Use the Fill Form tab to add the first record.</p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

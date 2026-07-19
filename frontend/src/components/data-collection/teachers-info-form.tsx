@@ -11,6 +11,9 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
+import { FormTabs } from '@/components/data-collection/form-tabs';
+import { useFormDraft } from '@/hooks/use-form-draft';
 import api from '@/lib/api';
 import type { DcSchool, DcTeacherIndividual } from '@/types';
 
@@ -119,8 +122,10 @@ export function TeachersInfoForm({ schoolId }: Props) {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [records, setRecords] = useState<DcTeacherIndividual[]>([]);
   const [loadingRecords, setLoadingRecords] = useState(true);
-  const [showTable, setShowTable] = useState(false);
+  const [tab, setTab] = useState<'entry' | 'data'>('entry');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const draft = useFormDraft<FormState>('teachers-info-entry', schoolId);
+  const draftAppliedRef = useRef(false);
 
   const showToast = useCallback((type: 'success' | 'error', msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -151,6 +156,30 @@ export function TeachersInfoForm({ schoolId }: Props) {
   }, [schoolId]);
 
   useEffect(() => { loadRecords(); }, [loadRecords]);
+
+  // Overlay the user's private draft (an in-progress unsubmitted new entry).
+  useEffect(() => {
+    if (draftAppliedRef.current) return;
+    (async () => {
+      const d = await draft.loadDraft();
+      if (d) {
+        draftAppliedRef.current = true;
+        setForm(d);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleSaveDraft = async () => {
+    await draft.saveDraft(form);
+  };
+
+  const handleClearDraft = async () => {
+    await draft.clearDraft();
+    setForm(BLANK_FORM);
+    setFieldErrors({});
+    setError('');
+  };
 
   /* Helpers */
   const setField = <K extends keyof FormState>(k: K, v: FormState[K]) => {
@@ -200,8 +229,9 @@ export function TeachersInfoForm({ schoolId }: Props) {
       });
       showToast('success', `${form.name.trim()} added successfully!`);
       setForm(BLANK_FORM);
+      await draft.clearDraft();
       await loadRecords();
-      setShowTable(true);
+      setTab('data');
     } catch (err: unknown) {
       const anyErr = err as { response?: { data?: { message?: string } } };
       const errText = anyErr?.response?.data?.message ?? 'Failed to save. Please try again.';
@@ -300,7 +330,10 @@ export function TeachersInfoForm({ schoolId }: Props) {
         </CardContent>
       </Card>
 
+      <FormTabs active={tab} onChange={setTab} dataCount={records.length} />
+
       {/* ── Entry Form ── */}
+      {tab === 'entry' && (
       <form onSubmit={handleSubmit}>
         <Card className="overflow-hidden border-0 shadow-sm">
           <CardHeader className="pb-3 pt-5 px-5">
@@ -451,30 +484,24 @@ export function TeachersInfoForm({ schoolId }: Props) {
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-3 pt-2">
-              <Button
-                type="submit"
-                disabled={saving}
-                className="gap-2 bg-pink-600 hover:bg-pink-700 text-white"
-              >
-                {saving
-                  ? <><RefreshCw size={15} className="animate-spin" /> Saving...</>
-                  : <><Save size={15} /> Add Teacher</>}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => { setForm(BLANK_FORM); setFieldErrors({}); setError(''); }}
-                className="text-gray-500"
-              >
-                Clear
-              </Button>
+            <div className="pt-2">
+              <DraftActionBar
+                hasDraft={draft.hasDraft}
+                draftSavedAt={draft.draftSavedAt}
+                submitting={saving}
+                onSaveDraft={handleSaveDraft}
+                onClearDraft={handleClearDraft}
+                submitLabel="Add Teacher"
+                submittingLabel="Saving..."
+              />
             </div>
           </CardContent>
         </Card>
       </form>
+      )}
 
       {/* ── Responses Table ── */}
+      {tab === 'data' && (
       <Card className="overflow-hidden border-0 shadow-sm">
         <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
           <div className="flex items-center gap-2">
@@ -483,13 +510,6 @@ export function TeachersInfoForm({ schoolId }: Props) {
             <span className="rounded-full bg-pink-100 px-2 py-0.5 text-xs font-bold text-pink-700">{records.length}</span>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowTable((p) => !p)}
-              className="text-xs font-medium text-pink-600 hover:underline"
-            >
-              {showTable ? 'Hide' : 'Show'} Table
-            </button>
             <Button variant="outline" size="sm" onClick={loadRecords} disabled={loadingRecords} className="gap-1.5 text-xs">
               <RefreshCw size={13} className={loadingRecords ? 'animate-spin' : ''} />
               Refresh
@@ -497,7 +517,7 @@ export function TeachersInfoForm({ schoolId }: Props) {
           </div>
         </div>
 
-        {showTable && (
+        {(
           loadingRecords ? (
             <div className="flex items-center justify-center py-12">
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-pink-200 border-t-pink-600" />
@@ -577,6 +597,7 @@ export function TeachersInfoForm({ schoolId }: Props) {
           )
         )}
       </Card>
+      )}
     </div>
   );
 }

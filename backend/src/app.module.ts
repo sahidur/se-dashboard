@@ -13,6 +13,7 @@ import { FilesModule } from './files/files.module';
 import { GeoLocationsModule } from './geo-locations/geo-locations.module';
 import { RecycleBinModule } from './recycle-bin/recycle-bin.module';
 import { DataCollectionModule } from './data-collection/data-collection.module';
+import { SchoolMonitoringModule } from './school-monitoring/school-monitoring.module';
 import { AuditModule } from './common/audit/audit.module';
 
 @Module({
@@ -70,6 +71,7 @@ import { AuditModule } from './common/audit/audit.module';
     GeoLocationsModule,
     RecycleBinModule,
     DataCollectionModule,
+    SchoolMonitoringModule,
     AuditModule,
   ],
   providers: [

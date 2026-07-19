@@ -10,6 +10,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
+import { FormTabs } from '@/components/data-collection/form-tabs';
+import { useFormDraft } from '@/hooks/use-form-draft';
 import api from '@/lib/api';
 import type { DcSchool } from '@/types';
 
@@ -91,6 +94,9 @@ export function ClassroomStatusForm({ schoolId }: Props) {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<ClassroomFieldErrors>({});
+  const draft = useFormDraft<FormState>('classroom-status', schoolId);
+  const [tab, setTab] = useState<'entry' | 'data'>('entry');
+  const [savedRecord, setSavedRecord] = useState<FormState | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -102,14 +108,16 @@ export function ClassroomStatusForm({ schoolId }: Props) {
         setSchool(dashRes.data.school);
         const d = infraRes.data;
         if (d) {
-          setForm({
+          const loaded: FormState = {
             digitallyEquippedClassrooms: d.digitallyEquippedClassrooms ?? 0,
             floorSittingClassrooms: d.floorSittingClassrooms ?? 0,
             classroomsWithWhiteboard: d.classroomsWithWhiteboard ?? 0,
             classroomsWithBlackboard: d.classroomsWithBlackboard ?? 0,
             classroomNewFurniture: d.classroomNewFurniture ?? null,
             classroomRenovationRequired: d.classroomRenovationRequired ?? null,
-          });
+          };
+          setForm(loaded);
+          setSavedRecord(loaded);
         }
       } catch {
         router.push('/data-collection/schools');
@@ -119,6 +127,29 @@ export function ClassroomStatusForm({ schoolId }: Props) {
     }
     load();
   }, [schoolId, router]);
+
+  // Overlay the user's private draft (if any) once initial data has loaded.
+  useEffect(() => {
+    if (loading) return;
+    (async () => {
+      const d = await draft.loadDraft();
+      if (d) setForm(d);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  const handleSaveDraft = async () => {
+    await draft.saveDraft(form);
+    setError('');
+    setFieldErrors({});
+  };
+
+  const handleClearDraft = async () => {
+    await draft.clearDraft();
+    setForm(defaultState);
+    setError('');
+    setFieldErrors({});
+  };
 
   const setNum = (key: CountKey, val: string) =>
     setForm((prev) => ({ ...prev, [key]: parseInt(val, 10) || 0 }));
@@ -155,6 +186,8 @@ export function ClassroomStatusForm({ schoolId }: Props) {
         classroomNewFurniture: form.classroomNewFurniture ?? false,
         classroomRenovationRequired: form.classroomRenovationRequired ?? false,
       });
+      await draft.clearDraft();
+      setSavedRecord(form);
       setSaved(true);
     } catch (err: unknown) {
       const anyErr = err as { response?: { data?: { message?: string } } };
@@ -194,7 +227,7 @@ export function ClassroomStatusForm({ schoolId }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5 pb-10">
+    <div className="space-y-5 pb-10">
 
       {/* ── School Info ─────────────────────────── */}
       {school && (
@@ -233,6 +266,16 @@ export function ClassroomStatusForm({ schoolId }: Props) {
           </div>
         </div>
       )}
+
+      <FormTabs
+        active={tab}
+        onChange={setTab}
+        dataLabel="View Data"
+        dataCount={savedRecord ? 1 : 0}
+      />
+
+      {tab === 'entry' && (
+      <form onSubmit={handleSubmit} className="space-y-5">
 
       {/* Error */}
       {error && (
@@ -307,29 +350,58 @@ export function ClassroomStatusForm({ schoolId }: Props) {
       </Card>
 
       {/* Submit */}
-      <div className="flex justify-end gap-3 pt-2">
-        <Button type="button" variant="outline" onClick={() => router.back()}>
-          Cancel
-        </Button>
-        <Button
-          type="submit"
-          disabled={saving}
-          className="min-w-[160px] bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 shadow-sm"
-        >
-          {saving ? (
-            <>
-              <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-              Saving...
-            </>
-          ) : (
-            <>
-              <Save size={16} className="mr-1.5" />
-              Save Classroom Status
-            </>
-          )}
-        </Button>
+      <div className="pt-2">
+        <DraftActionBar
+          hasDraft={draft.hasDraft}
+          draftSavedAt={draft.draftSavedAt}
+          submitting={saving}
+          onSaveDraft={handleSaveDraft}
+          onClearDraft={handleClearDraft}
+          submitLabel="Submit Classroom Status"
+        />
       </div>
-    </form>
+      </form>
+      )}
+
+      {tab === 'data' && (
+        <Card className="overflow-hidden border-0 shadow-sm">
+          <CardHeader className="pb-3 pt-5 px-5">
+            <CardTitle className="text-base font-semibold text-gray-800">Submitted Classroom Data</CardTitle>
+          </CardHeader>
+          <CardContent className="px-5 pb-5">
+            {!savedRecord ? (
+              <div className="flex flex-col items-center justify-center py-14 text-gray-400">
+                <Columns3 size={40} className="mb-3 opacity-20" />
+                <p className="text-sm font-medium">No classroom data submitted yet.</p>
+                <p className="text-xs mt-1 opacity-70">Use the Fill Form tab to add it.</p>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  {COUNT_FIELDS.map(({ key, label }) => (
+                    <SummaryItem key={key} label={label} value={String(savedRecord[key])} />
+                  ))}
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <SummaryItem label="New Designed Furniture" value={savedRecord.classroomNewFurniture ? 'Yes' : 'No'} />
+                  <SummaryItem label="Renovation Required" value={savedRecord.classroomRenovationRequired ? 'Yes' : 'No'} />
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ── Read-only summary item ───────────────────── */
+function SummaryItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">{label}</p>
+      <p className="mt-0.5 text-sm font-semibold text-gray-800">{value}</p>
+    </div>
   );
 }
 

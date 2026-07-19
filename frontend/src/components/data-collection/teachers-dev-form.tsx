@@ -11,6 +11,9 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
+import { FormTabs } from '@/components/data-collection/form-tabs';
+import { useFormDraft } from '@/hooks/use-form-draft';
 import api from '@/lib/api';
 import type { DcSchool, DcTeachersDevelopment } from '@/types';
 
@@ -35,6 +38,9 @@ interface FormState {
   subjectBasedTraining: number;
   leadershipTraining: number;
   others: number;
+  teacherDropoutRate: number;
+  headTeacherDropoutRate: number;
+  headTeacherLeadershipGood: boolean;
 }
 
 const BLANK_FORM: FormState = {
@@ -45,9 +51,12 @@ const BLANK_FORM: FormState = {
   subjectBasedTraining: 0,
   leadershipTraining: 0,
   others: 0,
+  teacherDropoutRate: 0,
+  headTeacherDropoutRate: 0,
+  headTeacherLeadershipGood: true,
 };
 
-const DEV_FIELDS: { key: keyof FormState; label: string }[] = [
+const DEV_FIELDS: { key: keyof Omit<FormState, 'headTeacherLeadershipGood'>; label: string }[] = [
   { key: 'onlineRefresher',     label: 'Online Refresher' },
   { key: 'offlineRefresher',    label: 'Offline Refresher' },
   { key: 'developmentForum',    label: 'Development Forum' },
@@ -73,6 +82,9 @@ export function TeachersDevForm({ schoolId }: Props) {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [allRecords, setAllRecords] = useState<DcTeachersDevelopment[]>([]);
   const [loadingAll, setLoadingAll] = useState(true);
+  const draft = useFormDraft<{ month: string; form: FormState }>('teachers-development', schoolId);
+  const draftAppliedRef = useRef(false);
+  const [tab, setTab] = useState<'entry' | 'data'>('entry');
 
   const showToast = useCallback((type: 'success' | 'error', msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -104,6 +116,29 @@ export function TeachersDevForm({ schoolId }: Props) {
 
   useEffect(() => { loadAllRecords(); }, [loadAllRecords]);
 
+  /* Overlay the user's private draft (if any) once records have loaded. */
+  useEffect(() => {
+    if (loadingAll || draftAppliedRef.current) return;
+    (async () => {
+      const d = await draft.loadDraft();
+      if (d) {
+        draftAppliedRef.current = true;
+        setMonth(d.month);
+        setForm({ ...BLANK_FORM, ...d.form });
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingAll]);
+
+  const handleSaveDraft = async () => {
+    await draft.saveDraft({ month, form });
+  };
+
+  const handleClearDraft = async () => {
+    await draft.clearDraft();
+    setForm(BLANK_FORM);
+  };
+
   /* When month changes, load existing entry for that month */
   const loadEntry = useCallback(async (m: string) => {
     if (!m) return;
@@ -123,6 +158,9 @@ export function TeachersDevForm({ schoolId }: Props) {
           subjectBasedTraining: existing.subjectBasedTraining,
           leadershipTraining:  existing.leadershipTraining,
           others:              existing.others,
+          teacherDropoutRate:      Number(existing.teacherDropoutRate ?? 0),
+          headTeacherDropoutRate:  Number(existing.headTeacherDropoutRate ?? 0),
+          headTeacherLeadershipGood: existing.headTeacherLeadershipGood ?? true,
         });
         setIsEditing(true);
       } else {
@@ -139,6 +177,7 @@ export function TeachersDevForm({ schoolId }: Props) {
 
   const handleMonthChange = (m: string) => {
     setMonth(m);
+    setTab('entry');
     loadEntry(m);
   };
 
@@ -159,6 +198,7 @@ export function TeachersDevForm({ schoolId }: Props) {
       const successText = `${month} development data saved successfully!`;
       showToast('success', successText);
       setIsEditing(true);
+      draft.clearDraft();
       await loadAllRecords();
     } catch (err: unknown) {
       const anyErr = err as { response?: { data?: { message?: string } } };
@@ -260,7 +300,10 @@ export function TeachersDevForm({ schoolId }: Props) {
         </CardContent>
       </Card>
 
+      <FormTabs active={tab} onChange={setTab} dataCount={allRecords.length} />
+
       {/* ── Entry Form ── */}
+      {tab === 'entry' && (
       <form onSubmit={handleSubmit}>
         <Card className="overflow-hidden border-0 shadow-sm">
           <CardHeader className="pb-3 pt-5 px-5">
@@ -328,19 +371,66 @@ export function TeachersDevForm({ schoolId }: Props) {
                   ))}
                 </div>
 
+                {/* Retention / Leadership metrics (feed the Status Breakdown grades) */}
+                <div className="rounded-xl border border-rose-100 bg-rose-50/40 p-4">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-rose-700/80">
+                    Retention &amp; Leadership
+                  </p>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <div>
+                      <Label className="mb-1.5 block text-xs font-medium text-gray-600">Teacher Dropout Rate (%)</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step="0.1"
+                        value={form.teacherDropoutRate}
+                        onChange={(e) => setField('teacherDropoutRate', Number(e.target.value) || 0)}
+                        placeholder="0"
+                        disabled={!month}
+                      />
+                    </div>
+                    <div>
+                      <Label className="mb-1.5 block text-xs font-medium text-gray-600">Head Teacher Dropout Rate (%)</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step="0.1"
+                        value={form.headTeacherDropoutRate}
+                        onChange={(e) => setField('headTeacherDropoutRate', Number(e.target.value) || 0)}
+                        placeholder="0"
+                        disabled={!month}
+                      />
+                    </div>
+                    <div>
+                      <Label className="mb-1.5 block text-xs font-medium text-gray-600">Head Teacher Leadership</Label>
+                      <select
+                        value={form.headTeacherLeadershipGood ? 'yes' : 'no'}
+                        onChange={(e) => setForm((prev) => ({ ...prev, headTeacherLeadershipGood: e.target.value === 'yes' }))}
+                        disabled={!month}
+                        className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300 disabled:opacity-50"
+                      >
+                        <option value="yes">Good / Effective</option>
+                        <option value="no">Needs Improvement</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Actions */}
-                <div className="flex items-center gap-3 pt-2">
-                  <Button
-                    type="submit"
-                    disabled={saving || !month}
-                    className="gap-2 bg-rose-600 hover:bg-rose-700 text-white"
-                  >
-                    {saving
-                      ? <><RefreshCw size={15} className="animate-spin" /> Saving...</>
-                      : <><Save size={15} /> {isEditing ? 'Update' : 'Save'} {month || 'Entry'}</>}
-                  </Button>
+                <div className="pt-2">
+                  <DraftActionBar
+                    hasDraft={draft.hasDraft}
+                    draftSavedAt={draft.draftSavedAt}
+                    submitting={saving}
+                    onSaveDraft={handleSaveDraft}
+                    onClearDraft={handleClearDraft}
+                    submitLabel={month ? `Submit ${month}` : 'Submit Data'}
+                    disabled={!month}
+                  />
                   {!month && (
-                    <p className="text-xs text-gray-400">Select a month to enable saving</p>
+                    <p className="mt-2 text-xs text-gray-400">Select a month to enable saving</p>
                   )}
                 </div>
               </>
@@ -348,8 +438,10 @@ export function TeachersDevForm({ schoolId }: Props) {
           </CardContent>
         </Card>
       </form>
+      )}
 
       {/* ── All Responses Table ── */}
+      {tab === 'data' && (
       <Card className="overflow-hidden border-0 shadow-sm">
         <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
           <div className="flex items-center gap-2">
@@ -443,6 +535,7 @@ export function TeachersDevForm({ schoolId }: Props) {
           </div>
         )}
       </Card>
+      )}
     </div>
   );
 }

@@ -42,3 +42,73 @@
 .animate-shake {
   animation: shake 0.3s ease-out;
 }
+
+/* ------------------------------------------------------------------ */
+/* System-wide readability overrides                                   */
+/* The app makes heavy use of Tailwind's light gray text utilities     */
+/* (text-gray-400/500) for labels, captions and helper text, and       */
+/* relies on text-xs/text-sm for a lot of primary content. Both make   */
+/* the UI hard to read (low contrast + small size). These overrides    */
+/* darken the gray palette and bump the small font sizes everywhere,   */
+/* without having to touch every component individually.               */
+/* Placed unlayered (after @tailwind utilities) so normal cascade      */
+/* order lets them win over the generated utility classes.             */
+/* ------------------------------------------------------------------ */
+:root {
+  --readable-body-scale: 1;
+}
+
+html {
+  font-size: 16.5px;
+}
+
+body {
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+/* Darken low-contrast gray text used for labels/captions/helper text */
+.text-gray-300 {
+  color: #9ca3af !important; /* was gray-300 (#d1d5db), now gray-400 */
+}
+
+.text-gray-400 {
+  color: #6b7280 !important; /* was gray-400 (#9ca3af), now gray-500 */
+}
+
+.text-gray-500 {
+  color: #4b5563 !important; /* was gray-500 (#6b7280), now gray-600 */
+}
+
+.text-gray-600 {
+  color: #374151 !important; /* was gray-600 (#4b5563), now gray-700 */
+}
+
+/* Placeholders follow the same darkened scale for legibility */
+.placeholder\:text-gray-400::placeholder {
+  color: #6b7280 !important;
+}
+
+.placeholder\:text-gray-500::placeholder {
+  color: #4b5563 !important;
+}
+
+/* Bump the two smallest Tailwind text sizes used pervasively for      */
+/* labels, table cells and helper text so nothing reads as "tiny".     */
+.text-xs {
+  font-size: 0.8125rem !important; /* 13px, was 12px */
+  line-height: 1.25rem !important;
+}
+
+.text-sm {
+  font-size: 0.9375rem !important; /* 15px, was 14px */
+  line-height: 1.4rem !important;
+}
+
+/* Slightly heavier weight on label-style small gray text so it reads  */
+/* as an intentional label rather than faded/disabled text.            */
+label,
+.form-label {
+  color: #374151;
+  font-weight: 500;
+}

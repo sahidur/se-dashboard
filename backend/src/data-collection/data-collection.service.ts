@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike, In } from 'typeorm';
 import { DcSchool } from './entities/dc-school.entity';
@@ -22,6 +22,7 @@ import { DcCocurricular } from './entities/dc-cocurricular.entity';
 import { DcStudentsPerformance } from './entities/dc-students-performance.entity';
 import { DcActivityParticipation } from './entities/dc-activity-participation.entity';
 import { DcEventParticipation } from './entities/dc-event-participation.entity';
+import { DcFormDraft } from './entities/dc-form-draft.entity';
 import {
   CreateDcSchoolDto,
   UpdateDcSchoolDto,
@@ -46,6 +47,7 @@ import {
   UpsertActivityParticipationDto,
   CreateEventParticipationDto,
   UpdateEventParticipationDto,
+  UpsertFormDraftDto,
 } from './dto';
 import { UsersService } from '../users/users.service';
 
@@ -72,6 +74,7 @@ export class DataCollectionService {
     @InjectRepository(DcCocurricular) private cocurricularRepo: Repository<DcCocurricular>,
     @InjectRepository(DcStudentsPerformance) private studentsPerfRepo: Repository<DcStudentsPerformance>,
     @InjectRepository(DcActivityParticipation) private activityPartRepo: Repository<DcActivityParticipation>,
+    @InjectRepository(DcFormDraft) private formDraftRepo: Repository<DcFormDraft>,
     @InjectRepository(DcEventParticipation) private eventPartRepo: Repository<DcEventParticipation>,
     private usersService: UsersService,
   ) {}
@@ -106,6 +109,35 @@ export class DataCollectionService {
   /** @deprecated use validateSchoolAccess */
   private async validateSchoolOwnership(schoolId: string, userId: string): Promise<DcSchool> {
     return this.validateSchoolAccess(schoolId, userId, []);
+  }
+
+  /**
+   * Whether the user is allowed to overwrite/edit data that has already been
+   * submitted for a form. Super Admin/Admin always can (matches their
+   * existing full-access bypass elsewhere in this service); any other role
+   * needs the dedicated `data-collection-edit:update` permission, granted
+   * per-role in Role Management. Roles WITHOUT it can still create brand-new
+   * records (governed by the normal `data-collection:create` permission) —
+   * they just can't modify a record that already exists.
+   */
+  private async canEditSubmittedData(userId: string, roles: string[]): Promise<boolean> {
+    if (this.isAdminRole(roles)) return true;
+    const fullUser = await this.usersService.findOneById(userId);
+    const permissions = fullUser?.roles?.flatMap((r) => r.permissions || []) ?? [];
+    return permissions.some(
+      (p) => p.module === 'data-collection-edit' && p.action === 'update',
+    );
+  }
+
+  /** Throws 403 if `existing` is true (i.e. this call would overwrite a previously-submitted record) and the user lacks edit-submitted-data permission. */
+  private async assertCanEditExisting(existing: boolean, userId: string, roles: string[]): Promise<void> {
+    if (!existing) return;
+    const allowed = await this.canEditSubmittedData(userId, roles);
+    if (!allowed) {
+      throw new ForbiddenException(
+        'This data has already been submitted. You do not have permission to edit submitted data — ask an administrator to grant "Edit Submitted Data" in Role Management.',
+      );
+    }
   }
 
   // ===================== School CRUD =====================
@@ -231,9 +263,10 @@ export class DataCollectionService {
 
   // ===================== Basic Information =====================
 
-  async upsertBasicInfo(dto: UpsertBasicInfoDto, userId: string): Promise<DcBasicInfo> {
-    await this.validateSchoolOwnership(dto.schoolId, userId);
+  async upsertBasicInfo(dto: UpsertBasicInfoDto, userId: string, roles: string[]): Promise<DcBasicInfo> {
+    await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.basicInfoRepo.findOne({ where: { schoolId: dto.schoolId } });
+    await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       Object.assign(record, dto);
     } else {
@@ -242,16 +275,17 @@ export class DataCollectionService {
     return this.basicInfoRepo.save(record);
   }
 
-  async getBasicInfo(schoolId: string, userId: string): Promise<DcBasicInfo | null> {
-    await this.validateSchoolOwnership(schoolId, userId);
+  async getBasicInfo(schoolId: string, userId: string, roles: string[]): Promise<DcBasicInfo | null> {
+    await this.validateSchoolAccess(schoolId, userId, roles);
     return this.basicInfoRepo.findOne({ where: { schoolId } });
   }
 
   // ===================== Infrastructure =====================
 
-  async upsertInfrastructure(dto: UpsertInfrastructureDto, userId: string): Promise<DcInfrastructure> {
-    await this.validateSchoolOwnership(dto.schoolId, userId);
+  async upsertInfrastructure(dto: UpsertInfrastructureDto, userId: string, roles: string[]): Promise<DcInfrastructure> {
+    await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.infraRepo.findOne({ where: { schoolId: dto.schoolId } });
+    await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       Object.assign(record, dto);
     } else {
@@ -260,18 +294,19 @@ export class DataCollectionService {
     return this.infraRepo.save(record);
   }
 
-  async getInfrastructure(schoolId: string, userId: string): Promise<DcInfrastructure | null> {
-    await this.validateSchoolOwnership(schoolId, userId);
+  async getInfrastructure(schoolId: string, userId: string, roles: string[]): Promise<DcInfrastructure | null> {
+    await this.validateSchoolAccess(schoolId, userId, roles);
     return this.infraRepo.findOne({ where: { schoolId } });
   }
 
   // ===================== Students Info =====================
 
-  async upsertStudentsInfo(dto: UpsertStudentsInfoDto, userId: string): Promise<DcStudentsInfo> {
-    await this.validateSchoolOwnership(dto.schoolId, userId);
+  async upsertStudentsInfo(dto: UpsertStudentsInfoDto, userId: string, roles: string[]): Promise<DcStudentsInfo> {
+    await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.studentsRepo.findOne({
       where: { schoolId: dto.schoolId, month: dto.month, grade: dto.grade },
     });
+    await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       Object.assign(record, dto);
     } else {
@@ -280,8 +315,8 @@ export class DataCollectionService {
     return this.studentsRepo.save(record);
   }
 
-  async getStudentsInfo(schoolId: string, userId: string): Promise<DcStudentsInfo[]> {
-    await this.validateSchoolOwnership(schoolId, userId);
+  async getStudentsInfo(schoolId: string, userId: string, roles: string[]): Promise<DcStudentsInfo[]> {
+    await this.validateSchoolAccess(schoolId, userId, roles);
     // Fetch all, sort in JS by chronological month then grade
     const MONTH_ORDER = [
       'January','February','March','April','May','June',
@@ -301,9 +336,10 @@ export class DataCollectionService {
 
   // ===================== Teachers Info =====================
 
-  async upsertTeachersInfo(dto: UpsertTeachersInfoDto, userId: string): Promise<DcTeachersInfo> {
-    await this.validateSchoolOwnership(dto.schoolId, userId);
+  async upsertTeachersInfo(dto: UpsertTeachersInfoDto, userId: string, roles: string[]): Promise<DcTeachersInfo> {
+    await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.teachersRepo.findOne({ where: { schoolId: dto.schoolId } });
+    await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       Object.assign(record, dto);
     } else {
@@ -312,8 +348,8 @@ export class DataCollectionService {
     return this.teachersRepo.save(record);
   }
 
-  async getTeachersInfo(schoolId: string, userId: string): Promise<DcTeachersInfo | null> {
-    await this.validateSchoolOwnership(schoolId, userId);
+  async getTeachersInfo(schoolId: string, userId: string, roles: string[]): Promise<DcTeachersInfo | null> {
+    await this.validateSchoolAccess(schoolId, userId, roles);
     return this.teachersRepo.findOne({ where: { schoolId } });
   }
 
@@ -346,11 +382,12 @@ export class DataCollectionService {
 
   // ===================== Teachers Development (per month) =====================
 
-  async upsertTeachersDevelopment(dto: UpsertTeachersDevelopmentDto, userId: string): Promise<DcTeachersDevelopment> {
-    await this.validateSchoolOwnership(dto.schoolId, userId);
+  async upsertTeachersDevelopment(dto: UpsertTeachersDevelopmentDto, userId: string, roles: string[]): Promise<DcTeachersDevelopment> {
+    await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.teachersDevRepo.findOne({
       where: { schoolId: dto.schoolId, month: dto.month },
     });
+    await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       Object.assign(record, dto);
     } else {
@@ -359,8 +396,8 @@ export class DataCollectionService {
     return this.teachersDevRepo.save(record);
   }
 
-  async getTeachersDevelopment(schoolId: string, userId: string): Promise<DcTeachersDevelopment[]> {
-    await this.validateSchoolOwnership(schoolId, userId);
+  async getTeachersDevelopment(schoolId: string, userId: string, roles: string[]): Promise<DcTeachersDevelopment[]> {
+    await this.validateSchoolAccess(schoolId, userId, roles);
     const MONTH_ORDER = [
       'January','February','March','April','May','June',
       'July','August','September','October','November','December',
@@ -374,9 +411,10 @@ export class DataCollectionService {
 
   // ===================== Revenue =====================
 
-  async upsertRevenue(dto: UpsertRevenueDto, userId: string): Promise<DcRevenue> {
-    await this.validateSchoolOwnership(dto.schoolId, userId);
+  async upsertRevenue(dto: UpsertRevenueDto, userId: string, roles: string[]): Promise<DcRevenue> {
+    await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.revenueRepo.findOne({ where: { schoolId: dto.schoolId } });
+    await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       Object.assign(record, dto);
     } else {
@@ -385,16 +423,17 @@ export class DataCollectionService {
     return this.revenueRepo.save(record);
   }
 
-  async getRevenue(schoolId: string, userId: string): Promise<DcRevenue | null> {
-    await this.validateSchoolOwnership(schoolId, userId);
+  async getRevenue(schoolId: string, userId: string, roles: string[]): Promise<DcRevenue | null> {
+    await this.validateSchoolAccess(schoolId, userId, roles);
     return this.revenueRepo.findOne({ where: { schoolId } });
   }
 
   // ===================== Performance =====================
 
-  async upsertPerformance(dto: UpsertPerformanceDto, userId: string): Promise<DcPerformance> {
-    await this.validateSchoolOwnership(dto.schoolId, userId);
+  async upsertPerformance(dto: UpsertPerformanceDto, userId: string, roles: string[]): Promise<DcPerformance> {
+    await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.performanceRepo.findOne({ where: { schoolId: dto.schoolId } });
+    await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       Object.assign(record, dto);
     } else {
@@ -403,8 +442,8 @@ export class DataCollectionService {
     return this.performanceRepo.save(record);
   }
 
-  async getPerformance(schoolId: string, userId: string): Promise<DcPerformance | null> {
-    await this.validateSchoolOwnership(schoolId, userId);
+  async getPerformance(schoolId: string, userId: string, roles: string[]): Promise<DcPerformance | null> {
+    await this.validateSchoolAccess(schoolId, userId, roles);
     return this.performanceRepo.findOne({ where: { schoolId } });
   }
 
@@ -421,10 +460,11 @@ export class DataCollectionService {
     return this.alumniRepo.find({ where: { schoolId }, order: { createdAt: 'DESC' } });
   }
 
-  async updateAlumni(id: string, dto: UpdateAlumniDto, userId: string): Promise<DcAlumni> {
+  async updateAlumni(id: string, dto: UpdateAlumniDto, userId: string, roles: string[]): Promise<DcAlumni> {
     const record = await this.alumniRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Alumni record not found');
-    await this.validateSchoolOwnership(record.schoolId, userId);
+    await this.validateSchoolAccess(record.schoolId, userId, roles);
+    await this.assertCanEditExisting(true, userId, roles);
     Object.assign(record, dto);
     return this.alumniRepo.save(record);
   }
@@ -444,6 +484,7 @@ export class DataCollectionService {
       where: { schoolId: dto.schoolId, month: dto.month, grade: dto.grade },
       relations: ['createdBy', 'updatedBy'],
     });
+    await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       const prev = { ...record };
       Object.assign(record, dto, { updatedById: userId });
@@ -489,6 +530,7 @@ export class DataCollectionService {
   async upsertRevenueBudgetTotal(dto: UpsertRevenueBudgetTotalDto, userId: string, roles: string[]): Promise<DcRevenueBudgetTotal> {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.revBudgetTotalRepo.findOne({ where: { schoolId: dto.schoolId } });
+    await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       Object.assign(record, dto, { updatedById: userId });
     } else {
@@ -513,6 +555,7 @@ export class DataCollectionService {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
     const collectionPct = this.calcPct(dto.tuitionFeeTarget ?? 0, dto.tuitionFeeAchievement ?? 0);
     let record = await this.revBudgetMonthlyRepo.findOne({ where: { schoolId: dto.schoolId, month: dto.month } });
+    await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       Object.assign(record, dto, { collectionPct, updatedById: userId });
     } else {
@@ -531,6 +574,7 @@ export class DataCollectionService {
   async upsertRevenueActualTotal(dto: UpsertRevenueActualTotalDto, userId: string, roles: string[]): Promise<DcRevenueActualTotal> {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.revActualTotalRepo.findOne({ where: { schoolId: dto.schoolId } });
+    await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       Object.assign(record, dto, { updatedById: userId });
     } else {
@@ -550,6 +594,7 @@ export class DataCollectionService {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
     const collectionPct = this.calcPct(dto.tuitionFeeTarget ?? 0, dto.tuitionFeeAchievement ?? 0);
     let record = await this.revActualMonthlyRepo.findOne({ where: { schoolId: dto.schoolId, month: dto.month } });
+    await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       Object.assign(record, dto, { collectionPct, updatedById: userId });
     } else {
@@ -565,9 +610,10 @@ export class DataCollectionService {
 
   // ===================== Pedagogical Achievements =====================
 
-  async upsertPedagogicalAchievement(dto: UpsertPedagogicalAchievementDto, userId: string): Promise<DcPedagogicalAchievement> {
-    await this.validateSchoolOwnership(dto.schoolId, userId);
+  async upsertPedagogicalAchievement(dto: UpsertPedagogicalAchievementDto, userId: string, roles: string[]): Promise<DcPedagogicalAchievement> {
+    await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.pedagAchievRepo.findOne({ where: { schoolId: dto.schoolId, year: dto.year } });
+    await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       Object.assign(record, dto);
     } else {
@@ -576,25 +622,26 @@ export class DataCollectionService {
     return this.pedagAchievRepo.save(record);
   }
 
-  async getPedagogicalAchievements(schoolId: string, userId: string): Promise<DcPedagogicalAchievement[]> {
-    await this.validateSchoolOwnership(schoolId, userId);
+  async getPedagogicalAchievements(schoolId: string, userId: string, roles: string[]): Promise<DcPedagogicalAchievement[]> {
+    await this.validateSchoolAccess(schoolId, userId, roles);
     return this.pedagAchievRepo.find({ where: { schoolId }, order: { year: 'DESC' } });
   }
 
-  async deletePedagogicalAchievement(id: string, userId: string): Promise<void> {
+  async deletePedagogicalAchievement(id: string, userId: string, roles: string[]): Promise<void> {
     const record = await this.pedagAchievRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Record not found');
-    await this.validateSchoolOwnership(record.schoolId, userId);
+    await this.validateSchoolAccess(record.schoolId, userId, roles);
     await this.pedagAchievRepo.remove(record);
   }
 
   // ===================== Co-curricular =====================
 
-  async upsertCocurricular(dto: UpsertCocurricularDto, userId: string): Promise<DcCocurricular> {
-    await this.validateSchoolOwnership(dto.schoolId, userId);
+  async upsertCocurricular(dto: UpsertCocurricularDto, userId: string, roles: string[]): Promise<DcCocurricular> {
+    await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.cocurricularRepo.findOne({
       where: { schoolId: dto.schoolId, month: dto.month, grade: dto.grade },
     });
+    await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       Object.assign(record, dto);
     } else {
@@ -603,15 +650,15 @@ export class DataCollectionService {
     return this.cocurricularRepo.save(record);
   }
 
-  async getCocurricular(schoolId: string, userId: string): Promise<DcCocurricular[]> {
-    await this.validateSchoolOwnership(schoolId, userId);
+  async getCocurricular(schoolId: string, userId: string, roles: string[]): Promise<DcCocurricular[]> {
+    await this.validateSchoolAccess(schoolId, userId, roles);
     return this.cocurricularRepo.find({ where: { schoolId }, order: { month: 'ASC', grade: 'ASC' } });
   }
 
-  async deleteCocurricular(id: string, userId: string): Promise<void> {
+  async deleteCocurricular(id: string, userId: string, roles: string[]): Promise<void> {
     const record = await this.cocurricularRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Record not found');
-    await this.validateSchoolOwnership(record.schoolId, userId);
+    await this.validateSchoolAccess(record.schoolId, userId, roles);
     await this.cocurricularRepo.remove(record);
   }
 
@@ -622,6 +669,7 @@ export class DataCollectionService {
     let record = await this.studentsPerfRepo.findOne({
       where: { schoolId: dto.schoolId, grade: dto.grade, examName: dto.examName },
     });
+    await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       Object.assign(record, dto);
     } else {
@@ -649,6 +697,7 @@ export class DataCollectionService {
     let record = await this.activityPartRepo.findOne({
       where: { schoolId: dto.schoolId, item: dto.item, month: dto.month, grade: dto.grade },
     });
+    await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       Object.assign(record, dto);
     } else {
@@ -687,6 +736,7 @@ export class DataCollectionService {
     const record = await this.eventPartRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Event participation record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
+    await this.assertCanEditExisting(true, userId, roles);
     Object.assign(record, dto);
     record.totalAwarded = (record.maleAwarded || 0) + (record.femaleAwarded || 0) + (record.othersAwarded || 0);
     return this.eventPartRepo.save(record);
@@ -994,5 +1044,52 @@ export class DataCollectionService {
         totalCategories: 6,
       },
     };
+  }
+
+  // ===================== Form Drafts (server-side, per-user) =====================
+  //
+  // Drafts let a user save in-progress form data privately so it's visible if
+  // they come back later on ANY device (unlike the old localStorage-only
+  // version). Always scoped by userId in the query — a user can only ever
+  // read/write their OWN drafts, and drafts are never exposed to other users
+  // or reflected in real form responses/dashboards.
+
+  async getFormDraft(
+    schoolId: string,
+    formKey: string,
+    userId: string,
+    roles: string[],
+  ): Promise<DcFormDraft | null> {
+    await this.validateSchoolAccess(schoolId, userId, roles);
+    return this.formDraftRepo.findOne({ where: { schoolId, formKey, userId } });
+  }
+
+  async saveFormDraft(dto: UpsertFormDraftDto, userId: string, roles: string[]): Promise<DcFormDraft> {
+    await this.validateSchoolAccess(dto.schoolId, userId, roles);
+    let draft = await this.formDraftRepo.findOne({
+      where: { schoolId: dto.schoolId, formKey: dto.formKey, userId },
+    });
+    if (draft) {
+      draft.data = dto.data;
+    } else {
+      draft = this.formDraftRepo.create({
+        schoolId: dto.schoolId,
+        formKey: dto.formKey,
+        userId,
+        data: dto.data,
+      });
+    }
+    return this.formDraftRepo.save(draft);
+  }
+
+  async clearFormDraft(
+    schoolId: string,
+    formKey: string,
+    userId: string,
+    roles: string[],
+  ): Promise<{ success: boolean }> {
+    await this.validateSchoolAccess(schoolId, userId, roles);
+    await this.formDraftRepo.delete({ schoolId, formKey, userId });
+    return { success: true };
   }
 }

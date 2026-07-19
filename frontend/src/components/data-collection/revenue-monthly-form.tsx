@@ -11,6 +11,9 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
+import { FormTabs } from '@/components/data-collection/form-tabs';
+import { useFormDraft } from '@/hooks/use-form-draft';
 import api from '@/lib/api';
 import type { DcSchool, DcRevenueMonthlyRecord } from '@/types';
 
@@ -48,6 +51,10 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [records, setRecords] = useState<DcRevenueMonthlyRecord[]>([]);
   const [loadingRecords, setLoadingRecords] = useState(true);
+  const draft = useFormDraft<{ month: string; tuitionFeeTarget: number; tuitionFeeAchievement: number }>(`revenue-monthly-${mode}`, schoolId);
+  const draftAppliedRef = useRef(false);
+  const skipPrefillRef = useRef(false);
+  const [tab, setTab] = useState<'entry' | 'data'>('entry');
 
   const endpoint = mode === 'budget' ? '/data-collection/revenue/budget/monthly' : '/data-collection/revenue/actual/monthly';
   const getEndpoint = `${endpoint}/school/${schoolId}`;
@@ -81,6 +88,7 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
 
   /* Pre-fill form when month is selected and data exists */
   useEffect(() => {
+    if (skipPrefillRef.current) { skipPrefillRef.current = false; return; }
     if (month) {
       const existing = records.find((r) => r.month === month);
       if (existing) {
@@ -93,6 +101,32 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
     }
   }, [month, records]);
 
+  // Overlay the user's private draft (if any) once records have loaded.
+  useEffect(() => {
+    if (loadingRecords || draftAppliedRef.current) return;
+    (async () => {
+      const d = await draft.loadDraft();
+      if (d) {
+        draftAppliedRef.current = true;
+        skipPrefillRef.current = true;
+        setMonth(d.month);
+        setTuitionFeeTarget(d.tuitionFeeTarget);
+        setTuitionFeeAchievement(d.tuitionFeeAchievement);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingRecords]);
+
+  const handleSaveDraft = async () => {
+    await draft.saveDraft({ month, tuitionFeeTarget, tuitionFeeAchievement });
+  };
+
+  const handleClearDraft = async () => {
+    await draft.clearDraft();
+    setTuitionFeeTarget(0);
+    setTuitionFeeAchievement(0);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!month) { setError('Please select a month.'); return; }
@@ -100,6 +134,7 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
     setError('');
     try {
       await api.post(endpoint, { schoolId, month, tuitionFeeTarget, tuitionFeeAchievement });
+      await draft.clearDraft();
       showToast('success', `Monthly tuition revenue saved for ${month}!`);
       await loadRecords();
     } catch (err: unknown) {
@@ -186,7 +221,10 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
         </CardContent>
       </Card>
 
+      <FormTabs active={tab} onChange={setTab} dataCount={records.length} />
+
       {/* ── Entry Form ── */}
+      {tab === 'entry' && (
       <form onSubmit={handleSubmit}>
         <Card className="overflow-hidden border-0 shadow-sm">
           <CardHeader className="pb-3 pt-5 px-5">
@@ -265,17 +303,24 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
               </div>
             </div>
 
-            <div className="flex items-center gap-3 pt-2">
-              <Button type="submit" disabled={saving || !month} className={`gap-2 text-white ${accentClasses.btn}`}>
-                {saving ? <><RefreshCw size={15} className="animate-spin" /> Saving...</> : <><Save size={15} /> {submittedMonths.has(month) ? 'Update' : 'Save'} {month}</>}
-              </Button>
+            <div className="pt-2">
+              <DraftActionBar
+                hasDraft={draft.hasDraft}
+                draftSavedAt={draft.draftSavedAt}
+                submitting={saving}
+                onSaveDraft={handleSaveDraft}
+                onClearDraft={handleClearDraft}
+                submitLabel={month ? `Submit ${month}` : 'Submit Data'}
+                disabled={!month}
+              />
             </div>
           </CardContent>
         </Card>
       </form>
+      )}
 
       {/* ── Response Table ── */}
-      {records.length > 0 && (
+      {tab === 'data' && records.length > 0 && (
         <Card className="overflow-hidden border-0 shadow-sm">
           <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
             <div className="flex items-center gap-2">
@@ -315,7 +360,7 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
                           month === m ? 'ring-inset ring-2 ring-orange-300' :
                           idx % 2 === 0 ? 'bg-white' : 'bg-orange-50/20'
                         }`}
-                        onClick={() => setMonth(m)}
+                        onClick={() => { setMonth(m); setTab('entry'); }}
                       >
                         <td className="px-4 py-3">
                           <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${accentClasses.badgeBase}`}>{m}</span>
@@ -353,6 +398,16 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
               <p className="border-t border-gray-100 px-5 py-2 text-xs text-gray-400">Click a row to load it into the form for editing.</p>
             </div>
           )}
+        </Card>
+      )}
+
+      {tab === 'data' && records.length === 0 && (
+        <Card className="overflow-hidden border-0 shadow-sm">
+          <CardContent className="flex flex-col items-center justify-center py-14 text-gray-400">
+            <CalendarDays size={40} className="mb-3 opacity-20" />
+            <p className="text-sm font-medium">No monthly revenue records yet.</p>
+            <p className="text-xs mt-1 opacity-70">Use the Fill Form tab to add the first record.</p>
+          </CardContent>
         </Card>
       )}
     </div>

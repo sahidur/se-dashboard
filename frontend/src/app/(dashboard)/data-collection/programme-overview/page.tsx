@@ -86,10 +86,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   brac_academy: 'BRAC Academy',
 };
 
-const fmtTaka = (n: number) =>
-  n >= 10_000_000 ? `৳${(n / 10_000_000).toFixed(2)} Cr` :
-  n >= 100_000 ? `৳${(n / 100_000).toFixed(1)} L` :
-  n >= 1_000 ? `৳${(n / 1_000).toFixed(1)}K` : `৳${n}`;
+const fmtTaka = (n: number) => `৳${Math.round(n || 0).toLocaleString('en-IN')}`;
 
 const pct = (a: number, b: number) => (b > 0 ? Math.min((a / b) * 100, 100).toFixed(1) : '0');
 

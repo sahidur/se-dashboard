@@ -39,6 +39,7 @@ import {
   UpsertActivityParticipationDto,
   CreateEventParticipationDto,
   UpdateEventParticipationDto,
+  UpsertFormDraftDto,
 } from './dto';
 
 @Controller('data-collection')
@@ -112,56 +113,88 @@ export class DataCollectionController {
 
   @Post('basic-info')
   @Permissions({ module: 'data-collection', action: 'create' })
-  upsertBasicInfo(@Body() dto: UpsertBasicInfoDto, @CurrentUser('id') userId: string) {
-    return this.service.upsertBasicInfo(dto, userId);
+  upsertBasicInfo(
+    @Body() dto: UpsertBasicInfoDto,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.upsertBasicInfo(dto, userId, roles);
   }
 
   @Get('basic-info/school/:schoolId')
   @Permissions({ module: 'data-collection', action: 'read' })
-  getBasicInfo(@Param('schoolId', ParseUUIDPipe) schoolId: string, @CurrentUser('id') userId: string) {
-    return this.service.getBasicInfo(schoolId, userId);
+  getBasicInfo(
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.getBasicInfo(schoolId, userId, roles);
   }
 
   // ===================== Infrastructure =====================
 
   @Post('infrastructure')
   @Permissions({ module: 'data-collection', action: 'create' })
-  upsertInfrastructure(@Body() dto: UpsertInfrastructureDto, @CurrentUser('id') userId: string) {
-    return this.service.upsertInfrastructure(dto, userId);
+  upsertInfrastructure(
+    @Body() dto: UpsertInfrastructureDto,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.upsertInfrastructure(dto, userId, roles);
   }
 
   @Get('infrastructure/school/:schoolId')
   @Permissions({ module: 'data-collection', action: 'read' })
-  getInfrastructure(@Param('schoolId', ParseUUIDPipe) schoolId: string, @CurrentUser('id') userId: string) {
-    return this.service.getInfrastructure(schoolId, userId);
+  getInfrastructure(
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.getInfrastructure(schoolId, userId, roles);
   }
 
   // ===================== Students Info =====================
 
   @Post('students')
   @Permissions({ module: 'data-collection', action: 'create' })
-  upsertStudentsInfo(@Body() dto: UpsertStudentsInfoDto, @CurrentUser('id') userId: string) {
-    return this.service.upsertStudentsInfo(dto, userId);
+  upsertStudentsInfo(
+    @Body() dto: UpsertStudentsInfoDto,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.upsertStudentsInfo(dto, userId, roles);
   }
 
   @Get('students/school/:schoolId')
   @Permissions({ module: 'data-collection', action: 'read' })
-  getStudentsInfo(@Param('schoolId', ParseUUIDPipe) schoolId: string, @CurrentUser('id') userId: string) {
-    return this.service.getStudentsInfo(schoolId, userId);
+  getStudentsInfo(
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.getStudentsInfo(schoolId, userId, roles);
   }
 
   // ===================== Teachers Info (legacy aggregate) =====================
 
   @Post('teachers')
   @Permissions({ module: 'data-collection', action: 'create' })
-  upsertTeachersInfo(@Body() dto: UpsertTeachersInfoDto, @CurrentUser('id') userId: string) {
-    return this.service.upsertTeachersInfo(dto, userId);
+  upsertTeachersInfo(
+    @Body() dto: UpsertTeachersInfoDto,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.upsertTeachersInfo(dto, userId, roles);
   }
 
   @Get('teachers/school/:schoolId')
   @Permissions({ module: 'data-collection', action: 'read' })
-  getTeachersInfo(@Param('schoolId', ParseUUIDPipe) schoolId: string, @CurrentUser('id') userId: string) {
-    return this.service.getTeachersInfo(schoolId, userId);
+  getTeachersInfo(
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.getTeachersInfo(schoolId, userId, roles);
   }
 
   // ===================== Teacher Individual (multi-entry) =====================
@@ -188,42 +221,66 @@ export class DataCollectionController {
 
   @Post('teachers/development')
   @Permissions({ module: 'data-collection', action: 'create' })
-  upsertTeachersDevelopment(@Body() dto: UpsertTeachersDevelopmentDto, @CurrentUser('id') userId: string) {
-    return this.service.upsertTeachersDevelopment(dto, userId);
+  upsertTeachersDevelopment(
+    @Body() dto: UpsertTeachersDevelopmentDto,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.upsertTeachersDevelopment(dto, userId, roles);
   }
 
   @Get('teachers/development/school/:schoolId')
   @Permissions({ module: 'data-collection', action: 'read' })
-  getTeachersDevelopment(@Param('schoolId', ParseUUIDPipe) schoolId: string, @CurrentUser('id') userId: string) {
-    return this.service.getTeachersDevelopment(schoolId, userId);
+  getTeachersDevelopment(
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.getTeachersDevelopment(schoolId, userId, roles);
   }
 
   // ===================== Revenue =====================
 
   @Post('revenue')
   @Permissions({ module: 'data-collection', action: 'create' })
-  upsertRevenue(@Body() dto: UpsertRevenueDto, @CurrentUser('id') userId: string) {
-    return this.service.upsertRevenue(dto, userId);
+  upsertRevenue(
+    @Body() dto: UpsertRevenueDto,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.upsertRevenue(dto, userId, roles);
   }
 
   @Get('revenue/school/:schoolId')
   @Permissions({ module: 'data-collection', action: 'read' })
-  getRevenue(@Param('schoolId', ParseUUIDPipe) schoolId: string, @CurrentUser('id') userId: string) {
-    return this.service.getRevenue(schoolId, userId);
+  getRevenue(
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.getRevenue(schoolId, userId, roles);
   }
 
   // ===================== Performance =====================
 
   @Post('performance')
   @Permissions({ module: 'data-collection', action: 'create' })
-  upsertPerformance(@Body() dto: UpsertPerformanceDto, @CurrentUser('id') userId: string) {
-    return this.service.upsertPerformance(dto, userId);
+  upsertPerformance(
+    @Body() dto: UpsertPerformanceDto,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.upsertPerformance(dto, userId, roles);
   }
 
   @Get('performance/school/:schoolId')
   @Permissions({ module: 'data-collection', action: 'read' })
-  getPerformance(@Param('schoolId', ParseUUIDPipe) schoolId: string, @CurrentUser('id') userId: string) {
-    return this.service.getPerformance(schoolId, userId);
+  getPerformance(
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.getPerformance(schoolId, userId, roles);
   }
 
   // ===================== Alumni =====================
@@ -246,8 +303,9 @@ export class DataCollectionController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateAlumniDto,
     @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
   ) {
-    return this.service.updateAlumni(id, dto, userId);
+    return this.service.updateAlumni(id, dto, userId, roles);
   }
 
   @Delete('alumni/:id')
@@ -380,40 +438,64 @@ export class DataCollectionController {
 
   @Post('pedagogical-achievements')
   @Permissions({ module: 'data-collection', action: 'create' })
-  upsertPedagogicalAchievement(@Body() dto: UpsertPedagogicalAchievementDto, @CurrentUser('id') userId: string) {
-    return this.service.upsertPedagogicalAchievement(dto, userId);
+  upsertPedagogicalAchievement(
+    @Body() dto: UpsertPedagogicalAchievementDto,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.upsertPedagogicalAchievement(dto, userId, roles);
   }
 
   @Get('pedagogical-achievements/school/:schoolId')
   @Permissions({ module: 'data-collection', action: 'read' })
-  getPedagogicalAchievements(@Param('schoolId', ParseUUIDPipe) schoolId: string, @CurrentUser('id') userId: string) {
-    return this.service.getPedagogicalAchievements(schoolId, userId);
+  getPedagogicalAchievements(
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.getPedagogicalAchievements(schoolId, userId, roles);
   }
 
   @Delete('pedagogical-achievements/:id')
   @Permissions({ module: 'data-collection', action: 'delete' })
-  deletePedagogicalAchievement(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('id') userId: string) {
-    return this.service.deletePedagogicalAchievement(id, userId);
+  deletePedagogicalAchievement(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.deletePedagogicalAchievement(id, userId, roles);
   }
 
   // ===================== Co-curricular =====================
 
   @Post('cocurricular')
   @Permissions({ module: 'data-collection', action: 'create' })
-  upsertCocurricular(@Body() dto: UpsertCocurricularDto, @CurrentUser('id') userId: string) {
-    return this.service.upsertCocurricular(dto, userId);
+  upsertCocurricular(
+    @Body() dto: UpsertCocurricularDto,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.upsertCocurricular(dto, userId, roles);
   }
 
   @Get('cocurricular/school/:schoolId')
   @Permissions({ module: 'data-collection', action: 'read' })
-  getCocurricular(@Param('schoolId', ParseUUIDPipe) schoolId: string, @CurrentUser('id') userId: string) {
-    return this.service.getCocurricular(schoolId, userId);
+  getCocurricular(
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.getCocurricular(schoolId, userId, roles);
   }
 
   @Delete('cocurricular/:id')
   @Permissions({ module: 'data-collection', action: 'delete' })
-  deleteCocurricular(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('id') userId: string) {
-    return this.service.deleteCocurricular(id, userId);
+  deleteCocurricular(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.deleteCocurricular(id, userId, roles);
   }
 
   // ===================== Students' Performance =====================
@@ -551,5 +633,39 @@ export class DataCollectionController {
     @CurrentUser('roles') roles: string[],
   ) {
     return this.service.getSchoolProfile(id, userId, roles);
+  }
+
+  // ===================== Form Drafts (server-side, per-user) =====================
+  // No @Permissions decorator: open to any authenticated user for THEIR OWN
+  // drafts (same pattern as /users/me) — the service scopes every query by
+  // userId and still validates school access.
+
+  @Get('drafts')
+  getFormDraft(
+    @Query('schoolId', ParseUUIDPipe) schoolId: string,
+    @Query('formKey') formKey: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.getFormDraft(schoolId, formKey, userId, roles);
+  }
+
+  @Post('drafts')
+  saveFormDraft(
+    @Body() dto: UpsertFormDraftDto,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.saveFormDraft(dto, userId, roles);
+  }
+
+  @Delete('drafts')
+  clearFormDraft(
+    @Query('schoolId', ParseUUIDPipe) schoolId: string,
+    @Query('formKey') formKey: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.clearFormDraft(schoolId, formKey, userId, roles);
   }
 }

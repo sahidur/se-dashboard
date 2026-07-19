@@ -25,6 +25,7 @@ import {
   BarChart3,
   BookOpen,
   Activity,
+  MessageSquareText,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
@@ -57,35 +58,75 @@ const navigation: NavEntry[] = [
     module: ['data-collection', 'programme-overview'],
   },
   {
-    label: 'School Information',
+    label: 'School Wise Information',
     href: '/data-collection/school-information',
     icon: BookOpen,
     module: ['data-collection', 'school-information'],
   },
+  // Data Collection group
   {
-    label: 'Users',
+    label: 'Data Collection',
+    icon: Database,
+    module: 'data-collection',
+    children: [
+      {
+        label: 'My Schools',
+        href: '/data-collection/schools',
+        icon: School,
+        module: 'data-collection',
+      },
+    ],
+  },
+  // School Monitoring group
+  {
+    label: 'School Monitoring',
+    icon: ClipboardCheck,
+    module: 'school-monitoring',
+    children: [
+      {
+        label: 'New Observation',
+        href: '/school-monitoring',
+        icon: ClipboardList,
+        module: 'school-monitoring',
+        exact: true,
+      },
+      {
+        label: 'Submitted Feedback',
+        href: '/school-monitoring/feedback',
+        icon: MessageSquareText,
+        module: 'school-monitoring',
+      },
+    ],
+  },
+  {
+    label: 'User',
     href: '/users',
     icon: Users,
     module: 'users',
   },
   {
-    label: 'Roles',
+    label: 'Role',
     href: '/roles',
     icon: Shield,
     module: 'roles',
   },
   {
-    label: 'Surveys',
+    label: 'Survey',
     href: '/surveys',
     icon: ClipboardList,
     module: 'surveys',
     exact: false,
   },
   {
-    label: 'Assigned Surveys',
+    label: 'Assigned Survey',
     href: '/surveys/assigned',
     icon: ClipboardCheck,
     module: 'assigned-surveys',
+  },
+  {
+    label: 'My Profile',
+    href: '/profile',
+    icon: User,
   },
   // Admin Tools group
   {
@@ -119,25 +160,6 @@ const navigation: NavEntry[] = [
       },
     ],
   },
-  // Data Collection group
-  {
-    label: 'Data Collection',
-    icon: Database,
-    module: 'data-collection',
-    children: [
-      {
-        label: 'My Schools',
-        href: '/data-collection/schools',
-        icon: School,
-        module: 'data-collection',
-      },
-    ],
-  },
-  {
-    label: 'My Profile',
-    href: '/profile',
-    icon: User,
-  },
 ];
 
 export function Sidebar() {
@@ -148,6 +170,7 @@ export function Sidebar() {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
     'Admin Tools': true,
     'Data Collection': true,
+    'School Monitoring': true,
   });
 
   // Close mobile sidebar on route change

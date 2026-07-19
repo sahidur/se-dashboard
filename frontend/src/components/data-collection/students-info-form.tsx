@@ -10,6 +10,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
+import { FormTabs } from '@/components/data-collection/form-tabs';
+import { useFormDraft } from '@/hooks/use-form-draft';
 import api from '@/lib/api';
 import type { DcSchool, DcStudentsInfo } from '@/types';
 
@@ -84,6 +87,11 @@ export function StudentsInfoForm({ schoolId }: Props) {
   const [successMsg, setSuccessMsg]   = useState('');
   const [toast, setToast]             = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const toastTimer                    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draft = useFormDraft<{ month: string; grade: string; form: FormState }>('students-info-entry', schoolId);
+  const draftAppliedRef = useRef(false);
+  const [tab, setTab] = useState<'entry' | 'data'>('entry');
+  const [allRecords, setAllRecords] = useState<DcStudentsInfo[]>([]);
+  const [loadingAll, setLoadingAll] = useState(true);
 
   const showToast = useCallback((type: 'success' | 'error', msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -98,6 +106,40 @@ export function StudentsInfoForm({ schoolId }: Props) {
       .catch(() => router.push('/data-collection/schools'))
       .finally(() => setLoading(false));
   }, [schoolId, router]);
+
+  const loadAllRecords = useCallback(() => {
+    setLoadingAll(true);
+    api.get<DcStudentsInfo[]>(`/data-collection/students/school/${schoolId}`)
+      .then(({ data }) => setAllRecords(data))
+      .catch(() => setAllRecords([]))
+      .finally(() => setLoadingAll(false));
+  }, [schoolId]);
+
+  useEffect(() => { loadAllRecords(); }, [loadAllRecords]);
+
+  /* Overlay the user's private draft (if any) once initial load has finished. */
+  useEffect(() => {
+    if (loading || draftAppliedRef.current) return;
+    (async () => {
+      const d = await draft.loadDraft();
+      if (d) {
+        draftAppliedRef.current = true;
+        setMonth(d.month);
+        setGrade(d.grade);
+        setForm(d.form);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  const handleSaveDraft = async () => {
+    await draft.saveDraft({ month, grade, form });
+  };
+
+  const handleClearDraft = async () => {
+    await draft.clearDraft();
+    setForm(emptyForm);
+  };
 
   /* ── Load entry when month + grade both selected ── */
   const loadEntry = useCallback(async (m: string, g: string) => {
@@ -192,6 +234,8 @@ export function StudentsInfoForm({ schoolId }: Props) {
       setSuccessMsg(successText);
       showToast('success', successText);
       setIsEditing(true);
+      await draft.clearDraft();
+      await loadAllRecords();
       // Auto-advance grade so user can quickly do next grade
       const idx = GRADES.findIndex((g) => g.value === grade);      
       if (idx !== -1 && idx < GRADES.length - 1) {
@@ -222,7 +266,7 @@ export function StudentsInfoForm({ schoolId }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5 pb-10">
+    <div className="space-y-5 pb-10">
 
       {/* ── Toast notification (fixed top-right) ── */}
       {toast && (
@@ -278,6 +322,11 @@ export function StudentsInfoForm({ schoolId }: Props) {
           </div>
         </div>
       )}
+
+      <FormTabs active={tab} onChange={setTab} dataCount={allRecords.length} />
+
+      {tab === 'entry' && (
+      <form onSubmit={handleSubmit} className="space-y-5">
 
       {/* ── Success banner ── */}
       {successMsg && (
@@ -428,29 +477,92 @@ export function StudentsInfoForm({ schoolId }: Props) {
       </Card>
 
       {/* ── Submit ── */}
-      <div className="flex justify-end gap-3 pt-2">
-        <Button type="button" variant="outline" onClick={() => router.back()}>
-          Cancel
-        </Button>
-        <Button
-          type="submit"
-          disabled={saving || fieldsDisabled}
-          className="min-w-[180px] bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 shadow-sm disabled:opacity-60"
-        >
-          {saving ? (
-            <>
-              <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-              Saving…
-            </>
-          ) : (
-            <>
-              <Save size={16} className="mr-1.5" />
-              {isEditing ? 'Update Entry' : 'Save Entry'}
-            </>
-          )}
-        </Button>
+      <div className="flex flex-col gap-3 pt-2">
+        <div className="flex justify-end">
+          <Button type="button" variant="outline" onClick={() => router.back()}>
+            Cancel
+          </Button>
+        </div>
+        <DraftActionBar
+          hasDraft={draft.hasDraft}
+          draftSavedAt={draft.draftSavedAt}
+          submitting={saving}
+          onSaveDraft={handleSaveDraft}
+          onClearDraft={handleClearDraft}
+          submitLabel={isEditing ? 'Update Entry' : 'Save Entry'}
+          submittingLabel="Saving..."
+          disabled={fieldsDisabled}
+        />
       </div>
     </form>
+    )}
+
+    {tab === 'data' && (
+      <Card className="overflow-hidden border-0 shadow-sm">
+        <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
+          <div className="flex items-center gap-2">
+            <Users size={18} className="text-violet-600" />
+            <h3 className="font-semibold text-gray-800">All Students Info Records</h3>
+            <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-700">{allRecords.length}</span>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={loadAllRecords} disabled={loadingAll} className="gap-1.5 text-xs">
+            <RefreshCw size={13} className={loadingAll ? 'animate-spin' : ''} /> Refresh
+          </Button>
+        </div>
+
+        {loadingAll ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="h-7 w-7 animate-spin rounded-full border-4 border-violet-200 border-t-violet-600" />
+          </div>
+        ) : allRecords.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-14 text-gray-400">
+            <Users size={40} className="mb-3 opacity-20" />
+            <p className="text-sm font-medium">No student info records yet.</p>
+            <p className="text-xs mt-1 opacity-70">Use the Fill Form tab to add the first record.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50/70">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Month</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Grade</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Boys</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Girls</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Total</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500 whitespace-nowrap">PwD</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Ethnic</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500 whitespace-nowrap">Attendance</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500 whitespace-nowrap">Dropout</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500 whitespace-nowrap">Remedial</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Submitted By</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {allRecords.map((r, idx) => (
+                  <tr key={r.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}>
+                    <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{r.month}</td>
+                    <td className="px-4 py-3 text-gray-700">{GRADES.find((g) => g.value === r.grade)?.label ?? r.grade}</td>
+                    <td className="px-4 py-3 text-right text-gray-700">{r.boys}</td>
+                    <td className="px-4 py-3 text-right text-gray-700">{r.girls}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-gray-900">{r.total}</td>
+                    <td className="px-4 py-3 text-right text-gray-700">{r.personsWithDisability}</td>
+                    <td className="px-4 py-3 text-right text-gray-700">{r.ethnic}</td>
+                    <td className="px-4 py-3 text-right text-gray-700">{Number(r.attendanceRate).toFixed(1)}%</td>
+                    <td className="px-4 py-3 text-right text-gray-700">{Number(r.dropoutRate).toFixed(1)}%</td>
+                    <td className="px-4 py-3 text-right text-gray-700">{r.remedialSupport}</td>
+                    <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
+                      {r.createdBy ? `${r.createdBy.firstName} ${r.createdBy.lastName}` : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    )}
+    </div>
   );
 }
 
