@@ -277,13 +277,41 @@ sudo -u "$APP_USER" bash -c "
   cd ${APP_DIR}/backend
   npm run build 2>&1
 "
-# Prune dev deps after build – keeps the production footprint small
+# Prune dev deps after build – keeps the production footprint small.
+# NOTE: this removes ts-node, so 'npm run seed' (ts-node) no longer works here.
+# Use the compiled entrypoints instead: seed:prod / schema:sync.
 sudo -u "$APP_USER" bash -c "
   set -e
   cd ${APP_DIR}/backend
   npm prune --omit=dev 2>&1
 "
 ok "Backend built  →  dist/"
+
+# =============================================================================
+#  Step 6b – Database schema sync
+# =============================================================================
+# TypeORM 'synchronize' is off when APP_ENV=production, so entity changes never
+# reach this database on their own. schema-sync applies the additive DDL (new
+# tables/columns/indexes) and refuses to run anything destructive.
+step "Synchronising database schema"
+set +e
+sudo -u "$APP_USER" bash -c "cd ${APP_DIR}/backend && node dist/schema-sync.js"
+SCHEMA_RC=$?
+set -e
+case "$SCHEMA_RC" in
+  0) ok "Database schema up to date" ;;
+  2) warn "Schema synced, but some changes need a manual migration (listed above)." ;;
+  *) die "Schema sync failed (exit ${SCHEMA_RC}). Fix the database before continuing." ;;
+esac
+
+# =============================================================================
+#  Step 6c – Seed roles, permissions and the initial admin
+# =============================================================================
+# Idempotent: existing roles keep their configuration and only newly-added
+# permission modules are appended; admin@bep.org is created only if missing.
+step "Seeding roles, permissions and admin account"
+sudo -u "$APP_USER" bash -c "cd ${APP_DIR}/backend && node dist/seed.js"
+ok "Roles, permissions and admin account seeded"
 
 step "Installing frontend dependencies"
 sudo -u "$APP_USER" bash -c "
@@ -295,9 +323,14 @@ ok "Frontend npm ci done"
 
 step "Building frontend (Next.js production build)"
 # Next.js reads NEXT_PUBLIC_* at build time from the .env.local we wrote above.
+# NODE_OPTIONS raises the heap: the Turbopack build needs well over the default
+# on a small droplet. A stale .next from an older Next major breaks the build,
+# so it is always discarded first.
 sudo -u "$APP_USER" bash -c "
   set -e
+  export NODE_OPTIONS='--max-old-space-size=1536'
   cd ${APP_DIR}/frontend
+  rm -rf .next
   npm run build 2>&1
 "
 ok "Frontend built  →  .next/"
@@ -839,10 +872,15 @@ echo ""
 echo -e "  ${BOLD}SSL renewal${NC} : automatic via certbot.timer"
 echo -e "    Test with:  certbot renew --dry-run"
 echo ""
-echo -e "  ${BOLD}First-run seeding${NC} (only if admin@bep.org does not exist yet):"
-echo -e "    cd ${APP_DIR}/backend && sudo -u ${APP_USER} npm run seed"
+echo -e "  ${BOLD}Seeding${NC}: roles, permissions and admin@bep.org were seeded automatically."
 echo -e "    Login: admin@bep.org / ${SEED_ADMIN_PASSWORD}"
 echo -e "    ${YELLOW}Change this password immediately after the first login.${NC}"
+echo -e "    (Password applies only if the account was created by this run.)"
+echo ""
+echo -e "  ${BOLD}Database maintenance${NC} (dev deps are pruned – use the compiled scripts):"
+echo -e "    cd ${APP_DIR}/backend && sudo -u ${APP_USER} npm run schema:check   # dry run"
+echo -e "    cd ${APP_DIR}/backend && sudo -u ${APP_USER} npm run schema:sync    # apply additive DDL"
+echo -e "    cd ${APP_DIR}/backend && sudo -u ${APP_USER} npm run seed:prod      # re-seed roles/permissions"
 echo ""
 echo -e "  ${BOLD}Security notes${NC}:"
 echo -e "    · TRUST_PROXY=${TRUST_PROXY} — required so login rate limiting and audit"

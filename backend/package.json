@@ -9,6 +9,9 @@
     "start:debug": "ts-node-dev --respawn --transpile-only -r tsconfig-paths/register --inspect src/main.ts",
     "start:prod": "node dist/main",
     "seed": "ts-node -r tsconfig-paths/register src/seed.ts",
+    "seed:prod": "node dist/seed.js",
+    "schema:check": "node dist/schema-sync.js --check",
+    "schema:sync": "node dist/schema-sync.js",
     "test": "echo \"No tests configured yet\" && exit 0"
   },
   "keywords": [],

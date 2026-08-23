@@ -507,6 +507,36 @@ sudo -u "$APP_USER" bash -c "
 "
 ok "Backend built"
 
+# =============================================================================
+#  Database schema sync
+# =============================================================================
+# APP_ENV=production disables TypeORM 'synchronize', so new entity columns and
+# tables (academic_year, dc_student_performance, …) never reach this database
+# by themselves and the backend would 500 on first use. schema-sync applies the
+# additive DDL only and reports anything that needs a hand-written migration.
+# Runs BEFORE the service restart so the new code never sees the old schema.
+step "Synchronising database schema"
+set +e
+sudo -u "$APP_USER" bash -c "cd ${APP_DIR}/backend && node dist/schema-sync.js"
+SCHEMA_RC=$?
+set -e
+case "$SCHEMA_RC" in
+  0) ok "Database schema up to date" ;;
+  2) warn "Schema synced, but some changes need a manual migration (listed above)." ;;
+  *) die "Schema sync failed (exit ${SCHEMA_RC}). Database left untouched — fix it and re-run." ;;
+esac
+
+# =============================================================================
+#  Seed roles and permissions
+# =============================================================================
+# seedDefaultRoles() only ever ADDS missing permission rows, so releases that
+# introduce a new permission module (school-monitoring, activity-logs,
+# data-collection-edit, …) need this or admins cannot grant them. Existing
+# roles keep their configuration and admin@bep.org is left alone if it exists.
+step "Seeding roles and permissions"
+sudo -u "$APP_USER" bash -c "cd ${APP_DIR}/backend && node dist/seed.js"
+ok "Roles and permissions reconciled"
+
 systemctl restart bep-backend
 sleep 4
 if systemctl is-active --quiet bep-backend; then
@@ -521,10 +551,13 @@ fi
 #  Build frontend  (NODE_OPTIONS caps heap to avoid OOM on small droplets)
 # =============================================================================
 step "Rebuilding frontend"
+# .next is discarded every time: a cache written by a different Next.js major
+# (the app moved 14 → 16) makes the build fail or serve stale chunks.
 sudo -u "$APP_USER" bash -c "
   set -e
   export NODE_OPTIONS='--max-old-space-size=1536'
   cd ${APP_DIR}/frontend
+  rm -rf .next
   npm ci --prefer-offline
   npm run build
 "
@@ -557,6 +590,11 @@ echo -e "    · TRUST_PROXY set — login throttling and audit logs now see the 
 echo -e "    · nginx: server_tokens off, /api/auth/ 10 req/min per IP, dotfiles denied"
 echo -e "    · nginx: /api/uploads/ served with nosniff + 'default-src none; sandbox' CSP"
 echo -e "    · JWT secrets validated (>= 32 chars, no placeholders)"
+echo ""
+echo -e "  ${BOLD}Database${NC}: additive schema changes applied and roles/permissions re-seeded."
+echo -e "    Re-run manually with:"
+echo -e "      cd ${APP_DIR}/backend && sudo -u ${APP_USER} npm run schema:check"
+echo -e "      cd ${APP_DIR}/backend && sudo -u ${APP_USER} npm run seed:prod"
 if [[ "$HAS_CERT" == "false" ]]; then
   echo ""
   echo -e "  ${YELLOW}To enable HTTPS, run:${NC}"
