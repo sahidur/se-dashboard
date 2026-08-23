@@ -386,7 +386,7 @@ export interface DcSchool {
 export interface DcBasicInfo {
   id: string;
   schoolId: string;
-  academicYear?: string;
+  academicYear: number;
   schoolCategory?: string;
   mediumOfInstruction?: string;
   shiftSystem?: string;
@@ -409,6 +409,7 @@ export interface DcBasicInfo {
 export interface DcInfrastructure {
   id: string;
   schoolId: string;
+  academicYear: number;
   // Infrastructure Status
   campusStatus?: string;
   buildingStatus?: string; // JSON-encoded string[]
@@ -444,6 +445,7 @@ export interface DcInfrastructure {
 export interface DcStudentsInfo {
   id: string;
   schoolId: string;
+  academicYear: number;
   month: string;
   grade: string;
   boys: number;
@@ -453,6 +455,8 @@ export interface DcStudentsInfo {
   ethnic: number;
   attendanceRate: number;
   dropoutRate: number;
+  replacedStudentsRate: number;
+  retentionRate: number;
   remedialSupport: number;
   createdById: string;
   createdBy?: { id: string; firstName: string; lastName: string };
@@ -463,6 +467,7 @@ export interface DcStudentsInfo {
 export interface DcTeacherIndividual {
   id: string;
   schoolId: string;
+  academicYear: number;
   name: string;
   designation: string;
   gender: string;
@@ -480,6 +485,7 @@ export interface DcTeacherIndividual {
 export interface DcTeachersDevelopment {
   id: string;
   schoolId: string;
+  academicYear: number;
   month: string;
   onlineRefresher: number;
   offlineRefresher: number;
@@ -520,7 +526,7 @@ export interface DcTeachersInfo {
 export interface DcRevenue {
   id: string;
   schoolId: string;
-  academicYear?: string;
+  academicYear: number;
   monthlyTuitionFee: number;
   admissionFee: number;
   examFee: number;
@@ -542,7 +548,7 @@ export interface DcRevenue {
 export interface DcPerformance {
   id: string;
   schoolId: string;
-  academicYear?: string;
+  academicYear: number;
   avgPassRate: number;
   avgGpa: number;
   boardExamPassRate: number;
@@ -563,6 +569,7 @@ export interface DcPerformance {
 export interface DcAlumni {
   id: string;
   schoolId: string;
+  academicYear: number;
   alumniName: string;
   graduationYear?: number;
   presentAddress?: string;
@@ -599,6 +606,7 @@ export interface DcDashboard {
     pedagogicalAchievements: { submitted: boolean; count?: number };
     cocurricular: { submitted: boolean; count?: number };
     studentsPerformance: { submitted: boolean; count?: number };
+    studentPerformance: { submitted: boolean; count?: number };
     activityParticipation: { submitted: boolean; count?: number };
     eventParticipation: { submitted: boolean; count?: number };
   };
@@ -607,6 +615,7 @@ export interface DcDashboard {
 export interface DcStudentsPerformance {
   id: string;
   schoolId: string;
+  academicYear: number;
   grade: string;
   numberOfStudents: number;
   examName: string;
@@ -626,10 +635,35 @@ export interface DcStudentsPerformance {
   updatedAt: string;
 }
 
+export interface DcStudentPerformanceRow {
+  code: string;
+  label: string;
+  domain?: string;
+  /** Scale label -> percentage, e.g. { Excellent: 40, Good: 35 }. */
+  values: Record<string, number>;
+}
+
+export interface DcStudentPerformance {
+  id: string;
+  schoolId: string;
+  academicYear: number;
+  /** ba-1 | ba-2 | ba-3 | bps-1 | bps-2 | bss-1 */
+  formKey: string;
+  grade: string;
+  evaluationPeriod: string;
+  numberOfStudents: number;
+  appearedPercent?: number | null;
+  rows: DcStudentPerformanceRow[];
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface DcActivityParticipation {
   id: string;
   schoolId: string;
   item: string;
+  year: number;
   month: string;
   grade: string;
   activityName?: string;
@@ -645,6 +679,7 @@ export interface DcActivityParticipation {
 export interface DcEventParticipation {
   id: string;
   schoolId: string;
+  academicYear: number;
   eventName: string;
   awardLevel: string;
   maleAwarded: number;
@@ -659,6 +694,7 @@ export interface DcEventParticipation {
 export interface DcFeeStructure {
   id: string;
   schoolId: string;
+  academicYear: number;
   month: string;
   grade: string;
   admissionFee: number;
@@ -692,6 +728,7 @@ export interface DcFeeStructureLog {
 export interface DcRevenueTotalRecord {
   id: string;
   schoolId: string;
+  academicYear: number;
   totalStudentsTarget: number;
   admissionFeeTarget: number;       admissionFeeAchievement: number;
   sessionFeeTarget: number;         sessionFeeAchievement: number;
@@ -710,6 +747,7 @@ export interface DcRevenueTotalRecord {
 export interface DcRevenueMonthlyRecord {
   id: string;
   schoolId: string;
+  academicYear: number;
   month: string;
   tuitionFeeTarget: number;
   tuitionFeeAchievement: number;

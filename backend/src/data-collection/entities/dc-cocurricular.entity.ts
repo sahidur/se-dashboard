@@ -17,7 +17,7 @@ import { User } from '../../users/entities/user.entity';
  * All participation fields are % values (0–100).
  */
 @Entity('dc_cocurricular')
-@Unique(['schoolId', 'month', 'grade'])
+@Unique(['schoolId', 'academicYear', 'month', 'grade'])
 export class DcCocurricular {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -29,11 +29,15 @@ export class DcCocurricular {
   @Column({ name: 'school_id' })
   schoolId: string;
 
+  /** Academic year the record belongs to, e.g. 2026 */
+  @Column({ name: 'academic_year', type: 'int', default: 0 })
+  academicYear: number;
+
   /** January … December */
   @Column({ length: 20 })
   month: string;
 
-  /** Play | Nursery | Grade 1 … Grade 5 */
+  /** Play & Learn | Nursery | Grade 1 … Grade 10 */
   @Column({ length: 30 })
   grade: string;
 

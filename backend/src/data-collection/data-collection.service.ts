@@ -20,6 +20,7 @@ import { DcAlumni } from './entities/dc-alumni.entity';
 import { DcPedagogicalAchievement } from './entities/dc-pedagogical-achievement.entity';
 import { DcCocurricular } from './entities/dc-cocurricular.entity';
 import { DcStudentsPerformance } from './entities/dc-students-performance.entity';
+import { DcStudentPerformance } from './entities/dc-student-performance.entity';
 import { DcActivityParticipation } from './entities/dc-activity-participation.entity';
 import { DcEventParticipation } from './entities/dc-event-participation.entity';
 import { DcFormDraft } from './entities/dc-form-draft.entity';
@@ -44,6 +45,7 @@ import {
   UpsertPedagogicalAchievementDto,
   UpsertCocurricularDto,
   UpsertStudentsPerformanceDto,
+  UpsertStudentPerformanceDto,
   UpsertActivityParticipationDto,
   CreateEventParticipationDto,
   UpdateEventParticipationDto,
@@ -73,6 +75,7 @@ export class DataCollectionService {
     @InjectRepository(DcPedagogicalAchievement) private pedagAchievRepo: Repository<DcPedagogicalAchievement>,
     @InjectRepository(DcCocurricular) private cocurricularRepo: Repository<DcCocurricular>,
     @InjectRepository(DcStudentsPerformance) private studentsPerfRepo: Repository<DcStudentsPerformance>,
+    @InjectRepository(DcStudentPerformance) private studentPerfRepo: Repository<DcStudentPerformance>,
     @InjectRepository(DcActivityParticipation) private activityPartRepo: Repository<DcActivityParticipation>,
     @InjectRepository(DcFormDraft) private formDraftRepo: Repository<DcFormDraft>,
     @InjectRepository(DcEventParticipation) private eventPartRepo: Repository<DcEventParticipation>,
@@ -106,11 +109,6 @@ export class DataCollectionService {
     throw new NotFoundException('School not found or access denied');
   }
 
-  /** @deprecated use validateSchoolAccess */
-  private async validateSchoolOwnership(schoolId: string, userId: string): Promise<DcSchool> {
-    return this.validateSchoolAccess(schoolId, userId, []);
-  }
-
   /**
    * Whether the user is allowed to overwrite/edit data that has already been
    * submitted for a form. Super Admin/Admin always can (matches their
@@ -138,6 +136,22 @@ export class DataCollectionService {
         'This data has already been submitted. You do not have permission to edit submitted data — ask an administrator to grant "Edit Submitted Data" in Role Management.',
       );
     }
+  }
+
+  /**
+   * Chronological ordering for the month-keyed forms. `month` is stored as a
+   * full month NAME (varchar), so a SQL `ORDER BY month ASC` sorts it
+   * alphabetically (April, August, December…) instead of chronologically —
+   * these tables must be sorted in JS. Newest academic year first.
+   */
+  private compareYearThenMonth(
+    a: { academicYear: number; month: string },
+    b: { academicYear: number; month: string },
+  ): number {
+    const yDiff = Number(b.academicYear ?? 0) - Number(a.academicYear ?? 0);
+    if (yDiff !== 0) return yDiff;
+    const order = DataCollectionService.MONTH_ORDER;
+    return order.indexOf(a.month) - order.indexOf(b.month);
   }
 
   // ===================== School CRUD =====================
@@ -205,24 +219,25 @@ export class DataCollectionService {
 
   async getDashboard(schoolId: string, userId: string, roles: string[]) {
     const school = await this.validateSchoolAccess(schoolId, userId, roles);
-    const [basicInfo, infra, studentsCount, teacherIndividualCount, teachersDevCount, revenue, feeStructureCount, revBudgetTotal, revBudgetMonthlyCount, revActualTotal, revActualMonthlyCount, performance, alumni, pedagAchievCount, cocurricularCount, studentsPerfCount, activityPartCount, eventPartCount] =
+    const [basicInfo, infra, studentsCount, teacherIndividualCount, teachersDevCount, revenue, feeStructureCount, revBudgetTotal, revBudgetMonthlyCount, revActualTotal, revActualMonthlyCount, performance, alumni, pedagAchievCount, cocurricularCount, studentsPerfCount, studentPerfCount, activityPartCount, eventPartCount] =
       await Promise.all([
-        this.basicInfoRepo.findOne({ where: { schoolId } }),
-        this.infraRepo.findOne({ where: { schoolId } }),
+        this.basicInfoRepo.findOne({ where: { schoolId }, order: { academicYear: 'DESC' } }),
+        this.infraRepo.findOne({ where: { schoolId }, order: { academicYear: 'DESC' } }),
         this.studentsRepo.count({ where: { schoolId } }),
         this.teacherIndividualRepo.count({ where: { schoolId } }),
         this.teachersDevRepo.count({ where: { schoolId } }),
-        this.revenueRepo.findOne({ where: { schoolId } }),
+        this.revenueRepo.findOne({ where: { schoolId }, order: { academicYear: 'DESC' } }),
         this.feeStructureRepo.count({ where: { schoolId } }),
-        this.revBudgetTotalRepo.findOne({ where: { schoolId } }),
+        this.revBudgetTotalRepo.findOne({ where: { schoolId }, order: { academicYear: 'DESC' } }),
         this.revBudgetMonthlyRepo.count({ where: { schoolId } }),
-        this.revActualTotalRepo.findOne({ where: { schoolId } }),
+        this.revActualTotalRepo.findOne({ where: { schoolId } , order: { academicYear: 'DESC' } }),
         this.revActualMonthlyRepo.count({ where: { schoolId } }),
-        this.performanceRepo.findOne({ where: { schoolId } }),
+        this.performanceRepo.findOne({ where: { schoolId }, order: { academicYear: 'DESC' } }),
         this.alumniRepo.find({ where: { schoolId } }),
         this.pedagAchievRepo.count({ where: { schoolId } }),
         this.cocurricularRepo.count({ where: { schoolId } }),
         this.studentsPerfRepo.count({ where: { schoolId } }),
+        this.studentPerfRepo.count({ where: { schoolId } }),
         this.activityPartRepo.count({ where: { schoolId } }),
         this.eventPartRepo.count({ where: { schoolId } }),
       ]);
@@ -241,7 +256,7 @@ export class DataCollectionService {
         basicInformation: { submitted: !!basicInfo, data: basicInfo },
         infrastructure: { submitted: infraSubmitted, data: infra },
         classroomStatus: { submitted: classroomSubmitted },
-        studentsInfo: { submitted: studentsCount >= 84, count: studentsCount },
+        studentsInfo: { submitted: studentsCount > 0, count: studentsCount },
         teachersInfo: { submitted: teacherIndividualCount > 0, count: teacherIndividualCount },
         teachersDev: { submitted: teachersDevCount > 0, count: teachersDevCount },
         revenue: { submitted: !!revenue, data: revenue },
@@ -255,6 +270,7 @@ export class DataCollectionService {
         pedagogicalAchievements: { submitted: pedagAchievCount > 0, count: pedagAchievCount },
         cocurricular: { submitted: cocurricularCount > 0, count: cocurricularCount },
         studentsPerformance: { submitted: studentsPerfCount > 0, count: studentsPerfCount },
+        studentPerformance: { submitted: studentPerfCount > 0, count: studentPerfCount },
         activityParticipation: { submitted: activityPartCount > 0, count: activityPartCount },
         eventParticipation: { submitted: eventPartCount > 0, count: eventPartCount },
       },
@@ -265,7 +281,9 @@ export class DataCollectionService {
 
   async upsertBasicInfo(dto: UpsertBasicInfoDto, userId: string, roles: string[]): Promise<DcBasicInfo> {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
-    let record = await this.basicInfoRepo.findOne({ where: { schoolId: dto.schoolId } });
+    let record = await this.basicInfoRepo.findOne({
+      where: { schoolId: dto.schoolId, academicYear: dto.academicYear },
+    });
     await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       Object.assign(record, dto);
@@ -275,16 +293,24 @@ export class DataCollectionService {
     return this.basicInfoRepo.save(record);
   }
 
-  async getBasicInfo(schoolId: string, userId: string, roles: string[]): Promise<DcBasicInfo | null> {
+  async getBasicInfo(
+    schoolId: string,
+    userId: string,
+    roles: string[],
+    academicYear?: number,
+  ): Promise<DcBasicInfo | null> {
     await this.validateSchoolAccess(schoolId, userId, roles);
-    return this.basicInfoRepo.findOne({ where: { schoolId } });
+    return this.basicInfoRepo.findOne({
+      where: academicYear ? { schoolId, academicYear } : { schoolId },
+      order: { academicYear: 'DESC' },
+    });
   }
 
   // ===================== Infrastructure =====================
 
   async upsertInfrastructure(dto: UpsertInfrastructureDto, userId: string, roles: string[]): Promise<DcInfrastructure> {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
-    let record = await this.infraRepo.findOne({ where: { schoolId: dto.schoolId } });
+    let record = await this.infraRepo.findOne({ where: { schoolId: dto.schoolId, academicYear: dto.academicYear } });
     await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       Object.assign(record, dto);
@@ -294,9 +320,12 @@ export class DataCollectionService {
     return this.infraRepo.save(record);
   }
 
-  async getInfrastructure(schoolId: string, userId: string, roles: string[]): Promise<DcInfrastructure | null> {
+  async getInfrastructure(schoolId: string, userId: string, roles: string[], academicYear?: number): Promise<DcInfrastructure | null> {
     await this.validateSchoolAccess(schoolId, userId, roles);
-    return this.infraRepo.findOne({ where: { schoolId } });
+    return this.infraRepo.findOne({
+      where: academicYear ? { schoolId, academicYear } : { schoolId },
+      order: { academicYear: 'DESC' },
+    });
   }
 
   // ===================== Students Info =====================
@@ -304,7 +333,7 @@ export class DataCollectionService {
   async upsertStudentsInfo(dto: UpsertStudentsInfoDto, userId: string, roles: string[]): Promise<DcStudentsInfo> {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.studentsRepo.findOne({
-      where: { schoolId: dto.schoolId, month: dto.month, grade: dto.grade },
+      where: { schoolId: dto.schoolId, academicYear: dto.academicYear, month: dto.month, grade: dto.grade },
     });
     await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
@@ -317,19 +346,14 @@ export class DataCollectionService {
 
   async getStudentsInfo(schoolId: string, userId: string, roles: string[]): Promise<DcStudentsInfo[]> {
     await this.validateSchoolAccess(schoolId, userId, roles);
-    // Fetch all, sort in JS by chronological month then grade
-    const MONTH_ORDER = [
-      'January','February','March','April','May','June',
-      'July','August','September','October','November','December',
-    ];
-    const GRADE_ORDER = ['play_learn','nursery','g1','g2','g3','g4','g5'];
+    const GRADE_ORDER = ['play_learn','nursery','g1','g2','g3','g4','g5','g6','g7','g8','g9','g10'];
     const records = await this.studentsRepo.find({
       where: { schoolId },
       relations: { createdBy: true },
     });
     return records.sort((a, b) => {
-      const mDiff = MONTH_ORDER.indexOf(a.month) - MONTH_ORDER.indexOf(b.month);
-      if (mDiff !== 0) return mDiff;
+      const yDiff = this.compareYearThenMonth(a, b);
+      if (yDiff !== 0) return yDiff;
       return GRADE_ORDER.indexOf(a.grade) - GRADE_ORDER.indexOf(b.grade);
     });
   }
@@ -355,28 +379,28 @@ export class DataCollectionService {
 
   // ===================== Teacher Individual (multi-entry) =====================
 
-  async createTeacherIndividual(dto: CreateTeacherIndividualDto, userId: string): Promise<DcTeacherIndividual> {
-    await this.validateSchoolOwnership(dto.schoolId, userId);
+  async createTeacherIndividual(dto: CreateTeacherIndividualDto, userId: string, roles: string[]): Promise<DcTeacherIndividual> {
+    await this.validateSchoolAccess(dto.schoolId, userId, roles);
     const record = this.teacherIndividualRepo.create({ ...dto, createdById: userId });
     return this.teacherIndividualRepo.save(record);
   }
 
-  async getTeacherIndividuals(schoolId: string, userId: string): Promise<DcTeacherIndividual[]> {
-    await this.validateSchoolOwnership(schoolId, userId);
+  async getTeacherIndividuals(schoolId: string, userId: string, roles: string[]): Promise<DcTeacherIndividual[]> {
+    await this.validateSchoolAccess(schoolId, userId, roles);
     return this.teacherIndividualRepo.find({
       where: { schoolId },
       relations: { createdBy: true },
-      order: { createdAt: 'DESC' },
+      order: { academicYear: 'DESC', createdAt: 'DESC' },
     });
   }
 
-  async deleteTeacherIndividual(id: string, userId: string): Promise<void> {
+  async deleteTeacherIndividual(id: string, userId: string, roles: string[]): Promise<void> {
     const record = await this.teacherIndividualRepo.findOne({
       where: { id },
       relations: { school: true },
     });
     if (!record) throw new NotFoundException('Teacher record not found');
-    await this.validateSchoolOwnership(record.schoolId, userId);
+    await this.validateSchoolAccess(record.schoolId, userId, roles);
     await this.teacherIndividualRepo.remove(record);
   }
 
@@ -385,7 +409,7 @@ export class DataCollectionService {
   async upsertTeachersDevelopment(dto: UpsertTeachersDevelopmentDto, userId: string, roles: string[]): Promise<DcTeachersDevelopment> {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.teachersDevRepo.findOne({
-      where: { schoolId: dto.schoolId, month: dto.month },
+      where: { schoolId: dto.schoolId, academicYear: dto.academicYear, month: dto.month },
     });
     await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
@@ -398,22 +422,20 @@ export class DataCollectionService {
 
   async getTeachersDevelopment(schoolId: string, userId: string, roles: string[]): Promise<DcTeachersDevelopment[]> {
     await this.validateSchoolAccess(schoolId, userId, roles);
-    const MONTH_ORDER = [
-      'January','February','March','April','May','June',
-      'July','August','September','October','November','December',
-    ];
     const records = await this.teachersDevRepo.find({
       where: { schoolId },
       relations: { createdBy: true },
     });
-    return records.sort((a, b) => MONTH_ORDER.indexOf(a.month) - MONTH_ORDER.indexOf(b.month));
+    return records.sort((a, b) => this.compareYearThenMonth(a, b));
   }
 
   // ===================== Revenue =====================
 
   async upsertRevenue(dto: UpsertRevenueDto, userId: string, roles: string[]): Promise<DcRevenue> {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
-    let record = await this.revenueRepo.findOne({ where: { schoolId: dto.schoolId } });
+    let record = await this.revenueRepo.findOne({
+      where: { schoolId: dto.schoolId, academicYear: dto.academicYear },
+    });
     await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       Object.assign(record, dto);
@@ -423,16 +445,26 @@ export class DataCollectionService {
     return this.revenueRepo.save(record);
   }
 
-  async getRevenue(schoolId: string, userId: string, roles: string[]): Promise<DcRevenue | null> {
+  async getRevenue(
+    schoolId: string,
+    userId: string,
+    roles: string[],
+    academicYear?: number,
+  ): Promise<DcRevenue | null> {
     await this.validateSchoolAccess(schoolId, userId, roles);
-    return this.revenueRepo.findOne({ where: { schoolId } });
+    return this.revenueRepo.findOne({
+      where: academicYear ? { schoolId, academicYear } : { schoolId },
+      order: { academicYear: 'DESC' },
+    });
   }
 
   // ===================== Performance =====================
 
   async upsertPerformance(dto: UpsertPerformanceDto, userId: string, roles: string[]): Promise<DcPerformance> {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
-    let record = await this.performanceRepo.findOne({ where: { schoolId: dto.schoolId } });
+    let record = await this.performanceRepo.findOne({
+      where: { schoolId: dto.schoolId, academicYear: dto.academicYear },
+    });
     await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       Object.assign(record, dto);
@@ -442,22 +474,30 @@ export class DataCollectionService {
     return this.performanceRepo.save(record);
   }
 
-  async getPerformance(schoolId: string, userId: string, roles: string[]): Promise<DcPerformance | null> {
+  async getPerformance(
+    schoolId: string,
+    userId: string,
+    roles: string[],
+    academicYear?: number,
+  ): Promise<DcPerformance | null> {
     await this.validateSchoolAccess(schoolId, userId, roles);
-    return this.performanceRepo.findOne({ where: { schoolId } });
+    return this.performanceRepo.findOne({
+      where: academicYear ? { schoolId, academicYear } : { schoolId },
+      order: { academicYear: 'DESC' },
+    });
   }
 
   // ===================== Alumni =====================
 
-  async createAlumni(dto: CreateAlumniDto, userId: string): Promise<DcAlumni> {
-    await this.validateSchoolOwnership(dto.schoolId, userId);
+  async createAlumni(dto: CreateAlumniDto, userId: string, roles: string[]): Promise<DcAlumni> {
+    await this.validateSchoolAccess(dto.schoolId, userId, roles);
     const record = this.alumniRepo.create({ ...dto, createdById: userId });
     return this.alumniRepo.save(record);
   }
 
-  async getAlumniBySchool(schoolId: string, userId: string): Promise<DcAlumni[]> {
-    await this.validateSchoolOwnership(schoolId, userId);
-    return this.alumniRepo.find({ where: { schoolId }, order: { createdAt: 'DESC' } });
+  async getAlumniBySchool(schoolId: string, userId: string, roles: string[]): Promise<DcAlumni[]> {
+    await this.validateSchoolAccess(schoolId, userId, roles);
+    return this.alumniRepo.find({ where: { schoolId }, order: { academicYear: 'DESC', createdAt: 'DESC' } });
   }
 
   async updateAlumni(id: string, dto: UpdateAlumniDto, userId: string, roles: string[]): Promise<DcAlumni> {
@@ -469,10 +509,10 @@ export class DataCollectionService {
     return this.alumniRepo.save(record);
   }
 
-  async deleteAlumni(id: string, userId: string): Promise<void> {
+  async deleteAlumni(id: string, userId: string, roles: string[]): Promise<void> {
     const record = await this.alumniRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Alumni record not found');
-    await this.validateSchoolOwnership(record.schoolId, userId);
+    await this.validateSchoolAccess(record.schoolId, userId, roles);
     await this.alumniRepo.remove(record);
   }
 
@@ -481,7 +521,7 @@ export class DataCollectionService {
   async upsertFeeStructure(dto: UpsertFeeStructureDto, userId: string, roles: string[]): Promise<DcFeeStructure> {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.feeStructureRepo.findOne({
-      where: { schoolId: dto.schoolId, month: dto.month, grade: dto.grade },
+      where: { schoolId: dto.schoolId, academicYear: dto.academicYear, month: dto.month, grade: dto.grade },
       relations: ['createdBy', 'updatedBy'],
     });
     await this.assertCanEditExisting(!!record, userId, roles);
@@ -509,15 +549,18 @@ export class DataCollectionService {
 
   async getFeeStructures(schoolId: string, userId: string, roles: string[]): Promise<DcFeeStructure[]> {
     await this.validateSchoolAccess(schoolId, userId, roles);
-    return this.feeStructureRepo.find({
+    const records = await this.feeStructureRepo.find({
       where: { schoolId },
       relations: ['createdBy', 'updatedBy'],
-      order: { month: 'ASC', grade: 'ASC' },
+    });
+    return records.sort((a, b) => {
+      const d = this.compareYearThenMonth(a, b);
+      return d !== 0 ? d : a.grade.localeCompare(b.grade);
     });
   }
 
   async getFeeStructureLogs(schoolId: string, userId: string, roles: string[]): Promise<DcFeeStructureLog[]> {
-    if (!this.isAdminRole(roles)) throw new NotFoundException('Access denied');
+    if (!this.isAdminRole(roles)) throw new ForbiddenException('Access denied');
     return this.feeStructureLogRepo.find({
       where: { schoolId },
       relations: ['editedBy'],
@@ -529,7 +572,7 @@ export class DataCollectionService {
 
   async upsertRevenueBudgetTotal(dto: UpsertRevenueBudgetTotalDto, userId: string, roles: string[]): Promise<DcRevenueBudgetTotal> {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
-    let record = await this.revBudgetTotalRepo.findOne({ where: { schoolId: dto.schoolId } });
+    let record = await this.revBudgetTotalRepo.findOne({ where: { schoolId: dto.schoolId, academicYear: dto.academicYear } });
     await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       Object.assign(record, dto, { updatedById: userId });
@@ -539,9 +582,12 @@ export class DataCollectionService {
     return this.revBudgetTotalRepo.save(record);
   }
 
-  async getRevenueBudgetTotal(schoolId: string, userId: string, roles: string[]): Promise<DcRevenueBudgetTotal | null> {
+  async getRevenueBudgetTotal(schoolId: string, userId: string, roles: string[], academicYear?: number): Promise<DcRevenueBudgetTotal | null> {
     await this.validateSchoolAccess(schoolId, userId, roles);
-    return this.revBudgetTotalRepo.findOne({ where: { schoolId } });
+    return this.revBudgetTotalRepo.findOne({
+      where: academicYear ? { schoolId, academicYear } : { schoolId },
+      order: { academicYear: 'DESC' },
+    });
   }
 
   // ===================== Revenue Budget Monthly =====================
@@ -554,7 +600,7 @@ export class DataCollectionService {
   async upsertRevenueBudgetMonthly(dto: UpsertRevenueBudgetMonthlyDto, userId: string, roles: string[]): Promise<DcRevenueBudgetMonthly> {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
     const collectionPct = this.calcPct(dto.tuitionFeeTarget ?? 0, dto.tuitionFeeAchievement ?? 0);
-    let record = await this.revBudgetMonthlyRepo.findOne({ where: { schoolId: dto.schoolId, month: dto.month } });
+    let record = await this.revBudgetMonthlyRepo.findOne({ where: { schoolId: dto.schoolId, academicYear: dto.academicYear, month: dto.month } });
     await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       Object.assign(record, dto, { collectionPct, updatedById: userId });
@@ -566,14 +612,15 @@ export class DataCollectionService {
 
   async getRevenueBudgetMonthly(schoolId: string, userId: string, roles: string[]): Promise<DcRevenueBudgetMonthly[]> {
     await this.validateSchoolAccess(schoolId, userId, roles);
-    return this.revBudgetMonthlyRepo.find({ where: { schoolId }, order: { month: 'ASC' } });
+    const records = await this.revBudgetMonthlyRepo.find({ where: { schoolId } });
+    return records.sort((a, b) => this.compareYearThenMonth(a, b));
   }
 
   // ===================== Revenue Actual Total =====================
 
   async upsertRevenueActualTotal(dto: UpsertRevenueActualTotalDto, userId: string, roles: string[]): Promise<DcRevenueActualTotal> {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
-    let record = await this.revActualTotalRepo.findOne({ where: { schoolId: dto.schoolId } });
+    let record = await this.revActualTotalRepo.findOne({ where: { schoolId: dto.schoolId, academicYear: dto.academicYear } });
     await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       Object.assign(record, dto, { updatedById: userId });
@@ -583,9 +630,12 @@ export class DataCollectionService {
     return this.revActualTotalRepo.save(record);
   }
 
-  async getRevenueActualTotal(schoolId: string, userId: string, roles: string[]): Promise<DcRevenueActualTotal | null> {
+  async getRevenueActualTotal(schoolId: string, userId: string, roles: string[], academicYear?: number): Promise<DcRevenueActualTotal | null> {
     await this.validateSchoolAccess(schoolId, userId, roles);
-    return this.revActualTotalRepo.findOne({ where: { schoolId } });
+    return this.revActualTotalRepo.findOne({
+      where: academicYear ? { schoolId, academicYear } : { schoolId },
+      order: { academicYear: 'DESC' },
+    });
   }
 
   // ===================== Revenue Actual Monthly =====================
@@ -593,7 +643,7 @@ export class DataCollectionService {
   async upsertRevenueActualMonthly(dto: UpsertRevenueActualMonthlyDto, userId: string, roles: string[]): Promise<DcRevenueActualMonthly> {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
     const collectionPct = this.calcPct(dto.tuitionFeeTarget ?? 0, dto.tuitionFeeAchievement ?? 0);
-    let record = await this.revActualMonthlyRepo.findOne({ where: { schoolId: dto.schoolId, month: dto.month } });
+    let record = await this.revActualMonthlyRepo.findOne({ where: { schoolId: dto.schoolId, academicYear: dto.academicYear, month: dto.month } });
     await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
       Object.assign(record, dto, { collectionPct, updatedById: userId });
@@ -605,7 +655,8 @@ export class DataCollectionService {
 
   async getRevenueActualMonthly(schoolId: string, userId: string, roles: string[]): Promise<DcRevenueActualMonthly[]> {
     await this.validateSchoolAccess(schoolId, userId, roles);
-    return this.revActualMonthlyRepo.find({ where: { schoolId }, order: { month: 'ASC' } });
+    const records = await this.revActualMonthlyRepo.find({ where: { schoolId } });
+    return records.sort((a, b) => this.compareYearThenMonth(a, b));
   }
 
   // ===================== Pedagogical Achievements =====================
@@ -639,7 +690,7 @@ export class DataCollectionService {
   async upsertCocurricular(dto: UpsertCocurricularDto, userId: string, roles: string[]): Promise<DcCocurricular> {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.cocurricularRepo.findOne({
-      where: { schoolId: dto.schoolId, month: dto.month, grade: dto.grade },
+      where: { schoolId: dto.schoolId, academicYear: dto.academicYear, month: dto.month, grade: dto.grade },
     });
     await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
@@ -652,7 +703,7 @@ export class DataCollectionService {
 
   async getCocurricular(schoolId: string, userId: string, roles: string[]): Promise<DcCocurricular[]> {
     await this.validateSchoolAccess(schoolId, userId, roles);
-    return this.cocurricularRepo.find({ where: { schoolId }, order: { month: 'ASC', grade: 'ASC' } });
+    return this.cocurricularRepo.find({ where: { schoolId }, order: { academicYear: 'DESC', month: 'ASC', grade: 'ASC' } });
   }
 
   async deleteCocurricular(id: string, userId: string, roles: string[]): Promise<void> {
@@ -667,7 +718,7 @@ export class DataCollectionService {
   async upsertStudentsPerformance(dto: UpsertStudentsPerformanceDto, userId: string, roles: string[]): Promise<DcStudentsPerformance> {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.studentsPerfRepo.findOne({
-      where: { schoolId: dto.schoolId, grade: dto.grade, examName: dto.examName },
+      where: { schoolId: dto.schoolId, academicYear: dto.academicYear, grade: dto.grade, examName: dto.examName },
     });
     await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
@@ -680,7 +731,7 @@ export class DataCollectionService {
 
   async getStudentsPerformance(schoolId: string, userId: string, roles: string[]): Promise<DcStudentsPerformance[]> {
     await this.validateSchoolAccess(schoolId, userId, roles);
-    return this.studentsPerfRepo.find({ where: { schoolId }, order: { grade: 'ASC', examName: 'ASC' } });
+    return this.studentsPerfRepo.find({ where: { schoolId }, order: { academicYear: 'DESC', grade: 'ASC', examName: 'ASC' } });
   }
 
   async deleteStudentsPerformance(id: string, userId: string, roles: string[]): Promise<void> {
@@ -690,12 +741,93 @@ export class DataCollectionService {
     await this.studentsPerfRepo.remove(record);
   }
 
+  // ===================== Student Performance (BA / BPS / BSS) =====================
+
+  async upsertStudentPerformance(dto: UpsertStudentPerformanceDto, userId: string, roles: string[]): Promise<DcStudentPerformance> {
+    await this.validateSchoolAccess(dto.schoolId, userId, roles);
+    let record = await this.studentPerfRepo.findOne({
+      where: {
+        schoolId: dto.schoolId,
+        academicYear: dto.academicYear,
+        formKey: dto.formKey,
+        grade: dto.grade,
+        evaluationPeriod: dto.evaluationPeriod,
+      },
+    });
+    await this.assertCanEditExisting(!!record, userId, roles);
+
+    const rows = dto.rows.map((r) => ({
+      code: r.code,
+      label: r.label,
+      ...(r.domain ? { domain: r.domain } : {}),
+      values: Object.fromEntries(
+        Object.entries(r.values ?? {}).map(([k, v]) => [k, Math.min(100, Math.max(0, Number(v) || 0))]),
+      ),
+    }));
+
+    if (record) {
+      Object.assign(record, dto, { rows });
+    } else {
+      record = this.studentPerfRepo.create({ ...dto, rows, createdById: userId });
+    }
+    return this.studentPerfRepo.save(record);
+  }
+
+  async getStudentPerformance(
+    schoolId: string,
+    userId: string,
+    roles: string[],
+    formKey?: string,
+  ): Promise<DcStudentPerformance[]> {
+    await this.validateSchoolAccess(schoolId, userId, roles);
+    return this.studentPerfRepo.find({
+      where: { schoolId, ...(formKey ? { formKey } : {}) },
+      order: { academicYear: 'DESC', formKey: 'ASC', grade: 'ASC', evaluationPeriod: 'ASC' },
+    });
+  }
+
+  /**
+   * Same records as getStudentPerformance() but with the jsonb `rows` flattened
+   * into "<indicator> — <scale>" columns, for the generic School Information
+   * form-data viewer/export.
+   */
+  async getStudentPerformanceFlat(
+    schoolId: string,
+    userId: string,
+    roles: string[],
+    formKey: string,
+  ): Promise<Record<string, unknown>[]> {
+    const records = await this.getStudentPerformance(schoolId, userId, roles, formKey);
+    return records.map((rec) => {
+      const flat: Record<string, unknown> = {
+        academicYear: rec.academicYear,
+        grade: rec.grade,
+        evaluationPeriod: rec.evaluationPeriod,
+        numberOfStudents: rec.numberOfStudents,
+        appearedPercent: rec.appearedPercent,
+      };
+      for (const row of rec.rows ?? []) {
+        for (const [scale, value] of Object.entries(row.values ?? {})) {
+          flat[`${row.code}. ${row.label} — ${scale}`] = value;
+        }
+      }
+      flat.createdAt = rec.createdAt;
+      return flat;
+    });
+  }
+
+  async deleteStudentPerformance(id: string, userId: string, roles: string[]): Promise<void> {
+    const record = await this.studentPerfRepo.findOne({ where: { id } });
+    if (!record) throw new NotFoundException('Record not found');
+    await this.validateSchoolAccess(record.schoolId, userId, roles);
+    await this.studentPerfRepo.remove(record);
+  }
+
   // ===================== Activity Participation (Corner/Club/Library/Lab) =====================
 
-  async upsertActivityParticipation(dto: UpsertActivityParticipationDto, userId: string, roles: string[]): Promise<DcActivityParticipation> {
-    await this.validateSchoolAccess(dto.schoolId, userId, roles);
+  async upsertActivityParticipation(dto: UpsertActivityParticipationDto, userId: string, roles: string[]): Promise<DcActivityParticipation> {    await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.activityPartRepo.findOne({
-      where: { schoolId: dto.schoolId, item: dto.item, month: dto.month, grade: dto.grade },
+      where: { schoolId: dto.schoolId, item: dto.item, year: dto.year, month: dto.month, grade: dto.grade },
     });
     await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
@@ -708,7 +840,7 @@ export class DataCollectionService {
 
   async getActivityParticipation(schoolId: string, userId: string, roles: string[]): Promise<DcActivityParticipation[]> {
     await this.validateSchoolAccess(schoolId, userId, roles);
-    return this.activityPartRepo.find({ where: { schoolId }, order: { month: 'ASC', item: 'ASC', grade: 'ASC' } });
+    return this.activityPartRepo.find({ where: { schoolId }, order: { year: 'DESC', month: 'ASC', item: 'ASC', grade: 'ASC' } });
   }
 
   async deleteActivityParticipation(id: string, userId: string, roles: string[]): Promise<void> {
@@ -729,7 +861,7 @@ export class DataCollectionService {
 
   async getEventParticipation(schoolId: string, userId: string, roles: string[]): Promise<DcEventParticipation[]> {
     await this.validateSchoolAccess(schoolId, userId, roles);
-    return this.eventPartRepo.find({ where: { schoolId }, order: { createdAt: 'DESC' } });
+    return this.eventPartRepo.find({ where: { schoolId }, order: { academicYear: 'DESC', createdAt: 'DESC' } });
   }
 
   async updateEventParticipation(id: string, dto: UpdateEventParticipationDto, userId: string, roles: string[]): Promise<DcEventParticipation> {
@@ -751,7 +883,86 @@ export class DataCollectionService {
 
   // ===================== Programme Overview (aggregated) =====================
 
-  async getProgrammeOverview(userId: string, roles: string[], category?: string) {
+  private static readonly MONTH_ORDER = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+
+  /**
+   * Students' Information is captured once per school/year/grade/MONTH, so summing
+   * the raw rows counts the same pupils again for every month reported. Collapse to
+   * the latest reported month per school+grade — that snapshot is the enrolment.
+   */
+  private latestStudentSnapshot(records: DcStudentsInfo[]): DcStudentsInfo[] {
+    const latest = new Map<string, DcStudentsInfo>();
+    for (const rec of records) {
+      const key = `${rec.schoolId}::${rec.grade}`;
+      const current = latest.get(key);
+      const order = DataCollectionService.MONTH_ORDER;
+      if (!current || order.indexOf(rec.month) >= order.indexOf(current.month)) {
+        latest.set(key, rec);
+      }
+    }
+    return [...latest.values()];
+  }
+
+  /**
+   * Distinct academic years that have any submitted data for the given schools,
+   * newest first. `dc_activity_participation` / `dc_pedagogical_achievement`
+   * keep their year in a `year` column instead of `academicYear`.
+   */
+  private async getAvailableAcademicYears(schoolIds: string[]): Promise<number[]> {
+    if (schoolIds.length === 0) return [];
+
+    const sources: { repo: Repository<any>; field: string }[] = [
+      { repo: this.basicInfoRepo, field: 'academicYear' },
+      { repo: this.infraRepo, field: 'academicYear' },
+      { repo: this.studentsRepo, field: 'academicYear' },
+      { repo: this.teacherIndividualRepo, field: 'academicYear' },
+      { repo: this.teachersDevRepo, field: 'academicYear' },
+      { repo: this.feeStructureRepo, field: 'academicYear' },
+      { repo: this.revBudgetTotalRepo, field: 'academicYear' },
+      { repo: this.revActualTotalRepo, field: 'academicYear' },
+      { repo: this.revBudgetMonthlyRepo, field: 'academicYear' },
+      { repo: this.revActualMonthlyRepo, field: 'academicYear' },
+      { repo: this.cocurricularRepo, field: 'academicYear' },
+      { repo: this.studentsPerfRepo, field: 'academicYear' },
+      { repo: this.studentPerfRepo, field: 'academicYear' },
+      { repo: this.performanceRepo, field: 'academicYear' },
+      { repo: this.revenueRepo, field: 'academicYear' },
+      { repo: this.eventPartRepo, field: 'academicYear' },
+      { repo: this.alumniRepo, field: 'academicYear' },
+      { repo: this.activityPartRepo, field: 'year' },
+      { repo: this.pedagAchievRepo, field: 'year' },
+    ];
+
+    const results = await Promise.all(
+      sources.map(({ repo, field }) =>
+        repo
+          .createQueryBuilder('r')
+          .select(`DISTINCT r.${field}`, 'year')
+          .where('r.schoolId IN (:...ids)', { ids: schoolIds })
+          .getRawMany<{ year: number | string | null }>(),
+      ),
+    );
+
+    const years = new Set<number>();
+    for (const rows of results) {
+      for (const row of rows) {
+        const y = Number(row.year);
+        // 0 is the entity default for rows created before academicYear existed.
+        if (Number.isFinite(y) && y > 0) years.add(y);
+      }
+    }
+    return [...years].sort((a, b) => b - a);
+  }
+
+  async getProgrammeOverview(
+    userId: string,
+    roles: string[],
+    category?: string,
+    academicYear?: number,
+  ) {
     const admin = this.isAdminRole(roles);
     const categoryWhere = category ? { schoolCategory: category } : {};
 
@@ -772,33 +983,39 @@ export class DataCollectionService {
     const schoolIds = schools.map((s) => s.id);
 
     if (schoolIds.length === 0) {
-      return this.emptyOverview(schools);
+      return this.emptyOverview(schools, academicYear ?? null, []);
     }
 
+    // Every dc_* table now stores one row per academic year, so without this
+    // filter a school with two years of data would be counted twice.
+    const availableYears = await this.getAvailableAcademicYears(schoolIds);
+    const year = academicYear ?? availableYears[0] ?? null;
+
+    const teacherQb = this.teacherIndividualRepo
+      .createQueryBuilder('t')
+      .select('t.school_id', 'schoolId')
+      .addSelect('t.gender', 'gender')
+      .addSelect('COUNT(*)', 'cnt')
+      .where('t.school_id IN (:...ids)', { ids: schoolIds })
+      .groupBy('t.school_id')
+      .addGroupBy('t.gender');
+    if (year != null) teacherQb.andWhere('t.academic_year = :year', { year });
+
+    const studentWhere = {
+      schoolId: In(schoolIds),
+      ...(year != null ? { academicYear: year } : {}),
+    };
+
+    const revenueWhere = schoolIds.map((id) =>
+      year != null ? { schoolId: id, academicYear: year } : { schoolId: id },
+    );
+
     // Parallel aggregate queries
-    const [teacherRows, studentRows, budgetTotals, actualTotals] = await Promise.all([
-      this.teacherIndividualRepo
-        .createQueryBuilder('t')
-        .select('t.school_id', 'schoolId')
-        .addSelect('t.gender', 'gender')
-        .addSelect('COUNT(*)', 'cnt')
-        .where('t.school_id IN (:...ids)', { ids: schoolIds })
-        .groupBy('t.school_id')
-        .addGroupBy('t.gender')
-        .getRawMany(),
-      this.studentsRepo
-        .createQueryBuilder('s')
-        .select('s.school_id', 'schoolId')
-        .addSelect('SUM(s.boys)', 'boys')
-        .addSelect('SUM(s.girls)', 'girls')
-        .addSelect('SUM(s.total)', 'total')
-        .addSelect('SUM(s.persons_with_disability)', 'pwd')
-        .addSelect('SUM(s.ethnic)', 'ethnic')
-        .where('s.school_id IN (:...ids)', { ids: schoolIds })
-        .groupBy('s.school_id')
-        .getRawMany(),
-      this.revBudgetTotalRepo.find({ where: schoolIds.map((id) => ({ schoolId: id })) }),
-      this.revActualTotalRepo.find({ where: schoolIds.map((id) => ({ schoolId: id })) }),
+    const [teacherRows, studentRecords, budgetTotals, actualTotals] = await Promise.all([
+      teacherQb.getRawMany(),
+      this.studentsRepo.find({ where: studentWhere }),
+      this.revBudgetTotalRepo.find({ where: revenueWhere }),
+      this.revActualTotalRepo.find({ where: revenueWhere }),
     ]);
 
     // Aggregate teacher counts
@@ -810,16 +1027,15 @@ export class DataCollectionService {
       else if (g === 'female') teacherMap[row.schoolId].female += parseInt(row.cnt, 10);
     }
 
-    // Aggregate student counts
+    // Aggregate student counts from the latest reported month per school+grade
     const studentMap: Record<string, { boys: number; girls: number; total: number; pwd: number; ethnic: number }> = {};
-    for (const row of studentRows) {
-      studentMap[row.schoolId] = {
-        boys: parseInt(row.boys ?? '0', 10),
-        girls: parseInt(row.girls ?? '0', 10),
-        total: parseInt(row.total ?? '0', 10),
-        pwd: parseInt(row.pwd ?? '0', 10),
-        ethnic: parseInt(row.ethnic ?? '0', 10),
-      };
+    for (const rec of this.latestStudentSnapshot(studentRecords)) {
+      const entry = (studentMap[rec.schoolId] ??= { boys: 0, girls: 0, total: 0, pwd: 0, ethnic: 0 });
+      entry.boys += rec.boys || 0;
+      entry.girls += rec.girls || 0;
+      entry.total += rec.total || 0;
+      entry.pwd += rec.personsWithDisability || 0;
+      entry.ethnic += rec.ethnic || 0;
     }
 
     // Revenue maps
@@ -923,10 +1139,14 @@ export class DataCollectionService {
       categories[cat].actualRevenueAchievement += r.actualRevenueAchievement;
     }
 
-    return { totals, categories, schools: schoolRows };
+    return { totals, categories, schools: schoolRows, academicYear: year, availableYears };
   }
 
-  private emptyOverview(schools: DcSchool[]) {
+  private emptyOverview(
+    schools: DcSchool[],
+    academicYear: number | null = null,
+    availableYears: number[] = [],
+  ) {
     return {
       totals: {
         totalSchools: 0, totalTeachersMale: 0, totalTeachersFemale: 0, totalTeachers: 0,
@@ -936,13 +1156,28 @@ export class DataCollectionService {
       },
       categories: {},
       schools: [],
+      academicYear,
+      availableYears,
     };
   }
 
   // ===================== School Profile Overview =====================
 
-  async getSchoolProfile(schoolId: string, userId: string, roles: string[]) {
+  async getSchoolProfile(
+    schoolId: string,
+    userId: string,
+    roles: string[],
+    academicYear?: number,
+  ) {
     const school = await this.validateSchoolAccess(schoolId, userId, roles);
+
+    // Scope every category to a single academic year, otherwise the aggregated
+    // status-breakdown tables would sum multiple years' rows together.
+    const availableYears = await this.getAvailableAcademicYears([schoolId]);
+    const year = academicYear ?? availableYears[0] ?? null;
+    const yearWhere: { academicYear?: number } = year != null ? { academicYear: year } : {};
+    // Activity participation + pedagogical achievements use a `year` column.
+    const legacyYearWhere: { year?: number } = year != null ? { year } : {};
 
     const [
       infrastructure,
@@ -960,35 +1195,24 @@ export class DataCollectionService {
       eventParticipation,
       alumni,
     ] = await Promise.all([
-      this.infraRepo.findOne({ where: { schoolId } }),
-      this.studentsRepo.find({ where: { schoolId } }),
-      this.teacherIndividualRepo.find({ where: { schoolId }, order: { name: 'ASC' } }),
-      this.teachersDevRepo.find({ where: { schoolId } }),
-      this.feeStructureRepo.find({ where: { schoolId } }),
-      this.revBudgetTotalRepo.findOne({ where: { schoolId } }),
-      this.revActualTotalRepo.findOne({ where: { schoolId } }),
-      this.pedagAchievRepo.find({ where: { schoolId }, order: { year: 'DESC' } }),
-      this.performanceRepo.findOne({ where: { schoolId } }),
-      this.cocurricularRepo.find({ where: { schoolId } }),
-      this.studentsPerfRepo.find({ where: { schoolId } }),
-      this.activityPartRepo.find({ where: { schoolId } }),
-      this.eventPartRepo.find({ where: { schoolId } }),
-      this.alumniRepo.find({ where: { schoolId }, order: { graduationYear: 'DESC' } }),
+      this.infraRepo.findOne({ where: { schoolId, ...yearWhere }, order: { academicYear: 'DESC' } }),
+      this.studentsRepo.find({ where: { schoolId, ...yearWhere } }),
+      this.teacherIndividualRepo.find({ where: { schoolId, ...yearWhere }, order: { name: 'ASC' } }),
+      this.teachersDevRepo.find({ where: { schoolId, ...yearWhere } }),
+      this.feeStructureRepo.find({ where: { schoolId, ...yearWhere } }),
+      this.revBudgetTotalRepo.findOne({ where: { schoolId, ...yearWhere }, order: { academicYear: 'DESC' } }),
+      this.revActualTotalRepo.findOne({ where: { schoolId, ...yearWhere }, order: { academicYear: 'DESC' } }),
+      this.pedagAchievRepo.find({ where: { schoolId, ...legacyYearWhere }, order: { year: 'DESC' } }),
+      this.performanceRepo.findOne({ where: { schoolId, ...yearWhere }, order: { academicYear: 'DESC' } }),
+      this.cocurricularRepo.find({ where: { schoolId, ...yearWhere } }),
+      this.studentsPerfRepo.find({ where: { schoolId, ...yearWhere } }),
+      this.activityPartRepo.find({ where: { schoolId, ...legacyYearWhere } }),
+      this.eventPartRepo.find({ where: { schoolId, ...yearWhere } }),
+      this.alumniRepo.find({ where: { schoolId, ...yearWhere }, order: { graduationYear: 'DESC' } }),
     ]);
 
     // ── Aggregate students by grade (latest month snapshot per grade) ──
-    const MONTH_ORDER = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December',
-    ];
-    const latestByGrade = new Map<string, DcStudentsInfo>();
-    for (const rec of students) {
-      const current = latestByGrade.get(rec.grade);
-      if (!current || MONTH_ORDER.indexOf(rec.month) >= MONTH_ORDER.indexOf(current.month)) {
-        latestByGrade.set(rec.grade, rec);
-      }
-    }
-    const studentsByGrade = [...latestByGrade.values()];
+    const studentsByGrade = this.latestStudentSnapshot(students);
     const studentTotals = studentsByGrade.reduce(
       (acc, r) => ({
         boys: acc.boys + (r.boys || 0),
@@ -1009,6 +1233,15 @@ export class DataCollectionService {
       }),
       { male: 0, female: 0, total: 0 },
     );
+
+    // Month-name column can't be ordered in SQL. Sort oldest → newest so the
+    // status tables can read the most recent assessment off the end.
+    teachersDevelopment.sort((a, b) => {
+      const yDiff = Number(a.academicYear ?? 0) - Number(b.academicYear ?? 0);
+      if (yDiff !== 0) return yDiff;
+      const order = DataCollectionService.MONTH_ORDER;
+      return order.indexOf(a.month) - order.indexOf(b.month);
+    });
 
     // Count of the 6 categories that have at least one record (used for the
     // placeholder grade / completeness indicator until a real rating exists).
@@ -1042,6 +1275,8 @@ export class DataCollectionService {
       meta: {
         categoriesWithData,
         totalCategories: 6,
+        academicYear: year,
+        availableYears,
       },
     };
   }

@@ -13,10 +13,10 @@ import { User } from '../../users/entities/user.entity';
 
 /**
  * One record per (school × month × grade).
- * 7 grades × 12 months = up to 84 entries per school.
+ * 12 grades × 12 months = up to 144 entries per school.
  */
 @Entity('dc_students_info')
-@Unique(['schoolId', 'month', 'grade'])
+@Unique(['schoolId', 'academicYear', 'month', 'grade'])
 export class DcStudentsInfo {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -28,11 +28,15 @@ export class DcStudentsInfo {
   @Column({ name: 'school_id' })
   schoolId: string;
 
+  /** Academic year the record belongs to, e.g. 2026 */
+  @Column({ name: 'academic_year', type: 'int', default: 0 })
+  academicYear: number;
+
   /** e.g. 'January' … 'December' */
   @Column({ name: 'month', length: 20 })
   month: string;
 
-  /** 'play_learn' | 'nursery' | 'g1' | 'g2' | 'g3' | 'g4' | 'g5' */
+  /** 'play_learn' | 'nursery' | 'g1' … 'g10' */
   @Column({ name: 'grade', length: 20 })
   grade: string;
 
@@ -57,6 +61,12 @@ export class DcStudentsInfo {
 
   @Column({ name: 'dropout_rate', type: 'decimal', precision: 5, scale: 2, default: 0 })
   dropoutRate: number;
+
+  @Column({ name: 'replaced_students_rate', type: 'decimal', precision: 5, scale: 2, default: 0 })
+  replacedStudentsRate: number;
+
+  @Column({ name: 'retention_rate', type: 'decimal', precision: 5, scale: 2, default: 0 })
+  retentionRate: number;
 
   @Column({ name: 'remedial_support', type: 'int', default: 0 })
   remedialSupport: number;

@@ -17,7 +17,7 @@ import { User } from '../../users/entities/user.entity';
  * upsert on conflict.
  */
 @Entity('dc_activity_participation')
-@Unique(['schoolId', 'item', 'month', 'grade'])
+@Unique(['schoolId', 'item', 'year', 'month', 'grade'])
 export class DcActivityParticipation {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -29,9 +29,13 @@ export class DcActivityParticipation {
   @Column({ name: 'school_id' })
   schoolId: string;
 
-  /** Corner Activity | Club Activity | Library Activity | Lab Activity */
+  /** Corner activity | one of the five clubs | Science/ICT/Agriculture lab | Use of library */
   @Column({ length: 30 })
   item: string;
+
+  /** Calendar year the activity was conducted in, e.g. 2026 */
+  @Column({ type: 'int', default: 0 })
+  year: number;
 
   /** January … December */
   @Column({ length: 20 })

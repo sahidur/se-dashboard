@@ -2,7 +2,6 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { RolesService } from './roles/roles.service';
 import { UsersService } from './users/users.service';
-import * as bcrypt from 'bcryptjs';
 
 async function seed() {
   const app = await NestFactory.createApplicationContext(AppModule);
@@ -17,15 +16,15 @@ async function seed() {
     const usersService = app.get(UsersService);
     const existingAdmin = await usersService.findOneByEmail('admin@bep.org');
     if (!existingAdmin) {
-      const hashedPassword = await bcrypt.hash('admin123', 12);
       await usersService.create({
         firstName: 'Super',
         lastName: 'Admin',
         email: 'admin@bep.org',
-        password: hashedPassword,
+        // Passed as plaintext — UsersService.create() does the hashing.
+        password: process.env.SEED_ADMIN_PASSWORD || 'ChangeMe#2024',
         phone: '+8801700000000',
       });
-      console.log('✅ Super Admin user created (admin@bep.org / admin123)');
+      console.log('✅ Super Admin user created (admin@bep.org)');
 
       // Assign Super Admin role
       const admin = await usersService.findOneByEmail('admin@bep.org');

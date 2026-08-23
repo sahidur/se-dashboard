@@ -1,17 +1,28 @@
 import { NestFactory, Reflector } from '@nestjs/core';
 import { ClassSerializerInterceptor, Logger, ValidationPipe } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import helmet from 'helmet';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     // Suppress the default NestJS startup logs that mention port/host info
     logger: process.env.APP_ENV === 'production'
       ? ['warn', 'error']
       : ['log', 'warn', 'error', 'debug'],
   });
+
+  // Reverse-proxy awareness. Only enable when the app really sits behind a
+  // trusted proxy (nginx): with `trust proxy` off, a spoofed X-Forwarded-For is
+  // ignored; with it on but no proxy in front, anyone could forge their client
+  // IP and evade the login rate limiter.
+  const trustProxy = process.env.TRUST_PROXY;
+  if (trustProxy && trustProxy !== 'false') {
+    const hops = Number(trustProxy);
+    app.set('trust proxy', Number.isFinite(hops) && hops > 0 ? hops : 1);
+  }
 
   // Security headers (OWASP: A05 – Security Misconfiguration)
   app.use(

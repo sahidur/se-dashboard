@@ -1,12 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useSyncExternalStore } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Fingerprint } from 'lucide-react';
 import api from '@/lib/api';
-import { useAuthStore } from '@/store/auth-store';
+import {
+  useAuthStore,
+  hasSessionCookie,
+  setSessionCookie,
+} from '@/store/auth-store';
 import { loginWithPasskey, passkeySupported } from '@/lib/passkey';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,17 +24,41 @@ import {
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  // No minimum: the server answers with a uniform 401, and a client-side rule
+  // would only lock legacy accounts out of the form.
+  password: z.string().min(1, 'Password is required').max(128),
 });
 
 type LoginForm = z.infer<typeof loginSchema>;
 
+// Marks that this tab has already sent an authenticated-looking visitor to the
+// dashboard. If we end up back on the login page with the flag still set, the
+// middleware bounced us straight back and another redirect would loop forever.
+const REDIRECT_ATTEMPT_KEY = 'bep-login-redirect-attempt';
+
+// Reading a browser-only value through useSyncExternalStore (with a no-op
+// subscription) returns the server snapshot during SSR/hydration and the client
+// snapshot on every render afterwards — same result as a mount effect that calls
+// setState, without the extra render pass.
+const NEVER_CHANGES = () => () => {};
+const clientTrue = () => true;
+const serverFalse = () => false;
+
 export default function LoginPage() {
-  const { setAuth, isAuthenticated } = useAuthStore();
+  const { setAuth, logout, isAuthenticated, accessToken } = useAuthStore();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
-  const [supportsPasskey, setSupportsPasskey] = useState(false);
+  // WebAuthn is only available in the browser.
+  const supportsPasskey = useSyncExternalStore(NEVER_CHANGES, passkeySupported, serverFalse);
+  // Zustand rehydrates from localStorage on the client only. Acting on
+  // `isAuthenticated` before that happens would read the SSR default (false).
+  const hydrated = useSyncExternalStore(NEVER_CHANGES, clientTrue, serverFalse);
+  // Whether a *previous* page load already tried the dashboard, captured once
+  // before we write our own flag so a repeated effect run (React StrictMode
+  // double-invoke) can't mistake our own flag for evidence of a bounce.
+  const bouncedBackRef = useRef<boolean | null>(null);
+  const navigatedRef = useRef(false);
 
   const {
     register,
@@ -49,16 +77,61 @@ export default function LoginPage() {
   // left the dashboard stuck on its loading spinner until a manual hard reload.
   // A full navigation guarantees the dashboard mounts fresh with the auth store
   // rehydrated from localStorage (the same path a hard reload takes).
+  //
+  // Dashboard routes are guarded twice: by the `bep-session` cookie in the edge
+  // middleware and by the persisted store in the dashboard layout. When those
+  // two disagree (cookie expired/blocked/cleared while localStorage still says
+  // "authenticated") this redirect and the middleware's redirect back to the
+  // login page ping-pong forever and the form becomes impossible to use. The
+  // guards below keep the two signals in sync and stop after a single failed
+  // attempt.
   useEffect(() => {
-    if (isAuthenticated) {
-      window.location.assign('/dashboard');
-    }
-  }, [isAuthenticated]);
+    if (!hydrated) return;
 
-  // WebAuthn is only available in the browser; check after mount.
-  useEffect(() => {
-    setSupportsPasskey(passkeySupported());
-  }, []);
+    if (bouncedBackRef.current === null) {
+      bouncedBackRef.current =
+        sessionStorage.getItem(REDIRECT_ATTEMPT_KEY) === '1';
+    }
+
+    const authed = isAuthenticated && !!accessToken;
+
+    if (!authed) {
+      // Nothing stale left to redirect with; allow a future successful login
+      // to navigate normally.
+      sessionStorage.removeItem(REDIRECT_ATTEMPT_KEY);
+      return;
+    }
+
+    if (bouncedBackRef.current) {
+      // A previous load already sent this tab to the dashboard and it landed
+      // back here, so the session is not actually usable. Clear the stale
+      // client state and let the user sign in again instead of looping.
+      bouncedBackRef.current = false;
+      sessionStorage.removeItem(REDIRECT_ATTEMPT_KEY);
+      logout();
+      // The bounce can only be detected from sessionStorage after mount, so
+      // surfacing it has to happen here; it runs at most once per page load.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setError('Your session has expired. Please sign in again.');
+      setLoading(false);
+      setPasskeyLoading(false);
+      return;
+    }
+
+    if (navigatedRef.current) return;
+    navigatedRef.current = true;
+
+    // Re-issue the middleware's session cookie so a cookie that expired (or was
+    // cleared) while localStorage survived doesn't bounce us back here.
+    if (!hasSessionCookie()) setSessionCookie();
+
+    sessionStorage.setItem(REDIRECT_ATTEMPT_KEY, '1');
+    // A hard navigation is deliberate here (see the comment above): router.push
+    // races with Next.js' RSC transition and leaves the dashboard stuck on its
+    // spinner. Do not "fix" this by switching back to the router.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign('/dashboard');
+  }, [hydrated, isAuthenticated, accessToken, logout]);
 
   const onSubmit = async (data: LoginForm) => {
     try {

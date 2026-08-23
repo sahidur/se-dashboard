@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import {
   Activity,
   ChevronDown,
@@ -249,9 +250,12 @@ function TimelineItem({ log, showActor }: { log: AuditLogEntry; showActor?: bool
             {showActor && (
               <span className="inline-flex items-center gap-1.5 font-medium text-gray-900">
                 {log.user?.profilePicture ? (
-                  <img
+                  <Image
                     src={resolveAssetUrl(log.user.profilePicture)}
                     alt=""
+                    width={20}
+                    height={20}
+                    unoptimized
                     className="h-5 w-5 rounded-full object-cover"
                   />
                 ) : (

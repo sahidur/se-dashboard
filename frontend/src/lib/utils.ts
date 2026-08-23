@@ -38,6 +38,19 @@ export function getInitials(firstName: string, lastName: string) {
   return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
 }
 
+/** Year options ordered current year first, then upcoming years, then past years. */
+export function buildYearOptions(options?: {
+  pastYears?: number;
+  futureYears?: number;
+}): number[] {
+  const { pastYears = 60, futureYears = 20 } = options ?? {};
+  const current = new Date().getFullYear();
+  const years: number[] = [];
+  for (let y = current; y <= current + futureYears; y++) years.push(y);
+  for (let y = current - 1; y >= current - pastYears; y--) years.push(y);
+  return years;
+}
+
 /**
  * Resolve a stored file/image URL into one the browser can actually load.
  *

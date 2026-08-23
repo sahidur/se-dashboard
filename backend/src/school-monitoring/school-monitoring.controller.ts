@@ -40,7 +40,8 @@ export class SchoolMonitoringController {
   findAll(
     @CurrentUser('id') userId: string,
     @CurrentUser('roles') roles: string[],
-    @Query('schoolId') schoolId?: string,
+    // Without the pipe a non-uuid value reaches Postgres and 500s.
+    @Query('schoolId', new ParseUUIDPipe({ optional: true })) schoolId?: string,
     @Query('formType') formType?: string,
     @Query('search') search?: string,
     @Query('page') page?: string,

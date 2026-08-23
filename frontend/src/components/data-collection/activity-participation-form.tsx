@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import NextImage from 'next/image';
 import {
   Library, School, MapPin, Save, Trash2, AlertCircle, CheckCircle2, PlusCircle,
   UploadCloud, Image as ImageIcon, X,
@@ -15,12 +16,25 @@ import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import api from '@/lib/api';
-import { resolveAssetUrl } from '@/lib/utils';
+import { buildYearOptions, resolveAssetUrl } from '@/lib/utils';
 import type { DcSchool, DcActivityParticipation } from '@/types';
 
 /* ─── Constants ──────────────────────────────────────────── */
 
-const ITEMS = ['Corner Activity', 'Club Activity', 'Library Activity', 'Lab Activity'];
+const ITEMS = [
+  'Corner activity',
+  'Language & Literacy club',
+  'Nature & Environment club',
+  'Music club',
+  'Creative club',
+  'Science & Technology club',
+  'Science lab',
+  'ICT lab',
+  'Agriculture lab',
+  'Use of library',
+];
+
+const YEARS = buildYearOptions();
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -33,6 +47,7 @@ const GRADES = [
 
 interface FormState {
   item: string;
+  year: string;
   month: string;
   grade: string;
   activityName: string;
@@ -43,7 +58,7 @@ interface FormState {
 }
 
 const BLANK: FormState = {
-  item: '', month: '', grade: '', activityName: '', photoUrl: '', photoKey: '', conductedCount: '', participationRate: '',
+  item: '', year: '', month: '', grade: '', activityName: '', photoUrl: '', photoKey: '', conductedCount: '', participationRate: '',
 };
 
 interface Props { schoolId: string }
@@ -74,10 +89,16 @@ export function ActivityParticipationForm({ schoolId }: Props) {
     toastTimer.current = setTimeout(() => setToast(null), 4000);
   };
 
+  const loadRecords = useCallback(() => {
+    api.get(`/data-collection/activity-participation/school/${schoolId}`)
+      .then(({ data }) => setRecords(data))
+      .catch(() => {});
+  }, [schoolId]);
+
   useEffect(() => {
     api.get(`/data-collection/schools/${schoolId}`).then(({ data }) => setSchool(data)).catch(() => {});
     loadRecords();
-  }, [schoolId]);
+  }, [schoolId, loadRecords]);
 
   // Overlay the user's private draft (an in-progress unsubmitted new entry).
   useEffect(() => {
@@ -102,18 +123,13 @@ export function ActivityParticipationForm({ schoolId }: Props) {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const loadRecords = () => {
-    api.get(`/data-collection/activity-participation/school/${schoolId}`)
-      .then(({ data }) => setRecords(data))
-      .catch(() => {});
-  };
-
   const set = (key: keyof FormState, val: string) =>
     setForm((prev) => ({ ...prev, [key]: val }));
 
-  const monthDisabled = !form.item;
-  const gradeDisabled = !form.item || !form.month;
-  const fieldsDisabled = !form.item || !form.month || !form.grade;
+  const yearDisabled = !form.item;
+  const monthDisabled = !form.item || !form.year;
+  const gradeDisabled = !form.item || !form.year || !form.month;
+  const fieldsDisabled = !form.item || !form.year || !form.month || !form.grade;
 
   const resetForm = () => {
     setForm(BLANK);
@@ -153,7 +169,7 @@ export function ActivityParticipationForm({ schoolId }: Props) {
 
   const handleEdit = (rec: DcActivityParticipation) => {
     setForm({
-      item: rec.item, month: rec.month, grade: rec.grade,
+      item: rec.item, year: rec.year ? String(rec.year) : '', month: rec.month, grade: rec.grade,
       activityName: rec.activityName ?? '',
       photoUrl: rec.photoUrl ?? '', photoKey: rec.photoKey ?? '',
       conductedCount: String(rec.conductedCount ?? ''),
@@ -180,6 +196,7 @@ export function ActivityParticipationForm({ schoolId }: Props) {
     e.preventDefault();
     setError('');
     if (!form.item) { setError('Please select an item.'); return; }
+    if (!form.year) { setError('Please select a year.'); return; }
     if (!form.month) { setError('Please select a month.'); return; }
     if (!form.grade) { setError('Please select a grade.'); return; }
 
@@ -188,6 +205,7 @@ export function ActivityParticipationForm({ schoolId }: Props) {
       const payload: Record<string, unknown> = {
         schoolId,
         item: form.item,
+        year: Number(form.year),
         month: form.month,
         grade: form.grade,
         activityName: form.activityName || undefined,
@@ -197,7 +215,7 @@ export function ActivityParticipationForm({ schoolId }: Props) {
         participationRate: form.participationRate !== '' ? Number(form.participationRate) : undefined,
       };
       await api.post('/data-collection/activity-participation', payload);
-      showToast('success', `Activity data for ${form.month} / ${form.grade} saved.`);
+      showToast('success', `Activity data for ${form.month} ${form.year} / ${form.grade} saved.`);
       await draft.clearDraft();
       resetForm();
       loadRecords();
@@ -263,23 +281,38 @@ export function ActivityParticipationForm({ schoolId }: Props) {
               {editingId ? 'Edit Activity Record' : 'Add Activity Record'}
             </CardTitle>
             <p className="text-sm text-gray-500 mt-0.5">
-              Select an item, month and grade, then record the activity details.
+              Select an item, year, month and grade, then record the activity details.
             </p>
           </CardHeader>
           <CardContent className="px-6 pb-6">
             <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <div>
                   <Label className="mb-1.5 block text-sm font-medium text-gray-700">
                     Item <span className="text-red-500">*</span>
                   </Label>
                   <select
                     value={form.item}
-                    onChange={(e) => { set('item', e.target.value); set('month', ''); set('grade', ''); }}
+                    onChange={(e) => { set('item', e.target.value); set('year', ''); set('month', ''); set('grade', ''); }}
                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-amber-400 focus:border-amber-400"
                   >
                     <option value="">Select item…</option>
                     {ITEMS.map((it) => <option key={it} value={it}>{it}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <Label className="mb-1.5 block text-sm font-medium text-gray-700">
+                    Year <span className="text-red-500">*</span>
+                  </Label>
+                  <select
+                    value={form.year}
+                    onChange={(e) => { set('year', e.target.value); set('month', ''); set('grade', ''); }}
+                    disabled={yearDisabled}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-amber-400 focus:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <option value="">Select year…</option>
+                    {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
                   </select>
                 </div>
 
@@ -366,9 +399,12 @@ export function ActivityParticipationForm({ schoolId }: Props) {
                           <ImageIcon size={18} />
                         </div>
                       ) : (
-                        <img
+                        <NextImage
                           src={resolveAssetUrl(form.photoUrl)}
                           alt="Activity"
+                          width={56}
+                          height={56}
+                          unoptimized
                           className="h-14 w-14 rounded-md object-cover"
                           onError={() => setBrokenPhotoIds((prev) => new Set(prev).add('preview'))}
                         />
@@ -397,7 +433,7 @@ export function ActivityParticipationForm({ schoolId }: Props) {
 
               {fieldsDisabled && (
                 <p className="text-xs text-amber-600 flex items-center gap-1">
-                  <AlertCircle size={12} /> Please select an item, month and grade to enable input fields.
+                  <AlertCircle size={12} /> Please select an item, year, month and grade to enable input fields.
                 </p>
               )}
 
@@ -450,6 +486,7 @@ export function ActivityParticipationForm({ schoolId }: Props) {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-gray-100">
+                    <th className="py-2 pr-3 text-left text-gray-500 uppercase tracking-wider font-semibold">Year</th>
                     <th className="py-2 pr-3 text-left text-gray-500 uppercase tracking-wider font-semibold">Month</th>
                     <th className="py-2 pr-3 text-left text-gray-500 uppercase tracking-wider font-semibold">Grade</th>
                     <th className="py-2 pr-3 text-left text-gray-500 uppercase tracking-wider font-semibold">Activity/Books</th>
@@ -461,6 +498,7 @@ export function ActivityParticipationForm({ schoolId }: Props) {
                 <tbody className="divide-y divide-gray-50">
                   {rows.map((rec) => (
                     <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="py-2.5 pr-3 text-gray-700">{rec.year || '—'}</td>
                       <td className="py-2.5 pr-3 text-gray-700">{rec.month}</td>
                       <td className="py-2.5 pr-3">
                         <Badge variant="default" className="text-amber-700 border-amber-200 bg-amber-50 font-medium">
@@ -470,9 +508,12 @@ export function ActivityParticipationForm({ schoolId }: Props) {
                       <td className="py-2.5 pr-3 text-gray-700 max-w-[220px] truncate">{rec.activityName || '—'}</td>
                       <td className="py-2.5 pr-3 text-center">
                         {rec.photoUrl && !brokenPhotoIds.has(rec.id) ? (
-                          <img
+                          <NextImage
                             src={resolveAssetUrl(rec.photoUrl)}
                             alt=""
+                            width={32}
+                            height={32}
+                            unoptimized
                             className="inline-block h-8 w-8 rounded object-cover"
                             onError={() => setBrokenPhotoIds((prev) => new Set(prev).add(rec.id))}
                           />

@@ -15,17 +15,20 @@ import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import api from '@/lib/api';
+import { buildYearOptions } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth-store';
 import type { DcSchool, DcFeeStructure, DcFeeStructureLog } from '@/types';
 
-/* ─── Constants ──────────────────────────────────────────── */
+/* ─── Constants ─────────────────────────────────── */
+
+const YEARS = buildYearOptions();
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-const GRADES = ['Play', 'Nursery', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5'];
+const GRADES = ['Play & Learn', 'Nursery', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5'];
 
 const SCHOOL_CATEGORY_LABELS: Record<string, string> = {
   brac_academy: 'BRAC Academy',
@@ -75,6 +78,7 @@ export function FeeStructureForm({ schoolId }: Props) {
   const router = useRouter();
   const { hasPermission } = useAuthStore();
   const [school, setSchool] = useState<DcSchool | null>(null);
+  const [academicYear, setAcademicYear] = useState('');
   const [selectedMonths, setSelectedMonths] = useState<string[]>([...MONTHS]);
   const [grade, setGrade] = useState('');
   const [amounts, setAmounts] = useState<FeeAmounts>(BLANK_AMOUNTS);
@@ -88,7 +92,7 @@ export function FeeStructureForm({ schoolId }: Props) {
   const [logs, setLogs] = useState<DcFeeStructureLog[]>([]);
   const [showLogs, setShowLogs] = useState(false);
   const [loadingLogs, setLoadingLogs] = useState(false);
-  const draft = useFormDraft<{ selectedMonths: string[]; grade: string; amounts: FeeAmounts }>('fee-structure', schoolId);
+  const draft = useFormDraft<{ academicYear: string; selectedMonths: string[]; grade: string; amounts: FeeAmounts }>('fee-structure', schoolId);
   const draftAppliedRef = useRef(false);
   const skipAmountsRef = useRef(false);
   const [tab, setTab] = useState<'entry' | 'data'>('entry');
@@ -139,9 +143,9 @@ export function FeeStructureForm({ schoolId }: Props) {
   /* Load existing fee data when a single month + grade is selected */
   useEffect(() => {
     if (skipAmountsRef.current) { skipAmountsRef.current = false; return; }
-    if (selectedMonths.length === 1 && grade) {
+    if (academicYear && selectedMonths.length === 1 && grade) {
       const existing = allRecords.find(
-        (r) => r.month === selectedMonths[0] && r.grade === grade,
+        (r) => Number(r.academicYear) === Number(academicYear) && r.month === selectedMonths[0] && r.grade === grade,
       );
       if (existing) {
         setAmounts({
@@ -162,7 +166,7 @@ export function FeeStructureForm({ schoolId }: Props) {
     } else {
       setAmounts(BLANK_AMOUNTS);
     }
-  }, [selectedMonths, grade, allRecords]);
+  }, [academicYear, selectedMonths, grade, allRecords]);
 
   /* Overlay the user's private draft (if any) once records have loaded. */
   useEffect(() => {
@@ -172,6 +176,7 @@ export function FeeStructureForm({ schoolId }: Props) {
       if (d) {
         draftAppliedRef.current = true;
         skipAmountsRef.current = true;
+        setAcademicYear(d.academicYear ?? '');
         setSelectedMonths(d.selectedMonths);
         setGrade(d.grade);
         setAmounts(d.amounts);
@@ -181,7 +186,7 @@ export function FeeStructureForm({ schoolId }: Props) {
   }, [loadingRecords]);
 
   const handleSaveDraft = async () => {
-    await draft.saveDraft({ selectedMonths, grade, amounts });
+    await draft.saveDraft({ academicYear, selectedMonths, grade, amounts });
   };
 
   const handleClearDraft = async () => {
@@ -191,6 +196,7 @@ export function FeeStructureForm({ schoolId }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!academicYear) { setError('Please select an academic year.'); return; }
     if (selectedMonths.length === 0) { setError('Please select at least one month.'); return; }
     if (!grade) { setError('Please select a grade.'); return; }
     setSaving(true);
@@ -198,7 +204,13 @@ export function FeeStructureForm({ schoolId }: Props) {
     try {
       await Promise.all(
         selectedMonths.map((month) =>
-          api.post('/data-collection/fee-structure', { schoolId, month, grade, ...amounts }),
+          api.post('/data-collection/fee-structure', {
+            schoolId,
+            academicYear: Number(academicYear),
+            month,
+            grade,
+            ...amounts,
+          }),
         ),
       );
       showToast('success', `Fee data saved for ${selectedMonths.length} month(s) — ${grade}`);
@@ -223,8 +235,14 @@ export function FeeStructureForm({ schoolId }: Props) {
       hour: '2-digit', minute: '2-digit', hour12: true,
     });
 
-  const gradeRecords = grade ? allRecords.filter((r) => r.grade === grade) : [];
-  const monthsDone = allRecords.reduce<Record<string, string[]>>((acc, r) => {
+  const yearRecords = academicYear
+    ? allRecords.filter((r) => Number(r.academicYear) === Number(academicYear))
+    : allRecords;
+  const gradeRecords = grade ? yearRecords.filter((r) => r.grade === grade) : [];
+  const sortedGradeRecords = [...gradeRecords].sort(
+    (a, b) => (Number(b.academicYear) - Number(a.academicYear)) || (MONTHS.indexOf(a.month) - MONTHS.indexOf(b.month)),
+  );
+  const monthsDone = yearRecords.reduce<Record<string, string[]>>((acc, r) => {
     if (!acc[r.grade]) acc[r.grade] = [];
     if (!acc[r.grade].includes(r.month)) acc[r.grade].push(r.month);
     return acc;
@@ -315,6 +333,24 @@ export function FeeStructureForm({ schoolId }: Props) {
               </div>
             )}
 
+            {/* Academic Year */}
+            <div>
+              <Label className="mb-1.5 block text-xs font-medium text-gray-600">
+                Academic Year <span className="text-red-500">*</span>
+              </Label>
+              <div className="relative max-w-xs">
+                <select
+                  value={academicYear}
+                  onChange={(e) => setAcademicYear(e.target.value)}
+                  className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
+                >
+                  <option value="">Choose an academic year...</option>
+                  {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+                </select>
+                <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-3 text-gray-400" />
+              </div>
+            </div>
+
             {/* Month multi-select */}
             <div>
               <div className="mb-2 flex items-center justify-between">
@@ -331,7 +367,7 @@ export function FeeStructureForm({ schoolId }: Props) {
               <div className="flex flex-wrap gap-2">
                 {MONTHS.map((m) => {
                   const selected = selectedMonths.includes(m);
-                  const hasData = grade ? allRecords.some((r) => r.month === m && r.grade === grade) : allRecords.some((r) => r.month === m);
+                  const hasData = grade ? yearRecords.some((r) => r.month === m && r.grade === grade) : yearRecords.some((r) => r.month === m);
                   return (
                     <button
                       key={m}
@@ -372,9 +408,9 @@ export function FeeStructureForm({ schoolId }: Props) {
                 </select>
                 <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-3 text-gray-400" />
               </div>
-              {selectedMonths.length === 1 && grade && allRecords.some((r) => r.month === selectedMonths[0] && r.grade === grade) && (
+              {academicYear && selectedMonths.length === 1 && grade && yearRecords.some((r) => r.month === selectedMonths[0] && r.grade === grade) && (
                 <p className="mt-1.5 text-xs font-medium text-amber-600">
-                  Editing existing data for {selectedMonths[0]} — {grade}
+                  Editing existing data for {selectedMonths[0]} {academicYear} — {grade}
                 </p>
               )}
             </div>
@@ -394,7 +430,7 @@ export function FeeStructureForm({ schoolId }: Props) {
                       value={amounts[key]}
                       onChange={(e) => setAmounts((prev) => ({ ...prev, [key]: Number(e.target.value) || 0 }))}
                       placeholder="BDT"
-                      disabled={!grade || selectedMonths.length === 0}
+                      disabled={!academicYear || !grade || selectedMonths.length === 0}
                     />
                     <span className="pointer-events-none absolute right-3 top-2.5 text-xs text-gray-400">BDT</span>
                   </div>
@@ -413,7 +449,7 @@ export function FeeStructureForm({ schoolId }: Props) {
                 onSaveDraft={handleSaveDraft}
                 onClearDraft={handleClearDraft}
                 submitLabel={selectedMonths.length > 1 ? `Submit (${selectedMonths.length} Months)` : `Submit ${selectedMonths[0] || 'Data'}`}
-                disabled={selectedMonths.length === 0 || !grade}
+                disabled={!academicYear || selectedMonths.length === 0 || !grade}
               />
             </div>
           </CardContent>
@@ -470,6 +506,7 @@ export function FeeStructureForm({ schoolId }: Props) {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/70">
+                    <th className="whitespace-nowrap px-3 py-3 text-left text-xs font-semibold uppercase text-gray-500">Academic Year</th>
                     <th className="px-3 py-3 text-left text-xs font-semibold uppercase text-gray-500">Month</th>
                     {FEE_FIELDS.map((f) => (
                       <th key={f.key} className="whitespace-nowrap px-3 py-3 text-right text-xs font-semibold uppercase text-gray-500">{f.label}</th>
@@ -479,20 +516,20 @@ export function FeeStructureForm({ schoolId }: Props) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {MONTHS.filter((m) => gradeRecords.some((r) => r.month === m)).map((m, idx) => {
-                    const r = gradeRecords.find((x) => x.month === m)!;
+                  {sortedGradeRecords.map((r, idx) => {
                     const total = FEE_FIELDS.reduce((s, f) => s + Number(r[f.key] ?? 0), 0);
                     return (
                       <tr
-                        key={m}
+                        key={r.id}
                         className={`cursor-pointer transition-colors hover:brightness-95 ${
-                          selectedMonths.length === 1 && selectedMonths[0] === m ? 'ring-inset ring-2 ring-amber-300' :
+                          Number(academicYear) === Number(r.academicYear) && selectedMonths.length === 1 && selectedMonths[0] === r.month ? 'ring-inset ring-2 ring-amber-300' :
                           idx % 2 === 0 ? 'bg-white' : 'bg-amber-50/30'
                         }`}
-                        onClick={() => { setSelectedMonths([m]); setGrade(r.grade); setTab('entry'); }}
+                        onClick={() => { setAcademicYear(String(r.academicYear ?? '')); setSelectedMonths([r.month]); setGrade(r.grade); setTab('entry'); }}
                       >
+                        <td className="px-3 py-3 text-xs font-medium text-gray-700">{r.academicYear ?? '—'}</td>
                         <td className="px-3 py-3">
-                          <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">{m}</span>
+                          <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">{r.month}</span>
                         </td>
                         {FEE_FIELDS.map((f) => (
                           <td key={f.key} className="px-3 py-3 text-right font-mono text-gray-700 text-xs">{formatAmount(Number(r[f.key] ?? 0))}</td>

@@ -15,9 +15,12 @@ import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import api from '@/lib/api';
+import { buildYearOptions } from '@/lib/utils';
 import type { DcSchool, DcTeachersDevelopment } from '@/types';
 
-/* ─── Constants ─────────────────────────────────────────── */
+/* ─── Constants ────────────────────────────────── */
+
+const YEARS = buildYearOptions();
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -72,6 +75,7 @@ interface Props { schoolId: string }
 export function TeachersDevForm({ schoolId }: Props) {
   const router = useRouter();
   const [school, setSchool] = useState<DcSchool | null>(null);
+  const [academicYear, setAcademicYear] = useState('');
   const [month, setMonth] = useState('');
   const [form, setForm] = useState<FormState>(BLANK_FORM);
   const [isEditing, setIsEditing] = useState(false);
@@ -82,7 +86,7 @@ export function TeachersDevForm({ schoolId }: Props) {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [allRecords, setAllRecords] = useState<DcTeachersDevelopment[]>([]);
   const [loadingAll, setLoadingAll] = useState(true);
-  const draft = useFormDraft<{ month: string; form: FormState }>('teachers-development', schoolId);
+  const draft = useFormDraft<{ academicYear: string; month: string; form: FormState }>('teachers-development', schoolId);
   const draftAppliedRef = useRef(false);
   const [tab, setTab] = useState<'entry' | 'data'>('entry');
 
@@ -123,6 +127,7 @@ export function TeachersDevForm({ schoolId }: Props) {
       const d = await draft.loadDraft();
       if (d) {
         draftAppliedRef.current = true;
+        setAcademicYear(d.academicYear ?? '');
         setMonth(d.month);
         setForm({ ...BLANK_FORM, ...d.form });
       }
@@ -131,7 +136,7 @@ export function TeachersDevForm({ schoolId }: Props) {
   }, [loadingAll]);
 
   const handleSaveDraft = async () => {
-    await draft.saveDraft({ month, form });
+    await draft.saveDraft({ academicYear, month, form });
   };
 
   const handleClearDraft = async () => {
@@ -139,16 +144,18 @@ export function TeachersDevForm({ schoolId }: Props) {
     setForm(BLANK_FORM);
   };
 
-  /* When month changes, load existing entry for that month */
-  const loadEntry = useCallback(async (m: string) => {
-    if (!m) return;
+  /* When academic year / month changes, load existing entry for that period */
+  const loadEntry = useCallback(async (y: string, m: string) => {
+    if (!y || !m) return;
     setLoadingEntry(true);
     setError('');
     try {
       const { data } = await api.get<DcTeachersDevelopment[]>(
         `/data-collection/teachers/development/school/${schoolId}`,
       );
-      const existing = data.find((r) => r.month === m);
+      const existing = data.find(
+        (r) => Number(r.academicYear) === Number(y) && r.month === m,
+      );
       if (existing) {
         setForm({
           onlineRefresher:     existing.onlineRefresher,
@@ -175,10 +182,27 @@ export function TeachersDevForm({ schoolId }: Props) {
     }
   }, [schoolId]);
 
+  // Changing the academic year re-scopes the month selection, so reset it.
+  const handleYearChange = (y: string) => {
+    setAcademicYear(y);
+    setMonth('');
+    setForm(BLANK_FORM);
+    setIsEditing(false);
+    setTab('entry');
+  };
+
   const handleMonthChange = (m: string) => {
     setMonth(m);
     setTab('entry');
-    loadEntry(m);
+    loadEntry(academicYear, m);
+  };
+
+  const handleRecordClick = (r: DcTeachersDevelopment) => {
+    const y = r.academicYear != null ? String(r.academicYear) : '';
+    setAcademicYear(y);
+    setMonth(r.month);
+    setTab('entry');
+    loadEntry(y, r.month);
   };
 
   const setField = (k: keyof FormState, v: number) =>
@@ -186,12 +210,14 @@ export function TeachersDevForm({ schoolId }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!academicYear) { setError('Please select an academic year.'); return; }
     if (!month) { setError('Please select a month.'); return; }
     setSaving(true);
     setError('');
     try {
       await api.post('/data-collection/teachers/development', {
         schoolId,
+        academicYear: Number(academicYear),
         month,
         ...form,
       });
@@ -224,7 +250,10 @@ export function TeachersDevForm({ schoolId }: Props) {
     );
   }
 
-  const submittedMonths = allRecords.map((r) => r.month);
+  const yearRecords = academicYear
+    ? allRecords.filter((r) => Number(r.academicYear) === Number(academicYear))
+    : allRecords;
+  const submittedMonths = yearRecords.map((r) => r.month);
 
   return (
     <div className="space-y-5 pb-10">
@@ -274,13 +303,13 @@ export function TeachersDevForm({ schoolId }: Props) {
             <div className="flex items-center gap-2">
               <Badge variant={allRecords.length > 0 ? 'success' : 'default'} className="gap-1">
                 {allRecords.length > 0 ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
-                {allRecords.length}/12 Months
+                {new Set(submittedMonths).size}/12 Months{academicYear ? ` · ${academicYear}` : ''}
               </Badge>
             </div>
           </div>
 
           {/* Month progress dots */}
-          {allRecords.length > 0 && (
+          {yearRecords.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-1.5">
               {MONTHS.map((m) => {
                 const done = submittedMonths.includes(m);
@@ -320,32 +349,54 @@ export function TeachersDevForm({ schoolId }: Props) {
               </div>
             )}
 
-            {/* Month Selector */}
-            <div>
-              <Label className="mb-1.5 block text-xs font-medium text-gray-600">
-                Select Month <span className="text-red-500">*</span>
-              </Label>
-              <div className="relative max-w-xs">
-                <select
-                  value={month}
-                  onChange={(e) => handleMonthChange(e.target.value)}
-                  className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300"
-                >
-                  <option value="">Choose a month...</option>
-                  {MONTHS.map((m) => (
-                    <option key={m} value={m}>
-                      {m} {submittedMonths.includes(m) ? '✓' : ''}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-3 text-gray-400" />
+            {/* Academic Year + Month selectors */}
+            <div className="grid gap-4 sm:grid-cols-2 max-w-xl">
+              <div>
+                <Label className="mb-1.5 block text-xs font-medium text-gray-600">
+                  Academic Year <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <select
+                    value={academicYear}
+                    onChange={(e) => handleYearChange(e.target.value)}
+                    className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300"
+                  >
+                    <option value="">Choose an academic year...</option>
+                    {YEARS.map((y) => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-3 text-gray-400" />
+                </div>
               </div>
-              {month && (
-                <p className={`mt-1.5 text-xs font-medium ${isEditing ? 'text-amber-600' : 'text-gray-400'}`}>
-                  {isEditing ? `Editing existing data for ${month}` : `New entry for ${month}`}
-                </p>
-              )}
+
+              <div>
+                <Label className="mb-1.5 block text-xs font-medium text-gray-600">
+                  Select Month <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <select
+                    value={month}
+                    onChange={(e) => handleMonthChange(e.target.value)}
+                    disabled={!academicYear}
+                    className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="">Choose a month...</option>
+                    {MONTHS.map((m) => (
+                      <option key={m} value={m}>
+                        {m} {submittedMonths.includes(m) ? '✓' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-3 text-gray-400" />
+                </div>
+              </div>
             </div>
+            {academicYear && month && (
+              <p className={`-mt-3 text-xs font-medium ${isEditing ? 'text-amber-600' : 'text-gray-400'}`}>
+                {isEditing ? `Editing existing data for ${month} ${academicYear}` : `New entry for ${month} ${academicYear}`}
+              </p>
+            )}
 
             {loadingEntry ? (
               <div className="flex items-center gap-2 text-sm text-gray-400 py-4">
@@ -365,7 +416,7 @@ export function TeachersDevForm({ schoolId }: Props) {
                         value={form[key]}
                         onChange={(e) => setField(key, Number(e.target.value) || 0)}
                         placeholder="0"
-                        disabled={!month}
+                        disabled={!academicYear || !month}
                       />
                     </div>
                   ))}
@@ -387,7 +438,7 @@ export function TeachersDevForm({ schoolId }: Props) {
                         value={form.teacherDropoutRate}
                         onChange={(e) => setField('teacherDropoutRate', Number(e.target.value) || 0)}
                         placeholder="0"
-                        disabled={!month}
+                        disabled={!academicYear || !month}
                       />
                     </div>
                     <div>
@@ -400,7 +451,7 @@ export function TeachersDevForm({ schoolId }: Props) {
                         value={form.headTeacherDropoutRate}
                         onChange={(e) => setField('headTeacherDropoutRate', Number(e.target.value) || 0)}
                         placeholder="0"
-                        disabled={!month}
+                        disabled={!academicYear || !month}
                       />
                     </div>
                     <div>
@@ -408,7 +459,7 @@ export function TeachersDevForm({ schoolId }: Props) {
                       <select
                         value={form.headTeacherLeadershipGood ? 'yes' : 'no'}
                         onChange={(e) => setForm((prev) => ({ ...prev, headTeacherLeadershipGood: e.target.value === 'yes' }))}
-                        disabled={!month}
+                        disabled={!academicYear || !month}
                         className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300 disabled:opacity-50"
                       >
                         <option value="yes">Good / Effective</option>
@@ -427,9 +478,12 @@ export function TeachersDevForm({ schoolId }: Props) {
                     onSaveDraft={handleSaveDraft}
                     onClearDraft={handleClearDraft}
                     submitLabel={month ? `Submit ${month}` : 'Submit Data'}
-                    disabled={!month}
+                    disabled={!academicYear || !month}
                   />
-                  {!month && (
+                  {!academicYear && (
+                    <p className="mt-2 text-xs text-gray-400">Select an academic year to continue</p>
+                  )}
+                  {academicYear && !month && (
                     <p className="mt-2 text-xs text-gray-400">Select a month to enable saving</p>
                   )}
                 </div>
@@ -469,6 +523,7 @@ export function TeachersDevForm({ schoolId }: Props) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/70">
+                  <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Academic Year</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Month</th>
                   <th className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Online Ref.</th>
                   <th className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Offline Ref.</th>
@@ -489,11 +544,12 @@ export function TeachersDevForm({ schoolId }: Props) {
                     <tr
                       key={r.id}
                       className={`cursor-pointer transition-colors hover:brightness-95 ${
-                        month === r.month ? 'ring-inset ring-2 ring-rose-300' :
+                        month === r.month && Number(academicYear) === Number(r.academicYear) ? 'ring-inset ring-2 ring-rose-300' :
                         idx % 2 === 0 ? 'bg-white' : 'bg-rose-50/30'
                       }`}
-                      onClick={() => handleMonthChange(r.month)}
+                      onClick={() => handleRecordClick(r)}
                     >
+                      <td className="px-4 py-3 text-sm font-medium text-gray-700">{r.academicYear ?? '—'}</td>
                       <td className="px-4 py-3">
                         <span className="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-700">{r.month}</span>
                       </td>
@@ -516,6 +572,7 @@ export function TeachersDevForm({ schoolId }: Props) {
                 <tfoot>
                   <tr className="border-t-2 border-rose-200 bg-rose-50/50">
                     <td className="px-4 py-3 text-xs font-bold text-rose-700">Totals</td>
+                    <td />
                     {(['onlineRefresher','offlineRefresher','developmentForum','basicTraining','subjectBasedTraining','leadershipTraining','others'] as (keyof DcTeachersDevelopment)[]).map((k) => (
                       <td key={k} className="px-4 py-3 text-right font-bold text-gray-700">
                         {allRecords.reduce((s, r) => s + Number(r[k] ?? 0), 0)}

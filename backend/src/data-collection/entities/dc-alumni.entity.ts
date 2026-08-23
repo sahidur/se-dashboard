@@ -22,6 +22,10 @@ export class DcAlumni {
   @Column({ name: 'school_id' })
   schoolId: string;
 
+  /** Academic year the record belongs to, e.g. 2026 */
+  @Column({ name: 'academic_year', type: 'int', default: 0 })
+  academicYear: number;
+
   @Column({ name: 'alumni_name', length: 200 })
   alumniName: string;
 

@@ -1,6 +1,8 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Suspense, useState, useEffect, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'next/navigation';
 import { Header } from '@/components/layout/header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -9,7 +11,7 @@ import {
   School, Users, GraduationCap, MapPin, Phone, Mail,
   Building2, Award, TrendingUp, Wallet, Search, RefreshCw,
   CalendarDays, ShieldCheck, ShieldX, BookOpen, Filter, ChevronRight,
-  ArrowLeft, Layers, X, BarChart3, Info,
+  ArrowLeft, Layers, X, BarChart3, Info, CalendarRange,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { CategoryMenu } from '@/components/data-collection/category-menu';
@@ -101,7 +103,14 @@ interface SchoolProfile {
   eventParticipation?: Record<string, any>[];
   cocurricular?: Record<string, any>[];
   alumni: AlumniRow[];
-  meta: { categoriesWithData: number; totalCategories: number };
+  meta: {
+    categoriesWithData: number;
+    totalCategories: number;
+    /** Academic year every category above was scoped to (null when no data exists). */
+    academicYear: number | null;
+    /** Every academic year this school has submitted data for, newest first. */
+    availableYears: number[];
+  };
 }
 
 /* ─── Constants / helpers ───────────────────────────────── */
@@ -120,12 +129,14 @@ const TYPE_LABELS: Record<string, string> = {
 const GRADE_LABELS: Record<string, string> = {
   play_learn: 'Play & Learn', nursery: 'Nursery',
   g1: 'Grade 1', g2: 'Grade 2', g3: 'Grade 3', g4: 'Grade 4', g5: 'Grade 5',
-  Play: 'Play',
+  g6: 'Grade 6', g7: 'Grade 7', g8: 'Grade 8', g9: 'Grade 9', g10: 'Grade 10',
+  Play: 'Play & Learn',
 };
 const gradeLabel = (g: string) => GRADE_LABELS[g] ?? g;
 
-const GRADE_ORDER = ['play_learn', 'nursery', 'g1', 'g2', 'g3', 'g4', 'g5',
-  'Play', 'Nursery', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5'];
+const GRADE_ORDER = ['play_learn', 'nursery', 'g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g8', 'g9', 'g10',
+  'Play', 'Play & Learn', 'Nursery', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5',
+  'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10'];
 const sortByGrade = <T extends { grade: string }>(rows: T[]) =>
   [...rows].sort((a, b) => {
     const ia = GRADE_ORDER.indexOf(a.grade); const ib = GRADE_ORDER.indexOf(b.grade);
@@ -304,6 +315,7 @@ interface StatusRow {
   yes?: boolean;         // yes/no rows
   note?: string;         // e.g. 'manual'
   excludeFromAvg?: boolean; // graded row that must NOT be counted in the average (avoids double-counting complementary indicators)
+  gradeBasis?: string;   // shown when the grade is computed from the inverse of the displayed status (e.g. dropout graded on retention)
 }
 
 interface StatusTableDef {
@@ -427,8 +439,21 @@ function StatusTable({ title, accent, graded, rows }: StatusTableDef) {
                       {r.note}
                     </span>
                   )}
+                  {r.excludeFromAvg && (
+                    <span
+                      className="ml-1.5 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-400"
+                      title="Complement of another indicator in this group — excluded from the average so it isn't counted twice"
+                    >
+                      not counted
+                    </span>
+                  )}
                 </td>
-                <td className="py-2.5 px-3 text-gray-600">{r.status}</td>
+                <td className="py-2.5 px-3 text-gray-600">
+                  {r.status}
+                  {r.gradeBasis && (
+                    <span className="block text-[10px] text-gray-400">graded on {r.gradeBasis}</span>
+                  )}
+                </td>
                 <td className="py-2.5 px-3 text-center"><RowGrade row={r} /></td>
                 {idx === 0 && (
                   <td rowSpan={rows.length} className="w-28 border-l border-gray-100 px-3 text-center align-middle">
@@ -595,36 +620,41 @@ const INDICATOR_INFO: Record<string, IndicatorInfo> = {
   },
 
   // ── Revenue Collection Status ──
-  'Revenue Collection Status::Revenue Collection as per the Budget': {
-    how: 'Total achievement ÷ total target × 100 (capped at 100%), summed across all 8 fee categories: Admission, Session, Assessment, Sports, Syllabus, Testimonial, Others and Transport — using the Budget figures.',
-    source: 'Revenue (Budget) form → Target & Achievement for each fee type',
+  'Revenue Collection Status::Actual collected revenue %': {
+    how: 'Revenue collected ÷ Actual Revenue Target × 100 (capped at 100%), summed across all 8 fee categories: Admission, Session, Assessment, Sports, Syllabus, Testimonial, Others and Transport. The Actual Revenue Target is the money actually billed to the enrolled students.',
+    source: 'Revenue (Actual) form → Target & Achievement for each fee type',
     scale: GRADE_SCALE_TEXT,
   },
-  'Revenue Collection Status::Revenue Collection as per Actual Student': {
-    how: 'The same achievement ÷ target ratio across all 8 fee categories, but using the Actual-student revenue figures.',
+  'Revenue Collection Status::Outstanding dues %': {
+    how: '(Actual Revenue Target − revenue collected, floored at ৳0) ÷ Actual Revenue Target × 100 — the share of billed money not yet received. Graded on the collected share (100 − dues %), so a lower dues figure scores better. It is the exact complement of the collected row, so it is shown for information and excluded from the group average to avoid double-counting.',
     source: 'Revenue (Actual) form → Target & Achievement for each fee type',
+    scale: GRADE_SCALE_TEXT,
+  },
+  'Revenue Collection Status::Revenue deficit %': {
+    how: '(revenue collected − Planned Revenue Target) ÷ Planned Revenue Target × 100, shown with negative marking when the school falls short of the budgeted plan and positive when it exceeds it. Graded on collected ÷ Planned Revenue Target × 100 (capped at 100%), so a smaller deficit scores better.',
+    source: 'Revenue (Budget) form → Target for each fee type, and Revenue (Actual) form → Achievement for each fee type',
     scale: GRADE_SCALE_TEXT,
   },
 
   // ── Pedagogical Performance Status ──
   'Pedagogical Performance Status::% of Students use the Library': {
     how: 'Average of the "% of Students Participated" value reported on all Library activity records.',
-    source: 'Activity Participation form → Item = Library Activity → % of Students Participated',
+    source: 'Activity Participation form → Item = Use of library → % of Students Participated',
     scale: GRADE_SCALE_TEXT,
   },
   'Pedagogical Performance Status::% of Students use Lab': {
-    how: 'Average of the "% of Students Participated" value reported on all Lab activity records.',
-    source: 'Activity Participation form → Item = Lab Activity → % of Students Participated',
+    how: 'Average of the "% of Students Participated" value reported on all lab activity records (Science, ICT and Agriculture labs).',
+    source: 'Activity Participation form → Item = any lab → % of Students Participated',
     scale: GRADE_SCALE_TEXT,
   },
   'Pedagogical Performance Status::Routine-wise Corner Participation': {
     how: 'Green when the school has at least one Corner activity record.',
-    source: 'Activity Participation form → Item = Corner Activity',
+    source: 'Activity Participation form → Item = Corner activity',
     scale: YESNO_SCALE_TEXT,
   },
   'Pedagogical Performance Status::Routine-wise Club Participation': {
-    how: 'Green when the school has at least one Club activity record.',
-    source: 'Activity Participation form → Item = Club Activity',
+    how: 'Green when the school has at least one club activity record (any of the five clubs).',
+    source: 'Activity Participation form → Item = any club',
     scale: YESNO_SCALE_TEXT,
   },
   'Pedagogical Performance Status::Students Awarded in Scholarship': {
@@ -648,6 +678,9 @@ function buildStatusTables(p: SchoolProfile): StatusTableDef[] {
   const num = (v: any) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
   const avgOf = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
   const pctStr = (v: number | null) => (v == null ? 'Not reported' : `${v.toFixed(1)}%`);
+  // Signed percentage (deficit/surplus) — keeps the negative marking visible.
+  const signedPctStr = (v: number | null) =>
+    (v == null ? 'Not reported' : `${v > 0 ? '+' : v < 0 ? '-' : ''}${Math.abs(v).toFixed(1)}%`);
   // Percentages that can legitimately exceed 100 (target-exceeded) are capped
   // to 100 for grading + averaging so a single over-achieving row can't push
   // the whole table average above 100.
@@ -688,22 +721,34 @@ function buildStatusTables(p: SchoolProfile): StatusTableDef[] {
   const htDropVals = dev.map((d) => d.headTeacherDropoutRate).filter((v) => v != null).map(num);
   const htDropout = htDropVals.length ? avgOf(htDropVals) : null;
   const htRetention = htDropout == null ? null : 100 - htDropout;
-  // Latest month's leadership assessment (dev records aren't month-sorted, so
-  // just take the last non-null flag reported).
+  // Latest month's leadership assessment — the profile endpoint returns the
+  // development records sorted oldest → newest.
   const htLeadFlags = dev.filter((d) => d.headTeacherLeadershipGood != null);
   const htLeadership = htLeadFlags.length ? Boolean(htLeadFlags[htLeadFlags.length - 1].headTeacherLeadershipGood) : null;
 
-  /* ── Revenue (auto, target vs achievement across all fee types) ── */
+  /* ── Revenue (auto, target vs achievement across all fee types) ──
+     Mirrors the Programme Overview definitions:
+       Planned Revenue Target = Σ Budget targets
+       Actual Revenue Target  = Σ Actual (enrolled-student) targets
+       Collected              = Σ Actual achievements
+       Outstanding dues       = max(Actual target − Collected, 0)
+       Revenue deficit        = Collected − Planned target (negative = short) */
   const FEES = ['admissionFee', 'sessionFee', 'assessmentFee', 'sportsFee',
     'syllabusFee', 'testimonialFee', 'othersFee', 'transportFee'];
-  const revPct = (r: Record<string, any> | null | undefined) => {
-    if (!r) return null;
-    let tgt = 0; let ach = 0;
-    for (const f of FEES) { tgt += num(r[`${f}Target`]); ach += num(r[`${f}Achievement`]); }
-    return tgt > 0 ? cap100((ach / tgt) * 100) : null;
-  };
-  const revBudgetPct = revPct(rbt);
-  const revActualPct = revPct(rat);
+  const sumFees = (r: Record<string, any> | null | undefined, suffix: 'Target' | 'Achievement') =>
+    (r ? FEES.reduce((s, f) => s + num(r[`${f}${suffix}`]), 0) : 0);
+  const plannedTarget = sumFees(rbt, 'Target');
+  const actualTarget = sumFees(rat, 'Target');
+  const collected = sumFees(rat, 'Achievement');
+  const duesAmount = Math.max(actualTarget - collected, 0);
+  const deficitAmount = collected - plannedTarget;
+  const collectedPct = actualTarget > 0 ? cap100((collected / actualTarget) * 100) : null;
+  const duesPct = actualTarget > 0 ? cap100((duesAmount / actualTarget) * 100) : null;
+  const deficitPct = plannedTarget > 0 ? ((deficitAmount / plannedTarget) * 100) : null;
+  // Both shortfall rows are graded on their positive counterpart (lower is
+  // better), the same way the dropout rows are graded on retention.
+  const duesGradePct = duesPct == null ? null : 100 - duesPct;
+  const deficitGradePct = plannedTarget > 0 ? cap100((collected / plannedTarget) * 100) : null;
 
   /* ── Pedagogical performance ── */
   const has = (kw: string) => acts.filter((a) => (a.item || '').toLowerCase().includes(kw));
@@ -766,7 +811,7 @@ function buildStatusTables(p: SchoolProfile): StatusTableDef[] {
       graded: true,
       rows: [
         { indicator: 'Enrollment Target Met', status: pctStr(enrollPct), kind: 'percent', pct: enrollPct },
-        { indicator: 'Yearly Dropout Rate', status: pctStr(dropout), kind: 'percent', pct: retention },
+        { indicator: 'Yearly Dropout Rate', status: pctStr(dropout), kind: 'percent', pct: retention, gradeBasis: `retention ${pctStr(retention)}` },
         { indicator: 'Yearly Retention Rate', status: pctStr(retention), kind: 'percent', pct: retention, excludeFromAvg: true },
         { indicator: 'Monthly Attendance Rate', status: pctStr(attend), kind: 'percent', pct: attend },
       ],
@@ -776,7 +821,7 @@ function buildStatusTables(p: SchoolProfile): StatusTableDef[] {
       accent: 'bg-indigo-100 text-indigo-900',
       graded: true,
       rows: [
-        { indicator: 'Yearly Dropout Rate', status: pctStr(teacherDropout), kind: 'percent', pct: teacherRetention },
+        { indicator: 'Yearly Dropout Rate', status: pctStr(teacherDropout), kind: 'percent', pct: teacherRetention, gradeBasis: `retention ${pctStr(teacherRetention)}` },
         { indicator: 'Basic Training Coverage', status: pctStr(basicPct), kind: 'percent', pct: basicPct },
         { indicator: 'Subject-based Training Coverage', status: pctStr(subjPct), kind: 'percent', pct: subjPct },
         { indicator: 'A-Grade Teachers', status: pctStr(aGradePct), kind: 'percent', pct: aGradePct },
@@ -787,7 +832,7 @@ function buildStatusTables(p: SchoolProfile): StatusTableDef[] {
       accent: 'bg-violet-100 text-violet-900',
       graded: true,
       rows: [
-        { indicator: 'Yearly Dropout Rate', status: pctStr(htDropout), kind: 'percent', pct: htRetention },
+        { indicator: 'Yearly Dropout Rate', status: pctStr(htDropout), kind: 'percent', pct: htRetention, gradeBasis: `retention ${pctStr(htRetention)}` },
         { indicator: 'Leadership Status of HT', status: htLeadership == null ? 'Not reported' : yn(htLeadership), kind: 'yesno', yes: htLeadership ?? undefined },
       ],
     },
@@ -796,8 +841,9 @@ function buildStatusTables(p: SchoolProfile): StatusTableDef[] {
       accent: 'bg-amber-100 text-amber-900',
       graded: true,
       rows: [
-        { indicator: 'Revenue Collection as per the Budget', status: pctStr(revBudgetPct), kind: 'percent', pct: revBudgetPct },
-        { indicator: 'Revenue Collection as per Actual Student', status: pctStr(revActualPct), kind: 'percent', pct: revActualPct },
+        { indicator: 'Actual collected revenue %', status: pctStr(collectedPct), kind: 'percent', pct: collectedPct },
+        { indicator: 'Outstanding dues %', status: pctStr(duesPct), kind: 'percent', pct: duesGradePct, excludeFromAvg: true, gradeBasis: `collected ${pctStr(duesGradePct)}` },
+        { indicator: 'Revenue deficit %', status: signedPctStr(deficitPct), kind: 'percent', pct: deficitGradePct, gradeBasis: `collected vs plan ${pctStr(deficitGradePct)}` },
       ],
     },
     {
@@ -896,6 +942,7 @@ function RatingModal({
   isOpen: boolean; onClose: () => void; tables: StatusTableDef[]; rating: OverallRating;
 }) {
   const overallColor: GradeName = rating.overallGrade ? LETTER_COLOR[rating.overallGrade] : 'Yellow';
+  const scoredGroups = rating.groups.map((g) => g.point).filter((p): p is number => p != null);
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Rating & Scoring System" size="xl">
       <div className="space-y-5 text-sm">
@@ -903,6 +950,13 @@ function RatingModal({
           Each status group is scored by grading its indicators, converting every grade to a
           point (<strong>A = 3, B = 2, C = 1</strong>), and averaging those points. The group&apos;s
           Average Grade and the school&apos;s Overall Flag both use the point band below.
+        </p>
+        <p className="leading-relaxed text-gray-500">
+          Shortfall indicators (dropout rate, outstanding dues, revenue deficit) are graded on their
+          positive counterpart — retention, revenue collected and collection against the plan — so a
+          smaller shortfall always scores better. Rows marked <em>not counted</em> are the exact
+          complement of another indicator in the same group and are shown for information only, so
+          the same fact is never counted twice.
         </p>
 
         {/* Scales */}
@@ -932,7 +986,8 @@ function RatingModal({
             const table = tables.find((t) => t.title === title);
             const g = rating.groups.find((x) => x.title === title);
             if (!table) return null;
-            const gradedRows = table.rows.filter((r) => rowPoint(r) != null && !r.excludeFromAvg);
+            const gradedRows = table.rows.filter((r) => rowPoint(r) != null);
+            const countedPoints = gradedRows.filter((r) => !r.excludeFromAvg).map((r) => rowPoint(r)!);
             return (
               <div key={title} className="overflow-hidden rounded-lg border border-gray-100">
                 <div className={`flex items-center justify-between px-3 py-2 text-sm font-bold ${GROUP_ACCENT[title] ?? 'bg-gray-100 text-gray-800'}`}>
@@ -946,14 +1001,29 @@ function RatingModal({
                   <tbody className="divide-y divide-gray-50">
                     {gradedRows.map((r) => {
                       const pt = rowPoint(r)!;
+                      const excluded = !!r.excludeFromAvg;
                       return (
-                        <tr key={r.indicator}>
-                          <td className="px-3 py-1.5 text-gray-600">{r.indicator}</td>
-                          <td className="px-3 py-1.5 text-right text-gray-500">{r.status}</td>
+                        <tr key={r.indicator} className={excluded ? 'bg-gray-50/60' : undefined}>
+                          <td className="px-3 py-1.5 text-gray-600">
+                            {r.indicator}
+                            {excluded && (
+                              <span className="ml-1.5 rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                                not counted
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-1.5 text-right text-gray-500">
+                            {r.status}
+                            {r.gradeBasis && (
+                              <span className="block text-[10px] text-gray-400">graded on {r.gradeBasis}</span>
+                            )}
+                          </td>
                           <td className="w-16 px-3 py-1.5 text-center">
                             <GradePill grade={r.kind === 'yesno' ? (r.yes ? 'A' : 'C') : pctToGrade(r.pct!)} />
                           </td>
-                          <td className="w-12 px-3 py-1.5 text-center font-semibold text-gray-500">{pt}</td>
+                          <td className="w-12 px-3 py-1.5 text-center font-semibold text-gray-500">
+                            {excluded ? <span className="text-gray-300">—</span> : pt}
+                          </td>
                         </tr>
                       );
                     })}
@@ -961,6 +1031,18 @@ function RatingModal({
                       <tr><td className="px-3 py-2 text-gray-400">No graded indicators reported yet.</td></tr>
                     )}
                   </tbody>
+                  {countedPoints.length > 0 && (
+                    <tfoot>
+                      <tr className="border-t border-gray-100 bg-gray-50/80">
+                        <td className="px-3 py-1.5 font-semibold text-gray-500" colSpan={3}>
+                          Average Grade = ({countedPoints.join(' + ')}) ÷ {countedPoints.length}
+                        </td>
+                        <td className="px-3 py-1.5 text-center font-bold text-gray-700">
+                          {g?.point != null ? g.point.toFixed(2) : '—'}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               </div>
             );
@@ -972,6 +1054,11 @@ function RatingModal({
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Overall Score</p>
             <p className="text-[11px] text-gray-500">Mean of the four status groups (equal 25% weight)</p>
+            {scoredGroups.length > 0 && (
+              <p className="mt-0.5 text-[11px] text-gray-500">
+                ({scoredGroups.map((p) => p.toFixed(2)).join(' + ')}) ÷ {scoredGroups.length}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <span className={`text-lg font-black ${GRADE_STYLES[overallColor].text}`}>
@@ -1016,6 +1103,23 @@ function FilterSelect({
 /* ─── Main page ─────────────────────────────────────────── */
 
 export default function SchoolInformationPage() {
+  return (
+    <Suspense
+      fallback={
+        <>
+          <Header title="School Information" subtitle="Browse schools and view their full profile" />
+          <div className="flex items-center justify-center p-16">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-200 border-t-indigo-600" />
+          </div>
+        </>
+      }
+    >
+      <SchoolInformationContent />
+    </Suspense>
+  );
+}
+
+function SchoolInformationContent() {
   const [schools, setSchools] = useState<SchoolListItem[]>([]);
   const [loadingSchools, setLoadingSchools] = useState(true);
 
@@ -1027,18 +1131,35 @@ export default function SchoolInformationPage() {
   const [fUpazila, setFUpazila] = useState('all');
   const [fApproval, setFApproval] = useState('all');
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [profile, setProfile] = useState<SchoolProfile | null>(null);
-  const [loadingProfile, setLoadingProfile] = useState(false);
+  // Preselect from the ?school= query param (set by e.g. Programme Overview links).
+  const searchParams = useSearchParams();
+  const [selectedId, setSelectedId] = useState<string | null>(() => searchParams.get('school'));
+  /** '' = follow the server default (the newest year that has data for this school). */
+  const [year, setYear] = useState(() => searchParams.get('academicYear') ?? '');
 
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
 
-  // Preselect from URL (?school=...)
-  useEffect(() => {
-    const p = new URLSearchParams(window.location.search).get('school');
-    if (p) setSelectedId(p);
-  }, []);
+  const {
+    data: profile = null,
+    isFetching: loadingProfile,
+    refetch: reloadProfile,
+  } = useQuery({
+    queryKey: ['school-profile', selectedId, year],
+    enabled: !!selectedId,
+    queryFn: () =>
+      api
+        .get(`/data-collection/schools/${selectedId}/profile`, {
+          params: year ? { academicYear: year } : {},
+        })
+        .then(({ data }) => data as SchoolProfile),
+  });
+
+  const selectSchool = (id: string | null) => {
+    // Available years differ per school, so fall back to the server default.
+    setYear('');
+    setSelectedId(id);
+  };
 
   useEffect(() => {
     api.get('/data-collection/schools')
@@ -1046,19 +1167,6 @@ export default function SchoolInformationPage() {
       .catch(() => {})
       .finally(() => setLoadingSchools(false));
   }, []);
-
-  const loadProfile = useCallback((id: string) => {
-    setLoadingProfile(true);
-    setProfile(null);
-    api.get(`/data-collection/schools/${id}/profile`)
-      .then(({ data }) => setProfile(data))
-      .catch(() => {})
-      .finally(() => setLoadingProfile(false));
-  }, []);
-
-  useEffect(() => {
-    if (selectedId) loadProfile(selectedId);
-  }, [selectedId, loadProfile]);
 
   /* ── Filter option lists (derived from data) ── */
   const categoryOptions = useMemo(() => {
@@ -1114,8 +1222,6 @@ export default function SchoolInformationPage() {
   const anyFilter = fCategory !== 'all' || fType !== 'all' || fDivision !== 'all' ||
     fDistrict !== 'all' || fUpazila !== 'all' || fApproval !== 'all' || !!search;
 
-  useEffect(() => { setPage(1); }, [search, fCategory, fType, fDivision, fDistrict, fUpazila, fApproval]);
-
   const totalPages = Math.max(1, Math.ceil(filteredSchools.length / PAGE_SIZE));
   const pagedSchools = useMemo(
     () => filteredSchools.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
@@ -1123,23 +1229,47 @@ export default function SchoolInformationPage() {
   );
 
   const clearFilters = () => {
+    setPage(1);
     setSearch(''); setFCategory('all'); setFType('all');
     setFDivision('all'); setFDistrict('all'); setFUpazila('all'); setFApproval('all');
   };
 
   /* ── Detail view ── */
   if (selectedId) {
+    const availableYears = profile?.meta?.availableYears ?? [];
+    const activeYear = year || (profile?.meta?.academicYear != null ? String(profile.meta.academicYear) : '');
     return (
       <>
-        <Header title="School Information" subtitle="Detailed school profile" />
+        <Header
+          title="School Information"
+          subtitle={activeYear ? `Detailed school profile • Academic year ${activeYear}` : 'Detailed school profile'}
+        />
         <div className="space-y-5 p-4 sm:p-6">
-          <Button
-            variant="outline" size="sm"
-            onClick={() => { setSelectedId(null); setProfile(null); }}
-            className="gap-1.5"
-          >
-            <ArrowLeft size={14} /> Back to list
-          </Button>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Button
+              variant="outline" size="sm"
+              onClick={() => selectSchool(null)}
+              className="gap-1.5"
+            >
+              <ArrowLeft size={14} /> Back to list
+            </Button>
+
+            {availableYears.length > 0 && (
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-600">
+                <CalendarRange size={15} className="text-gray-500" />
+                Academic year
+                <select
+                  value={activeYear}
+                  onChange={(e) => setYear(e.target.value)}
+                  className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                >
+                  {availableYears.map((y) => (
+                    <option key={y} value={String(y)}>{y}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
 
           {loadingProfile && (
             <div className="flex items-center justify-center py-24">
@@ -1150,7 +1280,7 @@ export default function SchoolInformationPage() {
             </div>
           )}
 
-          {profile && !loadingProfile && <ProfileDetail profile={profile} onReload={() => loadProfile(selectedId)} />}
+          {profile && !loadingProfile && <ProfileDetail profile={profile} onReload={() => { void reloadProfile(); }} />}
         </div>
       </>
     );
@@ -1178,12 +1308,12 @@ export default function SchoolInformationPage() {
           </CardHeader>
           <CardContent className="px-5 pb-5">
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
-              <FilterSelect label="School Category" value={fCategory} onChange={setFCategory} options={categoryOptions} />
-              <FilterSelect label="Type of School" value={fType} onChange={setFType} options={typeOptions} />
-              <FilterSelect label="Division" value={fDivision} onChange={(v) => { setFDivision(v); setFDistrict('all'); setFUpazila('all'); }} options={divisionOptions} />
-              <FilterSelect label="District" value={fDistrict} onChange={(v) => { setFDistrict(v); setFUpazila('all'); }} options={districtOptions} />
-              <FilterSelect label="Thana / Upazila" value={fUpazila} onChange={setFUpazila} options={upazilaOptions} />
-              <FilterSelect label="Govt. Approval" value={fApproval} onChange={setFApproval} options={[
+              <FilterSelect label="School Category" value={fCategory} onChange={(v) => { setPage(1); setFCategory(v); }} options={categoryOptions} />
+              <FilterSelect label="Type of School" value={fType} onChange={(v) => { setPage(1); setFType(v); }} options={typeOptions} />
+              <FilterSelect label="Division" value={fDivision} onChange={(v) => { setPage(1); setFDivision(v); setFDistrict('all'); setFUpazila('all'); }} options={divisionOptions} />
+              <FilterSelect label="District" value={fDistrict} onChange={(v) => { setPage(1); setFDistrict(v); setFUpazila('all'); }} options={districtOptions} />
+              <FilterSelect label="Thana / Upazila" value={fUpazila} onChange={(v) => { setPage(1); setFUpazila(v); }} options={upazilaOptions} />
+              <FilterSelect label="Govt. Approval" value={fApproval} onChange={(v) => { setPage(1); setFApproval(v); }} options={[
                 { value: 'all', label: 'All' },
                 { value: 'yes', label: 'Approved' },
                 { value: 'no', label: 'Not Approved' },
@@ -1195,7 +1325,7 @@ export default function SchoolInformationPage() {
                   <input
                     type="text"
                     value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+                    onChange={(e) => { setPage(1); setSearch(e.target.value); }}
                     placeholder="Name or code…"
                     className="w-full rounded-lg border border-gray-200 py-2 pl-8 pr-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
                   />
@@ -1247,7 +1377,7 @@ export default function SchoolInformationPage() {
                   {pagedSchools.map((s, idx) => (
                     <tr
                       key={s.id}
-                      onClick={() => setSelectedId(s.id)}
+                      onClick={() => selectSchool(s.id)}
                       className="cursor-pointer transition-colors even:bg-gray-50/40 hover:bg-indigo-50/40"
                     >
                       <td className="py-3 pl-5 pr-3 text-gray-400">{(page - 1) * PAGE_SIZE + idx + 1}</td>

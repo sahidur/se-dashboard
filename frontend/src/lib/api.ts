@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { useAuthStore } from '@/store/auth-store';
+import { useAuthStore, logoutAndRedirect } from '@/store/auth-store';
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api',
@@ -56,7 +56,9 @@ api.interceptors.response.use(
       // expired or was revoked). In both cases the session can no longer be
       // trusted: log the user out and send them back to the login page
       // instead of silently leaving the app in a "loaded but no data" state.
-      useAuthStore.getState().logout();
+      // The logout must clear the persisted store *and* the middleware cookie,
+      // otherwise the login page would see a stale "authenticated" state and
+      // bounce straight back to the dashboard.
       if (
         typeof window !== 'undefined' &&
         window.location.pathname !== '/auth/login'
@@ -64,7 +66,9 @@ api.interceptors.response.use(
         const from = encodeURIComponent(
           window.location.pathname + window.location.search,
         );
-        window.location.href = `/auth/login?from=${from}`;
+        logoutAndRedirect(`/auth/login?from=${from}`);
+      } else {
+        useAuthStore.getState().logout();
       }
     }
 

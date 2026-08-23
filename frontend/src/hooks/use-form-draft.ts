@@ -51,6 +51,11 @@ export function useFormDraft<T>(formKey: string, schoolId: string): FormDraft<T>
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
   const [checkingDraft, setCheckingDraft] = useState(true);
   const cacheRef = useRef<T | null>(null);
+  // `cacheRef` alone can't tell "no draft exists" apart from "not fetched yet",
+  // so every loadDraft() used to re-request. These track that separately and
+  // let concurrent callers share one in-flight request.
+  const fetchedRef = useRef(false);
+  const inFlightRef = useRef<Promise<T | null> | null>(null);
 
   const readLocalFallback = useCallback((): DraftEnvelope<T> | null => {
     if (typeof window === 'undefined') return null;
@@ -75,30 +80,27 @@ export function useFormDraft<T>(formKey: string, schoolId: string): FormDraft<T>
     [storageKey],
   );
 
-  // Check the server for an existing draft whenever the form/school changes,
-  // so the "Draft saved" banner reflects drafts saved from ANY device.
-  useEffect(() => {
-    let cancelled = false;
-    if (!schoolId) {
-      setCheckingDraft(false);
-      return;
-    }
-    setCheckingDraft(true);
-    (async () => {
-      try {
-        const res = await api.get('/data-collection/drafts', { params: { schoolId, formKey } });
-        if (cancelled) return;
-        if (res.data) {
-          cacheRef.current = res.data.data as T;
-          setDraftSavedAt(res.data.updatedAt ?? null);
-          writeLocalFallback({ data: res.data.data, savedAt: res.data.updatedAt });
+  /** Single shared fetch — deduped so N callers cause at most one request. */
+  const fetchDraft = useCallback((): Promise<T | null> => {
+    if (!schoolId) return Promise.resolve(null);
+    if (inFlightRef.current) return inFlightRef.current;
+
+    const request = api
+      .get('/data-collection/drafts', { params: { schoolId, formKey } })
+      .then(({ data }) => {
+        if (data) {
+          cacheRef.current = data.data as T;
+          setDraftSavedAt(data.updatedAt ?? null);
+          writeLocalFallback({ data: data.data, savedAt: data.updatedAt });
         } else {
           cacheRef.current = null;
           setDraftSavedAt(null);
           writeLocalFallback(null);
         }
-      } catch {
-        if (cancelled) return;
+        fetchedRef.current = true;
+        return cacheRef.current;
+      })
+      .catch(() => {
         // Offline / request failed — fall back to whatever was last cached
         // locally so in-progress work isn't lost, rather than hiding it.
         const local = readLocalFallback();
@@ -106,32 +108,40 @@ export function useFormDraft<T>(formKey: string, schoolId: string): FormDraft<T>
           cacheRef.current = local.data;
           setDraftSavedAt(local.savedAt ?? null);
         }
-      } finally {
-        if (!cancelled) setCheckingDraft(false);
-      }
-    })();
+        return cacheRef.current;
+      })
+      .finally(() => {
+        inFlightRef.current = null;
+      });
+
+    inFlightRef.current = request;
+    return request;
+  }, [schoolId, formKey, readLocalFallback, writeLocalFallback]);
+
+  // Check the server for an existing draft whenever the form/school changes,
+  // so the "Draft saved" banner reflects drafts saved from ANY device.
+  useEffect(() => {
+    let cancelled = false;
+    fetchedRef.current = false;
+    inFlightRef.current = null;
+    cacheRef.current = null;
+    if (!schoolId) {
+      setCheckingDraft(false);
+      return;
+    }
+    setCheckingDraft(true);
+    fetchDraft().finally(() => {
+      if (!cancelled) setCheckingDraft(false);
+    });
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schoolId, formKey]);
+  }, [schoolId, formKey, fetchDraft]);
 
   const loadDraft = useCallback(async (): Promise<T | null> => {
-    if (cacheRef.current !== null) return cacheRef.current;
-    if (!schoolId) return null;
-    try {
-      const res = await api.get('/data-collection/drafts', { params: { schoolId, formKey } });
-      if (res.data) {
-        cacheRef.current = res.data.data as T;
-        setDraftSavedAt(res.data.updatedAt ?? null);
-        return cacheRef.current;
-      }
-      return null;
-    } catch {
-      const local = readLocalFallback();
-      return local ? local.data : null;
-    }
-  }, [schoolId, formKey, readLocalFallback]);
+    if (fetchedRef.current) return cacheRef.current;
+    return fetchDraft();
+  }, [fetchDraft]);
 
   const saveDraft = useCallback(
     async (data: T) => {
@@ -139,6 +149,7 @@ export function useFormDraft<T>(formKey: string, schoolId: string): FormDraft<T>
       await api.post('/data-collection/drafts', { schoolId, formKey, data });
       const savedAt = new Date().toISOString();
       cacheRef.current = data;
+      fetchedRef.current = true;
       setDraftSavedAt(savedAt);
       writeLocalFallback({ data, savedAt });
     },
@@ -150,6 +161,7 @@ export function useFormDraft<T>(formKey: string, schoolId: string): FormDraft<T>
       await api.delete('/data-collection/drafts', { params: { schoolId, formKey } });
     }
     cacheRef.current = null;
+    fetchedRef.current = true;
     setDraftSavedAt(null);
     writeLocalFallback(null);
   }, [schoolId, formKey, writeLocalFallback]);

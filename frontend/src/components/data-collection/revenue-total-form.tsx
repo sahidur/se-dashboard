@@ -15,9 +15,12 @@ import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import api from '@/lib/api';
+import { buildYearOptions } from '@/lib/utils';
 import type { DcSchool, DcRevenueTotalRecord } from '@/types';
 
-/* ─── Constants ──────────────────────────────────────────── */
+/* ─── Constants ─────────────────────────────────── */
+
+const YEARS = buildYearOptions();
 
 const SCHOOL_CATEGORY_LABELS: Record<string, string> = {
   brac_academy: 'BRAC Academy',
@@ -49,9 +52,24 @@ function buildBlank(): RevenueFormState {
   return f;
 }
 
+function recordToForm(data: DcRevenueTotalRecord): RevenueFormState {
+  const f = buildBlank();
+  f.totalStudentsTarget = Number(data.totalStudentsTarget) || 0;
+  FEE_ROWS.forEach(({ key }) => {
+    f[`${key}Target`] = Number((data as unknown as Record<string, number>)[`${key}Target`]) || 0;
+    f[`${key}Achievement`] = Number((data as unknown as Record<string, number>)[`${key}Achievement`]) || 0;
+  });
+  return f;
+}
+
 function calcPct(target: number, achievement: number): string {
   if (!target) return '—';
   return (Math.min((achievement / target) * 100, 9999.99)).toFixed(1) + '%';
+}
+
+function calcDuesPct(target: number, achievement: number): string {
+  if (!target) return '—';
+  return (((target - achievement) / target) * 100).toFixed(1) + '%';
 }
 
 interface Props { schoolId: string; mode: 'budget' | 'actual' }
@@ -61,6 +79,8 @@ interface Props { schoolId: string; mode: 'budget' | 'actual' }
 export function RevenueTotalForm({ schoolId, mode }: Props) {
   const router = useRouter();
   const [school, setSchool] = useState<DcSchool | null>(null);
+  const [academicYear, setAcademicYear] = useState('');
+  const [loadingYear, setLoadingYear] = useState(false);
   const [form, setForm] = useState<RevenueFormState>(buildBlank());
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -68,7 +88,7 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [record, setRecord] = useState<DcRevenueTotalRecord | null>(null);
-  const draft = useFormDraft<RevenueFormState>(`revenue-total-${mode}`, schoolId);
+  const draft = useFormDraft<{ academicYear: string; form: RevenueFormState }>(`revenue-total-${mode}`, schoolId);
   const [tab, setTab] = useState<'entry' | 'data'>('entry');
 
   const endpoint = mode === 'budget' ? '/data-collection/revenue/budget/total' : '/data-collection/revenue/actual/total';
@@ -94,27 +114,51 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
     try {
       const { data } = await api.get<DcRevenueTotalRecord>(getEndpoint);
       if (data) {
-        const f = buildBlank();
-        f.totalStudentsTarget = Number(data.totalStudentsTarget) || 0;
-        FEE_ROWS.forEach(({ key }) => {
-          f[`${key}Target`] = Number((data as unknown as Record<string, number>)[`${key}Target`]) || 0;
-          f[`${key}Achievement`] = Number((data as unknown as Record<string, number>)[`${key}Achievement`]) || 0;
-        });
-        setForm(f);
+        setForm(recordToForm(data));
         setRecord(data);
         setIsEditing(true);
+        if (data.academicYear != null) setAcademicYear(String(data.academicYear));
       }
     } catch { /* no data yet */ }
     // Overlay the user's private draft on top of any saved data.
     const d = await draft.loadDraft();
-    if (d) setForm(d);
+    if (d?.form) {
+      setForm(d.form);
+      if (d.academicYear) setAcademicYear(d.academicYear);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getEndpoint]);
 
   useEffect(() => { loadRecord(); }, [loadRecord]);
 
+  // Changing the academic year reloads that year's record (or blanks the form).
+  const handleYearChange = async (y: string) => {
+    setAcademicYear(y);
+    setError('');
+    if (!y) return;
+    setLoadingYear(true);
+    try {
+      const { data } = await api.get<DcRevenueTotalRecord>(`${getEndpoint}?academicYear=${y}`);
+      if (data) {
+        setForm(recordToForm(data));
+        setRecord(data);
+        setIsEditing(true);
+      } else {
+        setForm(buildBlank());
+        setRecord(null);
+        setIsEditing(false);
+      }
+    } catch {
+      setForm(buildBlank());
+      setRecord(null);
+      setIsEditing(false);
+    } finally {
+      setLoadingYear(false);
+    }
+  };
+
   const handleSaveDraft = async () => {
-    await draft.saveDraft(form);
+    await draft.saveDraft({ academicYear, form });
   };
 
   const handleClearDraft = async () => {
@@ -126,10 +170,15 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!academicYear) { setError('Please select an academic year.'); return; }
     setSaving(true);
     setError('');
     try {
-      const { data } = await api.post<DcRevenueTotalRecord>(endpoint, { schoolId, ...form });
+      const { data } = await api.post<DcRevenueTotalRecord>(endpoint, {
+        schoolId,
+        academicYear: Number(academicYear),
+        ...form,
+      });
       setRecord(data);
       setIsEditing(true);
       await draft.clearDraft();
@@ -216,7 +265,7 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
         <Card className="overflow-hidden border-0 shadow-sm">
           <CardHeader className="pb-3 pt-5 px-5">
             <CardTitle className="text-base font-semibold text-gray-800">
-              Revenue Collection — {mode === 'budget' ? 'Budget' : 'Actual Student'} (Yearly)
+              {mode === 'budget' ? 'Planned' : 'Actual'} Revenue Collection - Total (Yearly)
             </CardTitle>
             <p className="text-xs text-gray-400 mt-1">
               Enter yearly targets first. After year-end, fill in achievements — the system will auto-calculate % collection.
@@ -230,16 +279,34 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
               </div>
             )}
 
-            {/* Total students */}
-            <div className="max-w-xs">
-              <Label className="mb-1.5 block text-xs font-medium text-gray-600">Total Students (Yearly Target)</Label>
-              <Input
-                type="number"
-                min={0}
-                value={form.totalStudentsTarget}
-                onChange={(e) => setField('totalStudentsTarget', Number(e.target.value) || 0)}
-                placeholder="0"
-              />
+            {/* Academic Year + Total students */}
+            <div className="grid gap-4 sm:grid-cols-2 max-w-xl">
+              <div>
+                <Label className="mb-1.5 block text-xs font-medium text-gray-600">
+                  Academic Year <span className="text-red-500">*</span>
+                </Label>
+                <select
+                  value={academicYear}
+                  onChange={(e) => handleYearChange(e.target.value)}
+                  className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                >
+                  <option value="">Choose an academic year...</option>
+                  {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+                </select>
+                {loadingYear && (
+                  <p className="mt-1.5 text-xs text-gray-400">Loading {academicYear} data…</p>
+                )}
+              </div>
+              <div>
+                <Label className="mb-1.5 block text-xs font-medium text-gray-600">Total Students (Yearly Target)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={form.totalStudentsTarget}
+                  onChange={(e) => setField('totalStudentsTarget', Number(e.target.value) || 0)}
+                  placeholder="0"
+                />
+              </div>
             </div>
 
             {/* Fee rows */}
@@ -247,9 +314,10 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50/70 border-b border-gray-100">
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 w-48">Fee Category</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Revenue Target (Yearly) — BDT</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Revenue Achievement (Yearly) — BDT</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 w-48">Area of Revenue Collection</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{mode === 'budget' ? 'Planned' : 'Actual'} Revenue Target (Yearly) - BDT</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Actual Collected Revenue (Yearly) - BDT</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 w-44">{mode === 'budget' ? 'Revenue Deficit (BDT)' : 'Outstanding Dues %'}</th>
                     <th className="px-4 py-3 text-center text-xs font-semibold uppercase text-gray-500 w-28">% Collection</th>
                   </tr>
                 </thead>
@@ -257,6 +325,7 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
                   {FEE_ROWS.map(({ key, label, hint }, idx) => {
                     const target = form[`${key}Target`] || 0;
                     const achievement = form[`${key}Achievement`] || 0;
+                    const deficit = target - achievement;
                     const pct = target > 0 ? (achievement / target) * 100 : 0;
                     const pctLabel = calcPct(target, achievement);
                     const pctColor = pct >= 100 ? 'text-emerald-600' : pct >= 70 ? 'text-amber-600' : target > 0 ? 'text-red-500' : 'text-gray-400';
@@ -286,6 +355,13 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
                             className="max-w-[180px]"
                           />
                         </td>
+                        <td className="px-4 py-3">
+                          <div className="flex h-10 max-w-[180px] items-center rounded-lg border border-gray-100 bg-gray-50/70 px-3">
+                            <span className={`font-mono text-sm font-semibold ${deficit > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                              {mode === 'budget' ? formatAmount(deficit) : calcDuesPct(target, achievement)}
+                            </span>
+                          </div>
+                        </td>
                         <td className="px-4 py-3 text-center">
                           <div className="space-y-1">
                             <p className={`text-sm font-bold ${pctColor}`}>{pctLabel}</p>
@@ -308,6 +384,9 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
                     <td className="px-4 py-3 text-sm text-gray-700">Total</td>
                     <td className="px-4 py-3 text-sm font-mono text-gray-800">{formatAmount(totalTarget)}</td>
                     <td className="px-4 py-3 text-sm font-mono text-gray-800">{formatAmount(totalAchievement)}</td>
+                    <td className={`px-4 py-3 text-sm font-mono ${totalTarget - totalAchievement > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                      {mode === 'budget' ? formatAmount(totalTarget - totalAchievement) : calcDuesPct(totalTarget, totalAchievement)}
+                    </td>
                     <td className="px-4 py-3 text-center">
                       <span className={`text-sm font-bold ${
                         totalTarget > 0 && (totalAchievement / totalTarget) >= 1 ? 'text-emerald-600' :
@@ -347,7 +426,7 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
         <Card className="overflow-hidden border-0 shadow-sm">
           <CardHeader className="pb-3 pt-5 px-5">
             <CardTitle className="text-base font-semibold text-gray-800">
-              Revenue Collection — {mode === 'budget' ? 'Budget' : 'Actual Student'} (Yearly) — Submitted Data
+              {mode === 'budget' ? 'Planned' : 'Actual'} Revenue Collection - Total (Yearly) — Submitted Data
             </CardTitle>
           </CardHeader>
           <CardContent className="px-5 pb-5">
@@ -363,17 +442,24 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
               const savedTotalAchievement = FEE_ROWS.reduce((s, { key }) => s + (Number(rec[`${key}Achievement`]) || 0), 0);
               return (
                 <div className="space-y-4">
-                  <div className="max-w-xs">
-                    <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Total Students (Yearly Target)</p>
-                    <p className="mt-0.5 text-lg font-bold text-gray-800">{formatAmount(Number(record.totalStudentsTarget) || 0)}</p>
+                  <div className="grid gap-4 sm:grid-cols-2 max-w-xl">
+                    <div>
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Academic Year</p>
+                      <p className="mt-0.5 text-lg font-bold text-gray-800">{record.academicYear ?? '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Total Students (Yearly Target)</p>
+                      <p className="mt-0.5 text-lg font-bold text-gray-800">{formatAmount(Number(record.totalStudentsTarget) || 0)}</p>
+                    </div>
                   </div>
                   <div className="overflow-x-auto rounded-xl border border-gray-100">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="bg-gray-50/70 border-b border-gray-100">
-                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 w-48">Fee Category</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Target — BDT</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Achievement — BDT</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 w-48">Area of Revenue Collection</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{mode === 'budget' ? 'Planned' : 'Actual'} Revenue Target - BDT</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Actual Collected Revenue - BDT</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{mode === 'budget' ? 'Revenue Deficit - BDT' : 'Outstanding Dues %'}</th>
                           <th className="px-4 py-3 text-center text-xs font-semibold uppercase text-gray-500 w-28">% Collection</th>
                         </tr>
                       </thead>
@@ -389,6 +475,7 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
                               </td>
                               <td className="px-4 py-3 font-mono text-gray-800">{formatAmount(target)}</td>
                               <td className="px-4 py-3 font-mono text-gray-800">{formatAmount(achievement)}</td>
+                              <td className={`px-4 py-3 font-mono ${target - achievement > 0 ? 'text-red-500' : 'text-emerald-600'}`}>{mode === 'budget' ? formatAmount(target - achievement) : calcDuesPct(target, achievement)}</td>
                               <td className="px-4 py-3 text-center font-bold text-gray-700">{calcPct(target, achievement)}</td>
                             </tr>
                           );
@@ -399,6 +486,9 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
                           <td className="px-4 py-3 text-sm text-gray-700">Total</td>
                           <td className="px-4 py-3 text-sm font-mono text-gray-800">{formatAmount(savedTotalTarget)}</td>
                           <td className="px-4 py-3 text-sm font-mono text-gray-800">{formatAmount(savedTotalAchievement)}</td>
+                          <td className={`px-4 py-3 text-sm font-mono ${savedTotalTarget - savedTotalAchievement > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                            {mode === 'budget' ? formatAmount(savedTotalTarget - savedTotalAchievement) : calcDuesPct(savedTotalTarget, savedTotalAchievement)}
+                          </td>
                           <td className="px-4 py-3 text-center text-sm font-bold text-gray-700">{calcPct(savedTotalTarget, savedTotalAchievement)}</td>
                         </tr>
                       </tfoot>

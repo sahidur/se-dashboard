@@ -26,6 +26,10 @@ export class DcEventParticipation {
   @Column({ name: 'school_id' })
   schoolId: string;
 
+  /** Academic year the record belongs to, e.g. 2026 */
+  @Column({ name: 'academic_year', type: 'int', default: 0 })
+  academicYear: number;
+
   @Column({ name: 'event_name', length: 100 })
   eventName: string;
 

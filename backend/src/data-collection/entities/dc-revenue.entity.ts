@@ -12,7 +12,7 @@ import { DcSchool } from './dc-school.entity';
 import { User } from '../../users/entities/user.entity';
 
 @Entity('dc_revenue')
-@Unique(['schoolId'])
+@Unique(['schoolId', 'academicYear'])
 export class DcRevenue {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -24,8 +24,9 @@ export class DcRevenue {
   @Column({ name: 'school_id' })
   schoolId: string;
 
-  @Column({ name: 'academic_year', length: 20, nullable: true })
-  academicYear: string;
+  /** Academic year the record belongs to, e.g. 2026 */
+  @Column({ name: 'academic_year', type: 'int', default: 0 })
+  academicYear: number;
 
   @Column({ name: 'monthly_tuition_fee', type: 'decimal', precision: 12, scale: 2, default: 0 })
   monthlyTuitionFee: number;

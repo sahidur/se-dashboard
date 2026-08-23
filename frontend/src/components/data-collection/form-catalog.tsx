@@ -3,6 +3,10 @@ import {
   HardHat, UserSquare2, CalendarClock, Receipt, Banknote, Calculator,
   CalendarDays, Trophy, Sparkles, Library, UserCheck, type LucideIcon,
 } from 'lucide-react';
+import {
+  STUDENT_PERFORMANCE_FORMS,
+  STUDENT_PERFORMANCE_SECTIONS,
+} from './student-performance-catalog';
 
 /**
  * Central catalog of every submitted data-collection form, grouped into the
@@ -17,6 +21,8 @@ export interface FormCatalogItem {
   key: string;
   endpoint: string;
   label: string;
+  /** Optional parent heading; sibling forms sharing it are listed under it in the menu. */
+  group?: string;
   description: string;
   icon: LucideIcon;
   /** True when the backend returns a single object (or null) instead of an array. */
@@ -116,7 +122,7 @@ export const FORM_CATEGORIES: FormCategory[] = [
       {
         key: 'revenue-budget-total',
         endpoint: 'revenue/budget/total',
-        label: 'Revenue (Budget) — Total',
+        label: 'Planned Revenue Collection - Total',
         description: 'Yearly budget targets and achievements per fee category',
         icon: Banknote,
         single: true,
@@ -124,14 +130,14 @@ export const FORM_CATEGORIES: FormCategory[] = [
       {
         key: 'revenue-budget-monthly',
         endpoint: 'revenue/budget/monthly',
-        label: 'Revenue (Budget) — Monthly',
+        label: 'Planned Revenue Collection - Monthly',
         description: 'Monthly tuition fee budget tracking with % collection achieved',
         icon: CalendarDays,
       },
       {
         key: 'revenue-actual-total',
         endpoint: 'revenue/actual/total',
-        label: 'Revenue (Actual) — Total',
+        label: 'Actual Revenue Collection - Total',
         description: 'Yearly actual student revenue targets and achievements per category',
         icon: TrendingUp,
         single: true,
@@ -139,7 +145,7 @@ export const FORM_CATEGORIES: FormCategory[] = [
       {
         key: 'revenue-actual-monthly',
         endpoint: 'revenue/actual/monthly',
-        label: 'Revenue (Actual) — Monthly',
+        label: 'Actual Revenue Collection - Monthly',
         description: 'Monthly actual student revenue tracking with % collection achieved',
         icon: Calculator,
       },
@@ -171,10 +177,21 @@ export const FORM_CATEGORIES: FormCategory[] = [
       {
         key: 'students-performance',
         endpoint: 'students-performance',
-        label: "Students' Performance",
+        label: "Students' Academic Performance",
         description: 'Exam-wise grade A–F results and student counts',
         icon: GraduationCap,
       },
+      ...STUDENT_PERFORMANCE_FORMS.map((f) => {
+        const section = STUDENT_PERFORMANCE_SECTIONS.find((s) => s.key === f.sectionKey)!;
+        return {
+          key: `student-performance-${f.key}`,
+          endpoint: `student-performance/${f.key}`,
+          label: f.label,
+          group: section.label,
+          description: f.description,
+          icon: f.icon,
+        };
+      }),
       {
         key: 'activity-participation',
         endpoint: 'activity-participation',

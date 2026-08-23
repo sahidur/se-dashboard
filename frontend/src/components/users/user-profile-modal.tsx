@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Image from 'next/image';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
@@ -184,9 +185,12 @@ export function UserProfileModal({ isOpen, onClose, user, onEdit }: UserProfileM
             </div>
             <div className="flex items-center gap-4">
               {user.profilePicture ? (
-                <img
+                <Image
                   src={resolveAssetUrl(user.profilePicture)}
                   alt={`${user.firstName} ${user.lastName}`}
+                  width={64}
+                  height={64}
+                  unoptimized
                   className="h-16 w-16 shrink-0 rounded-2xl border-2 border-white/40 object-cover shadow-md"
                 />
               ) : (

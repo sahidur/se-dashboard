@@ -36,6 +36,11 @@ const GRADE_LABELS: Record<string, string> = {
   g3: 'Grade 3',
   g4: 'Grade 4',
   g5: 'Grade 5',
+  g6: 'Grade 6',
+  g7: 'Grade 7',
+  g8: 'Grade 8',
+  g9: 'Grade 9',
+  g10: 'Grade 10',
 };
 
 const SUB_FORMS = [
@@ -61,13 +66,14 @@ export default function StudentsSubPage() {
   const [responses, setResponses]     = useState<DcStudentsInfo[]>([]);
   const [loadingResp, setLoadingResp] = useState(false);
   const [filterMonth, setFilterMonth] = useState('');
+  const [filterYear, setFilterYear] = useState('');
 
   useEffect(() => {
     api.get(`/data-collection/schools/${id}/dashboard`)
       .then(({ data }) => setDashboard(data))
       .catch(() => router.push('/data-collection/schools'))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, router]);
 
   const loadResponses = useCallback(async () => {
     setLoadingResp(true);
@@ -104,21 +110,33 @@ export default function StudentsSubPage() {
   const school = dashboard.school;
   const forms  = dashboard.forms;
   const count  = forms.studentsInfo?.count ?? 0;
-  const allDone = count >= 84; // 7 grades × 12 months
 
-  // Sort filtered by chronological month order
+  // Entries are keyed by academic year × month × grade, so completeness is
+  // measured per academic year: 12 months × 12 grades.
+  const ENTRIES_PER_YEAR = MONTHS.length * Object.keys(GRADE_LABELS).length;
+  const years = [...new Set(responses.map((r) => Number(r.academicYear)))].sort((a, b) => b - a);
+  const yearScoped = filterYear
+    ? responses.filter((r) => Number(r.academicYear) === Number(filterYear))
+    : responses;
+  const allDone = years.length > 0 && years.every(
+    (y) => responses.filter((r) => Number(r.academicYear) === y).length >= ENTRIES_PER_YEAR,
+  );
+
+  // Sort filtered by academic year (newest first), then chronological month
   const filtered = (filterMonth
-    ? responses.filter((r) => r.month === filterMonth)
-    : [...responses]
+    ? yearScoped.filter((r) => r.month === filterMonth)
+    : [...yearScoped]
   ).sort((a, b) => {
+    const yDiff = Number(b.academicYear) - Number(a.academicYear);
+    if (yDiff !== 0) return yDiff;
     const mDiff = MONTHS.indexOf(a.month) - MONTHS.indexOf(b.month);
     if (mDiff !== 0) return mDiff;
-    const GRADE_ORDER = ['play_learn','nursery','g1','g2','g3','g4','g5'];
+    const GRADE_ORDER = ['play_learn','nursery','g1','g2','g3','g4','g5','g6','g7','g8','g9','g10'];
     return GRADE_ORDER.indexOf(a.grade) - GRADE_ORDER.indexOf(b.grade);
   });
 
   // Group by month for the table (chronological)
-  const monthsPresent = [...new Set(responses.map((r) => r.month))].sort(
+  const monthsPresent = [...new Set(yearScoped.map((r) => r.month))].sort(
     (a, b) => MONTHS.indexOf(a) - MONTHS.indexOf(b),
   );
 
@@ -173,7 +191,9 @@ export default function StudentsSubPage() {
               <div className="flex items-center gap-3">
                 <div className="rounded-xl bg-gray-50 px-4 py-2 text-center">
                   <p className={`text-2xl font-bold ${count > 0 ? 'text-violet-600' : 'text-gray-400'}`}>{count}</p>
-                  <p className="text-xs text-gray-500">of 84 entries</p>
+                  <p className="text-xs text-gray-500">
+                    {years.length > 1 ? `entries across ${years.length} years` : `of ${ENTRIES_PER_YEAR} entries`}
+                  </p>
                 </div>
                 {allDone ? (
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
@@ -184,7 +204,7 @@ export default function StudentsSubPage() {
                     <svg viewBox="0 0 36 36" className="h-10 w-10 -rotate-90">
                       <circle cx="18" cy="18" r="15.9" fill="none" stroke="#e5e7eb" strokeWidth="3" />
                       <circle cx="18" cy="18" r="15.9" fill="none" stroke="#7c3aed" strokeWidth="3"
-                        strokeDasharray={`${(count / 84) * 100} 100`} strokeLinecap="round" />
+                        strokeDasharray={`${Math.min(100, (count / (ENTRIES_PER_YEAR * Math.max(years.length, 1))) * 100)} 100`} strokeLinecap="round" />
                     </svg>
                   </div>
                 )}
@@ -254,6 +274,17 @@ export default function StudentsSubPage() {
                 <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-700">{responses.length}</span>
               </div>
               <div className="flex items-center gap-2">
+                {/* Academic year filter */}
+                <select
+                  value={filterYear}
+                  onChange={(e) => setFilterYear(e.target.value)}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 focus:outline-none focus:ring-2 focus:ring-violet-300"
+                >
+                  <option value="">All Years</option>
+                  {years.map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
                 {/* Month filter */}
                 <select
                   value={filterMonth}
@@ -292,6 +323,7 @@ export default function StudentsSubPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50/70">
+                      <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Year</th>
                       <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Month</th>
                       <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Grade</th>
                       <th className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Boys</th>
@@ -305,6 +337,8 @@ export default function StudentsSubPage() {
                       <th className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
                         <span className="flex items-center justify-end gap-1"><TrendingDown size={12} /> Dropout</span>
                       </th>
+                      <th className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Replaced</th>
+                      <th className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Retention</th>
                       <th className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
                         <span className="flex items-center justify-end gap-1"><Activity size={12} /> Remedial</span>
                       </th>
@@ -315,6 +349,7 @@ export default function StudentsSubPage() {
                   <tbody className="divide-y divide-gray-100">
                     {filtered.map((r) => (
                       <tr key={r.id} className={`transition-colors hover:brightness-95 ${monthBgMap[r.month] ?? 'bg-white'}`}>
+                        <td className="px-4 py-3 font-mono text-xs text-gray-500">{r.academicYear}</td>
                         <td className="px-4 py-3">
                           <span className="inline-flex items-center rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-medium text-violet-700">{r.month}</span>
                         </td>
@@ -338,6 +373,8 @@ export default function StudentsSubPage() {
                             {Number(r.dropoutRate).toFixed(1)}%
                           </span>
                         </td>
+                        <td className="px-4 py-3 text-right text-gray-600">{Number(r.replacedStudentsRate ?? 0).toFixed(1)}%</td>
+                        <td className="px-4 py-3 text-right text-gray-600">{Number(r.retentionRate ?? 0).toFixed(1)}%</td>
                         <td className="px-4 py-3 text-right text-gray-600">{r.remedialSupport}</td>
                         <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
                           {r.createdBy
@@ -350,12 +387,13 @@ export default function StudentsSubPage() {
                       </tr>
                     ))}
                   </tbody>
-                  {/* Monthly totals footer when a month is selected */}
-                  {filterMonth && filtered.length > 0 && (
+                  {/* Totals footer — only meaningful for a single year + month,
+                      otherwise the same pupils would be summed once per month. */}
+                  {filterMonth && filterYear && filtered.length > 0 && (
                     <tfoot>
                       <tr className="border-t-2 border-violet-200 bg-violet-50/50">
-                        <td className="px-4 py-3 text-xs font-bold text-violet-700" colSpan={2}>
-                          {filterMonth} Total
+                        <td className="px-4 py-3 text-xs font-bold text-violet-700" colSpan={3}>
+                          {filterYear} &bull; {filterMonth} Total
                         </td>
                         <td className="px-4 py-3 text-right font-bold text-blue-700">
                           {filtered.reduce((s, r) => s + r.boys, 0)}
@@ -383,6 +421,16 @@ export default function StudentsSubPage() {
                             : '0.0'}%
                         </td>
                         <td className="px-4 py-3 text-right font-bold text-gray-600">
+                          {filtered.length > 0
+                            ? (filtered.reduce((s, r) => s + Number(r.replacedStudentsRate ?? 0), 0) / filtered.length).toFixed(1)
+                            : '0.0'}%
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold text-gray-600">
+                          {filtered.length > 0
+                            ? (filtered.reduce((s, r) => s + Number(r.retentionRate ?? 0), 0) / filtered.length).toFixed(1)
+                            : '0.0'}%
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold text-gray-600">
                           {filtered.reduce((s, r) => s + r.remedialSupport, 0)}
                         </td>
                         <td colSpan={2} />
@@ -395,7 +443,7 @@ export default function StudentsSubPage() {
                 {!filterMonth && monthsPresent.length > 1 && (
                   <div className="border-t border-gray-100 px-5 py-3 flex flex-wrap gap-2">
                     {monthsPresent.map((m) => {
-                      const mCount = responses.filter((r) => r.month === m).length;
+                      const mCount = yearScoped.filter((r) => r.month === m).length;
                       return (
                         <button
                           key={m}

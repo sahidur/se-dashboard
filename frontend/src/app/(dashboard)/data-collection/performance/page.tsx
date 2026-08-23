@@ -9,32 +9,38 @@ import { Badge } from '@/components/ui/badge';
 import { SchoolSelector } from '@/components/data-collection/school-selector';
 import { TrendingUp, Save, CheckCircle2 } from 'lucide-react';
 import api from '@/lib/api';
+import { buildYearOptions } from '@/lib/utils';
 import type { DcPerformance } from '@/types';
+
+const YEAR_OPTIONS = buildYearOptions();
+
+const EMPTY_FORM = {
+  avgPassRate: 0, avgGpa: 0, boardExamPassRate: 0, boardExamAvgGpa: 0,
+  extracurricularActivities: '', sportsAchievements: '', culturalActivities: '',
+  scienceFairParticipation: 0, debateCompetitions: 0, totalAwards: 0,
+  teachingMethodology: '', remarks: '',
+};
 
 export default function PerformancePage() {
   const searchParams = useSearchParams();
   const [schoolId, setSchoolId] = useState(searchParams.get('school') || '');
+  const [academicYear, setAcademicYear] = useState(String(new Date().getFullYear()));
   const [existing, setExisting] = useState<DcPerformance | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const [form, setForm] = useState({
-    academicYear: '', avgPassRate: 0, avgGpa: 0, boardExamPassRate: 0, boardExamAvgGpa: 0,
-    extracurricularActivities: '', sportsAchievements: '', culturalActivities: '',
-    scienceFairParticipation: 0, debateCompetitions: 0, totalAwards: 0,
-    teachingMethodology: '', remarks: '',
-  });
+  const [form, setForm] = useState({ ...EMPTY_FORM });
 
   useEffect(() => {
-    if (!schoolId) return;
+    if (!schoolId || !academicYear) return;
     setLoading(true);
-    api.get(`/data-collection/performance/school/${schoolId}`)
+    api.get(`/data-collection/performance/school/${schoolId}`, { params: { academicYear } })
       .then(({ data }) => {
         if (data) {
           setExisting(data);
           setForm({
-            academicYear: data.academicYear || '', avgPassRate: data.avgPassRate || 0,
+            avgPassRate: data.avgPassRate || 0,
             avgGpa: data.avgGpa || 0, boardExamPassRate: data.boardExamPassRate || 0,
             boardExamAvgGpa: data.boardExamAvgGpa || 0,
             extracurricularActivities: data.extracurricularActivities || '',
@@ -46,19 +52,22 @@ export default function PerformancePage() {
             teachingMethodology: data.teachingMethodology || '',
             remarks: data.remarks || '',
           });
-        } else setExisting(null);
+        } else {
+          setExisting(null);
+          setForm({ ...EMPTY_FORM });
+        }
       })
-      .catch(() => setExisting(null))
+      .catch(() => { setExisting(null); setForm({ ...EMPTY_FORM }); })
       .finally(() => setLoading(false));
-  }, [schoolId]);
+  }, [schoolId, academicYear]);
 
   const handleSubmit = async () => {
-    if (!schoolId) return;
+    if (!schoolId || !academicYear) return;
     setSaving(true);
     try {
-      await api.post('/data-collection/performance', { ...form, schoolId });
+      await api.post('/data-collection/performance', { ...form, schoolId, academicYear: Number(academicYear) });
       setSaved(true); setTimeout(() => setSaved(false), 3000);
-      const { data } = await api.get(`/data-collection/performance/school/${schoolId}`);
+      const { data } = await api.get(`/data-collection/performance/school/${schoolId}`, { params: { academicYear } });
       if (data) setExisting(data);
     } catch (e: any) { alert(e?.response?.data?.message || 'Error'); } finally { setSaving(false); }
   };
@@ -120,8 +129,18 @@ export default function PerformancePage() {
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Academic Year</label>
-                  <input type="text" value={form.academicYear} onChange={(e) => setForm({ ...form, academicYear: e.target.value })} placeholder="2025-2026" className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Academic Year <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={academicYear}
+                    onChange={(e) => setAcademicYear(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  >
+                    {YEAR_OPTIONS.map((y) => (
+                      <option key={y} value={String(y)}>{y}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 

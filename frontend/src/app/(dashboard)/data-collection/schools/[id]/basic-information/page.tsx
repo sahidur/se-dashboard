@@ -88,7 +88,7 @@ export default function BasicInformationPage() {
       .then(({ data }) => setDashboard(data))
       .catch(() => router.push('/data-collection/schools'))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, router]);
 
   if (loading) {
     return (

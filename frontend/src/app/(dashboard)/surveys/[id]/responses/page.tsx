@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -35,38 +35,41 @@ export default function SurveyResponsesPage() {
   const [startDateFilter, setStartDateFilter] = useState('');
   const [endDateFilter, setEndDateFilter] = useState('');
 
-  const fetchSurvey = async () => {
+  const fetchSurvey = useCallback(async () => {
     try {
       const { data } = await api.get(`/surveys/${id}`);
       setSurvey(data);
     } catch {
       router.push('/surveys');
     }
-  };
+  }, [id, router]);
 
-  const fetchResponses = async (page = 1) => {
-    try {
-      const params: any = { page, limit: 20 };
-      if (startDateFilter) params.startDate = startDateFilter;
-      if (endDateFilter) params.endDate = endDateFilter;
-      const { data } = await api.get(`/surveys/${id}/responses`, { params });
-      setResponses(data.data || []);
-      setTotalResponses(data.meta?.total || 0);
-    } catch {
-      /* empty */
-    }
-  };
+  // Filters are passed as arguments (rather than read from state) so this stays
+  // referentially stable and only the effect watching them refetches.
+  const fetchResponses = useCallback(
+    async (page = 1, startDate = '', endDate = '') => {
+      try {
+        const params: any = { page, limit: 20 };
+        if (startDate) params.startDate = startDate;
+        if (endDate) params.endDate = endDate;
+        const { data } = await api.get(`/surveys/${id}/responses`, { params });
+        setResponses(data.data || []);
+        setTotalResponses(data.meta?.total || 0);
+      } catch {
+        /* empty */
+      }
+    },
+    [id],
+  );
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchSurvey(), fetchResponses()]).finally(() =>
-      setLoading(false),
-    );
-  }, [id]);
+    fetchSurvey().finally(() => setLoading(false));
+  }, [fetchSurvey]);
 
   useEffect(() => {
-    fetchResponses(currentPage);
-  }, [currentPage, startDateFilter, endDateFilter]);
+    fetchResponses(currentPage, startDateFilter, endDateFilter);
+  }, [currentPage, startDateFilter, endDateFilter, fetchResponses]);
 
   const handleExportCsv = async () => {
     try {

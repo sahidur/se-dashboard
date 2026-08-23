@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import api from '@/lib/api';
 import { formatDate, formatRelativeTime, cn } from '@/lib/utils';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { fullName } from '@/components/school-monitoring/submission-view';
 import { MONITORING_FORM_LIST, getMonitoringForm } from '@/components/school-monitoring/form-catalog';
 import type { PaginatedMonitoring, MonitoringSubmission } from '@/types';
@@ -29,6 +30,21 @@ const RESULT_FILTERS = [
   { value: 'na', label: 'Mostly Not Applicable' },
 ];
 
+const counts = (s: MonitoringSubmission) => {
+  const c = { yes: 0, no: 0, na: 0 };
+  s.answers?.forEach((a) => { if (a.result in c) c[a.result as 'yes' | 'no' | 'na']++; });
+  return c;
+};
+
+const dominant = (s: MonitoringSubmission): 'yes' | 'no' | 'na' | '' => {
+  const c = counts(s);
+  const max = Math.max(c.yes, c.no, c.na);
+  if (max === 0) return '';
+  if (c.yes === max) return 'yes';
+  if (c.no === max) return 'no';
+  return 'na';
+};
+
 export default function MonitoringFeedbackPage() {
   const params = useSearchParams();
   const router = useRouter();
@@ -42,11 +58,14 @@ export default function MonitoringFeedbackPage() {
   const [resultFilter, setResultFilter] = useState('');
   const schoolId = params.get('schoolId') || '';
 
+  // The input stays instant; only the fetch waits for the user to pause.
+  const debouncedSearch = useDebouncedValue(search);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const q = new URLSearchParams({ page: String(page), limit: '20' });
-      if (search) q.set('search', search);
+      if (debouncedSearch) q.set('search', debouncedSearch);
       if (formType) q.set('formType', formType);
       if (schoolId) q.set('schoolId', schoolId);
       const { data } = await api.get<PaginatedMonitoring>(`/school-monitoring?${q.toString()}`);
@@ -58,25 +77,10 @@ export default function MonitoringFeedbackPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, formType, schoolId]);
+  }, [page, debouncedSearch, formType, schoolId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-  useEffect(() => { setPage(1); }, [search, formType]);
-
-  const counts = (s: MonitoringSubmission) => {
-    const c = { yes: 0, no: 0, na: 0 };
-    s.answers?.forEach((a) => { if (a.result in c) c[a.result as 'yes' | 'no' | 'na']++; });
-    return c;
-  };
-
-  const dominant = (s: MonitoringSubmission): 'yes' | 'no' | 'na' | '' => {
-    const c = counts(s);
-    const max = Math.max(c.yes, c.no, c.na);
-    if (max === 0) return '';
-    if (c.yes === max) return 'yes';
-    if (c.no === max) return 'no';
-    return 'na';
-  };
+  useEffect(() => { setPage(1); }, [debouncedSearch, formType]);
 
   const displayed = useMemo(
     () => (resultFilter ? items.filter((s) => dominant(s) === resultFilter) : items),

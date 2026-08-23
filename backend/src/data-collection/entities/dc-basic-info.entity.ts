@@ -12,7 +12,7 @@ import { DcSchool } from './dc-school.entity';
 import { User } from '../../users/entities/user.entity';
 
 @Entity('dc_basic_information')
-@Unique(['schoolId'])
+@Unique(['schoolId', 'academicYear'])
 export class DcBasicInfo {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -24,8 +24,9 @@ export class DcBasicInfo {
   @Column({ name: 'school_id' })
   schoolId: string;
 
-  @Column({ name: 'academic_year', length: 20, nullable: true })
-  academicYear: string;
+  /** Academic year the record belongs to, e.g. 2026 */
+  @Column({ name: 'academic_year', type: 'int', default: 0 })
+  academicYear: number;
 
   @Column({ name: 'school_category', length: 30, nullable: true })
   schoolCategory: string; // boys, girls, co_education

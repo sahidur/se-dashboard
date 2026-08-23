@@ -16,7 +16,7 @@ import { User } from '../../users/entities/user.entity';
  * One record per school + grade + exam combination; upsert on conflict.
  */
 @Entity('dc_students_performance')
-@Unique(['schoolId', 'grade', 'examName'])
+@Unique(['schoolId', 'academicYear', 'grade', 'examName'])
 export class DcStudentsPerformance {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -27,6 +27,10 @@ export class DcStudentsPerformance {
 
   @Column({ name: 'school_id' })
   schoolId: string;
+
+  /** Academic year the record belongs to, e.g. 2026 */
+  @Column({ name: 'academic_year', type: 'int', default: 0 })
+  academicYear: number;
 
   /** Play & Learn | Nursery | G1 … G5 */
   @Column({ length: 30 })

@@ -4,6 +4,8 @@ import {
   IsString,
   IsOptional,
   MinLength,
+  MaxLength,
+  Matches,
   IsArray,
   IsUUID,
   IsInt,
@@ -42,10 +44,19 @@ export class CreateUserDto {
   @IsNotEmpty()
   email: string;
 
-  @ApiProperty({ example: 'password123' })
+  @ApiProperty({
+    example: 'Str0ng!Passphrase',
+    description:
+      'At least 8 characters, including an uppercase letter, a lowercase letter and a digit.',
+  })
   @IsString()
   @IsNotEmpty()
-  @MinLength(6)
+  @MinLength(8)
+  @MaxLength(128)
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/, {
+    message:
+      'password must contain at least one uppercase letter, one lowercase letter and one number',
+  })
   password: string;
 
   @ApiPropertyOptional({ example: '+8801700000000' })

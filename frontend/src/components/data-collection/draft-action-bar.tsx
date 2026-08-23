@@ -104,7 +104,7 @@ export function DraftActionBar({
           <FileClock size={16} className="shrink-0" />
           <span>
             Draft saved{draftSavedAt ? ` ${formatRelativeTime(draftSavedAt)}` : ''} &mdash; only
-            visible to you, saved to your account so it's available on any device. Not submitted yet.
+            visible to you, saved to your account so it&apos;s available on any device. Not submitted yet.
           </span>
         </div>
       )}

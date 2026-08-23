@@ -14,6 +14,7 @@ import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import api from '@/lib/api';
+import { buildYearOptions } from '@/lib/utils';
 import type { DcSchool } from '@/types';
 
 const ROOM_TYPES = [
@@ -47,7 +48,10 @@ const SCHOOL_TYPE_LABELS: Record<string, string> = {
   haor: 'Haor',
 };
 
+const YEARS = buildYearOptions();
+
 interface FormState {
+  academicYear: string;
   campusStatus: string;
   buildingStatus: string[];
   roomHeadTeachers: number;
@@ -69,6 +73,7 @@ interface FormState {
 }
 
 const defaultState: FormState = {
+  academicYear: '',
   campusStatus: '',
   buildingStatus: [],
   roomHeadTeachers: 0,
@@ -91,8 +96,32 @@ const defaultState: FormState = {
 
 interface Props { schoolId: string }
 
+function mapRecord(d: Record<string, any>): FormState {
+  return {
+    academicYear: d.academicYear != null ? String(d.academicYear) : '',
+    campusStatus: d.campusStatus || '',
+    buildingStatus: d.buildingStatus ? JSON.parse(d.buildingStatus) : [],
+    roomHeadTeachers: d.roomHeadTeachers ?? 0,
+    roomTeachers: d.roomTeachers ?? 0,
+    roomClassroom: d.roomClassroom ?? 0,
+    roomPlayroom: d.roomPlayroom ?? 0,
+    roomLibrary: d.roomLibrary ?? 0,
+    roomLab: d.roomLab ?? 0,
+    roomStoreroom: d.roomStoreroom ?? 0,
+    roomKitchen: d.roomKitchen ?? 0,
+    roomSickbay: d.roomSickbay ?? 0,
+    roomOthers: d.roomOthers ?? 0,
+    washroomMale: d.washroomMale ?? 0,
+    washroomFemale: d.washroomFemale ?? 0,
+    hasHandWashPoint: d.hasHandWashPoint ?? null,
+    hasPlayground: d.hasPlayground ?? null,
+    hasSchoolGarden: d.hasSchoolGarden ?? null,
+    infraRenovationRequired: d.infraRenovationRequired ?? null,
+  };
+}
+
 type FieldErrors = Partial<Record<
-  'campusStatus' | 'buildingStatus' | 'hasHandWashPoint' | 'hasPlayground' | 'hasSchoolGarden' | 'infraRenovationRequired',
+  'academicYear' | 'campusStatus' | 'buildingStatus' | 'hasHandWashPoint' | 'hasPlayground' | 'hasSchoolGarden' | 'infraRenovationRequired',
   string
 >>;
 
@@ -105,6 +134,7 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [loadingYear, setLoadingYear] = useState(false);
   const draft = useFormDraft<FormState>('infrastructure', schoolId);
   const [tab, setTab] = useState<'entry' | 'data'>('entry');
   const [savedRecord, setSavedRecord] = useState<FormState | null>(null);
@@ -119,26 +149,7 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
         setSchool(dashRes.data.school);
         const d = infraRes.data;
         if (d) {
-          const loaded: FormState = {
-            campusStatus: d.campusStatus || '',
-            buildingStatus: d.buildingStatus ? JSON.parse(d.buildingStatus) : [],
-            roomHeadTeachers: d.roomHeadTeachers ?? 0,
-            roomTeachers: d.roomTeachers ?? 0,
-            roomClassroom: d.roomClassroom ?? 0,
-            roomPlayroom: d.roomPlayroom ?? 0,
-            roomLibrary: d.roomLibrary ?? 0,
-            roomLab: d.roomLab ?? 0,
-            roomStoreroom: d.roomStoreroom ?? 0,
-            roomKitchen: d.roomKitchen ?? 0,
-            roomSickbay: d.roomSickbay ?? 0,
-            roomOthers: d.roomOthers ?? 0,
-            washroomMale: d.washroomMale ?? 0,
-            washroomFemale: d.washroomFemale ?? 0,
-            hasHandWashPoint: d.hasHandWashPoint ?? null,
-            hasPlayground: d.hasPlayground ?? null,
-            hasSchoolGarden: d.hasSchoolGarden ?? null,
-            infraRenovationRequired: d.infraRenovationRequired ?? null,
-          };
+          const loaded = mapRecord(d);
           setForm(loaded);
           setSavedRecord(loaded);
         }
@@ -172,6 +183,31 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
     setForm(defaultState);
     setError('');
     setFieldErrors({});
+  };
+
+  // Changing the academic year reloads that year's record (or blanks the form).
+  const handleYearChange = async (y: string) => {
+    setForm((prev) => ({ ...prev, academicYear: y }));
+    setError('');
+    setFieldErrors((prev) => { const n = { ...prev }; delete n.academicYear; return n; });
+    if (!y) { setSavedRecord(null); return; }
+    setLoadingYear(true);
+    try {
+      const { data } = await api.get(`/data-collection/infrastructure/school/${schoolId}?academicYear=${y}`);
+      if (data) {
+        const loaded = { ...mapRecord(data), academicYear: y };
+        setForm(loaded);
+        setSavedRecord(loaded);
+      } else {
+        setForm({ ...defaultState, academicYear: y });
+        setSavedRecord(null);
+      }
+    } catch {
+      setForm({ ...defaultState, academicYear: y });
+      setSavedRecord(null);
+    } finally {
+      setLoadingYear(false);
+    }
   };
 
   const totalRooms = ROOM_TYPES.reduce(
@@ -213,6 +249,11 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.academicYear) {
+      setFieldErrors({ academicYear: 'Required' });
+      setError('Please select an academic year.');
+      return;
+    }
     const errs = validate();
     if (Object.keys(errs).length > 0) {
       setFieldErrors(errs);
@@ -225,6 +266,7 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
     try {
       await api.post('/data-collection/infrastructure', {
         schoolId,
+        academicYear: Number(form.academicYear),
         campusStatus: form.campusStatus || undefined,
         buildingStatus: form.buildingStatus.length > 0
           ? JSON.stringify(form.buildingStatus)
@@ -345,6 +387,33 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
           {error}
         </div>
       )}
+
+      {/* ── Academic Year ───────────────────────── */}
+      <Card className="overflow-hidden border-0 shadow-sm transition-all duration-200 hover:shadow-md">
+        <CardContent className="px-5 py-5">
+          <div className="max-w-xs">
+            <Label className="mb-1.5 block text-sm font-medium text-gray-700">
+              Academic Year <span className="text-red-500">*</span>
+            </Label>
+            <select
+              value={form.academicYear}
+              onChange={(e) => handleYearChange(e.target.value)}
+              className={`w-full rounded-lg border bg-white px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-emerald-400 focus:border-emerald-400 ${
+                fieldErrors.academicYear ? 'border-red-300' : 'border-gray-300'
+              }`}
+            >
+              <option value="">Select academic year…</option>
+              {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+            </select>
+            {fieldErrors.academicYear && (
+              <p className="mt-1.5 text-xs text-red-600">{fieldErrors.academicYear}</p>
+            )}
+            {loadingYear && (
+              <p className="mt-1.5 text-xs text-emerald-600">Loading {form.academicYear} data…</p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* ── Section 1: Campus & Building Status ─── */}
       <Card className="overflow-hidden border-0 shadow-sm transition-all duration-200 hover:shadow-md">
@@ -571,6 +640,7 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
             ) : (
               <div className="space-y-5">
                 <div className="grid gap-4 sm:grid-cols-2">
+                  <SummaryItem label="Academic Year" value={savedRecord.academicYear || '—'} />
                   <SummaryItem label="Campus Status" value={savedRecord.campusStatus || '—'} />
                   <SummaryItem label="Building Status" value={savedRecord.buildingStatus.join(', ') || '—'} />
                 </div>

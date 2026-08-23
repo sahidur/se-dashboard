@@ -369,7 +369,7 @@ export default function FillSurveyPage() {
       }
     };
     fetchSurveyAndDraft();
-  }, [id]);
+  }, [id, router]);
 
   const getAllFields = useCallback((): SurveyField[] => {
     if (!survey) return [];

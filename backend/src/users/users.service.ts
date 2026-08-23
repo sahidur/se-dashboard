@@ -53,9 +53,10 @@ export class UsersService {
       firstName: createUserDto.firstName,
       lastName: createUserDto.lastName,
       email: createUserDto.email,
-      password: createUserDto.password.startsWith('$2')
-        ? createUserDto.password
-        : await bcrypt.hash(createUserDto.password, 12),
+      // Always hash. Previously a value starting with '$2' was stored verbatim
+      // as an "already hashed" shortcut, which silently persisted any password
+      // beginning with those characters in plaintext.
+      password: await bcrypt.hash(createUserDto.password, 12),
       phone: createUserDto.phone,
       pin: createUserDto.pin,
       designation: createUserDto.designation,

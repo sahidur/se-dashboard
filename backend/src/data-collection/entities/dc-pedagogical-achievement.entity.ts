@@ -33,13 +33,20 @@ export class DcPedagogicalAchievement {
   year: number;
 
   // ── KG Scholarship ──────────────────────────────────────
+  @Column({ name: 'kg_participated', type: 'int', default: 0 })
+  kgParticipated: number;
+
   @Column({ name: 'kg_scholarship', type: 'int', default: 0 })
   kgScholarship: number;
 
+  /** Retained for historical records; no longer collected by the form. */
   @Column({ name: 'kg_unique_approach', type: 'text', nullable: true })
   kgUniqueApproach: string;
 
   // ── Primary Scholarship ─────────────────────────────────
+  @Column({ name: 'primary_participated', type: 'int', default: 0 })
+  primaryParticipated: number;
+
   @Column({ name: 'primary_scholarship', type: 'int', default: 0 })
   primaryScholarship: number;
 
@@ -47,6 +54,9 @@ export class DcPedagogicalAchievement {
   primaryUniqueApproach: string;
 
   // ── Junior Scholarship ──────────────────────────────────
+  @Column({ name: 'jr_participated', type: 'int', default: 0 })
+  jrParticipated: number;
+
   @Column({ name: 'jr_scholarship', type: 'int', default: 0 })
   jrScholarship: number;
 
@@ -54,6 +64,9 @@ export class DcPedagogicalAchievement {
   jrUniqueApproach: string;
 
   // ── SSC ─────────────────────────────────────────────────
+  @Column({ name: 'ssc_participated', type: 'int', default: 0 })
+  sscParticipated: number;
+
   @Column({ name: 'ssc_scholarship', type: 'int', default: 0 })
   sscScholarship: number;
 
@@ -61,6 +74,9 @@ export class DcPedagogicalAchievement {
   sscUniqueApproach: string;
 
   // ── Others ──────────────────────────────────────────────
+  @Column({ name: 'others_participated', type: 'int', default: 0 })
+  othersParticipated: number;
+
   @Column({ name: 'others_scholarship', type: 'int', default: 0 })
   othersScholarship: number;
 

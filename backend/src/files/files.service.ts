@@ -11,6 +11,26 @@ import { v4 as uuid } from 'uuid';
 import * as path from 'path';
 import * as fs from 'fs';
 
+/**
+ * Allowed upload MIME types mapped to the extension the file is stored with.
+ *
+ * The stored extension is derived from this map and NEVER from
+ * `file.originalname`: uploads are served back as static files, so honouring a
+ * user-supplied extension would let someone send `payload.html` with an
+ * `image/png` content-type and get stored HTML served from the API origin
+ * (stored XSS — OWASP A03).
+ */
+const ALLOWED_MIME_EXTENSIONS: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'application/pdf': '.pdf',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+  'application/vnd.ms-excel': '.xls',
+  'text/csv': '.csv',
+};
+
 @Injectable()
 export class FilesService {
   private readonly logger = new Logger(FilesService.name);
@@ -54,15 +74,11 @@ export class FilesService {
     file: Express.Multer.File,
     subfolder = 'uploads',
   ): Promise<{ url: string; key: string }> {
+    if (!file?.buffer) {
+      throw new BadRequestException('No file was uploaded');
+    }
     // Validate MIME type against allowlist
-    const ALLOWED_MIME_TYPES = [
-      'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-      'application/pdf',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel',
-      'text/csv',
-    ];
-    if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+    if (!ALLOWED_MIME_EXTENSIONS[file.mimetype]) {
       throw new BadRequestException(`File type '${file.mimetype}' is not allowed`);
     }
     if (this.useLocal) {
@@ -71,11 +87,16 @@ export class FilesService {
     return this.uploadFileS3(file, subfolder);
   }
 
+  /** Safe, server-controlled extension for a validated upload. */
+  private extensionFor(file: Express.Multer.File): string {
+    return ALLOWED_MIME_EXTENSIONS[file.mimetype];
+  }
+
   private async uploadFileLocal(
     file: Express.Multer.File,
     subfolder: string,
   ): Promise<{ url: string; key: string }> {
-    const ext = path.extname(file.originalname);
+    const ext = this.extensionFor(file);
     const fileName = `${uuid()}${ext}`;
     const dir = path.join(this.localUploadDir, subfolder);
 
@@ -99,7 +120,7 @@ export class FilesService {
     file: Express.Multer.File,
     subfolder: string,
   ): Promise<{ url: string; key: string }> {
-    const ext = path.extname(file.originalname);
+    const ext = this.extensionFor(file);
     const key = `${this.folder}/${subfolder}/${uuid()}${ext}`;
 
     await this.s3Client!.send(
@@ -108,6 +129,9 @@ export class FilesService {
         Key: key,
         Body: file.buffer,
         ContentType: file.mimetype,
+        // Objects are rendered in the browser; force the declared content type
+        // and stop the browser sniffing it into something executable.
+        ContentDisposition: 'inline',
         ACL: 'public-read',
       }),
     );
@@ -120,15 +144,23 @@ export class FilesService {
 
   async deleteFile(key: string): Promise<void> {
     if (this.useLocal) {
-      // Prevent path traversal: ensure the resolved path stays within upload dir
-      const resolvedPath = path.resolve(this.localUploadDir, key);
-      if (!resolvedPath.startsWith(path.resolve(this.localUploadDir))) {
+      // Prevent path traversal: ensure the resolved path stays within upload dir.
+      // The trailing separator matters — a bare `startsWith` would also accept a
+      // sibling directory such as `<cwd>/uploads-backup`.
+      const uploadDir = path.resolve(this.localUploadDir);
+      const resolvedPath = path.resolve(uploadDir, key);
+      if (!resolvedPath.startsWith(uploadDir + path.sep)) {
         throw new BadRequestException('Invalid file key');
       }
       if (fs.existsSync(resolvedPath)) {
         fs.unlinkSync(resolvedPath);
       }
       return;
+    }
+    // Confine deletions to this application's prefix so a crafted key cannot
+    // remove unrelated objects that share the bucket.
+    if (!key.startsWith(`${this.folder}/`)) {
+      throw new BadRequestException('Invalid file key');
     }
     await this.s3Client!.send(
       new DeleteObjectCommand({

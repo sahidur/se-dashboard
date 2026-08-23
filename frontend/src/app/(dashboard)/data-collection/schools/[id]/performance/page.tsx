@@ -15,13 +15,29 @@ import {
   XCircle,
   ChevronRight,
   GraduationCap,
+  ClipboardCheck,
   Library,
   Award,
+  type LucideIcon,
 } from 'lucide-react';
 import api from '@/lib/api';
 import type { DcDashboard } from '@/types';
 
-const SUB_FORMS = [
+interface SubForm {
+  key: string;
+  slug: string;
+  /** When set, the card links to this sub-route instead of /data-collection/forms/<slug>. */
+  href?: string;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+  color: string;
+  bg: string;
+  text: string;
+  trackKey: string;
+}
+
+const SUB_FORMS: SubForm[] = [
   {
     key: 'pedagogical-achievements',
     slug: 'pedagogical-achievements',
@@ -47,13 +63,25 @@ const SUB_FORMS = [
   {
     key: 'students-performance',
     slug: 'students-performance',
-    label: "Students' Performance",
+    label: "Students' Academic Performance",
     description: 'Exam-wise grade-A to F results, student counts and progress indicators',
     icon: GraduationCap,
     color: 'from-teal-500 to-teal-600',
     bg: 'bg-teal-50',
     text: 'text-teal-600',
     trackKey: 'studentsPerformance',
+  },
+  {
+    key: 'student-performance',
+    slug: 'student-performance',
+    href: 'student-performance',
+    label: 'Student Performance',
+    description: "Indicator and subject-wise performance for BA, BPS and BSS \u2014 6 forms",
+    icon: ClipboardCheck,
+    color: 'from-cyan-500 to-cyan-600',
+    bg: 'bg-cyan-50',
+    text: 'text-cyan-600',
+    trackKey: 'studentPerformance',
   },
   {
     key: 'activity-participation',
@@ -91,7 +119,7 @@ export default function PerformanceSubPage() {
       .then(({ data }) => setDashboard(data))
       .catch(() => router.push('/data-collection/schools'))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, router]);
 
   if (loading) {
     return (
@@ -171,7 +199,7 @@ export default function PerformanceSubPage() {
             const submitted = sf.trackKey ? forms[sf.trackKey as keyof typeof forms]?.submitted : false;
             const Icon = sf.icon;
             return (
-              <Link key={sf.key} href={`/data-collection/forms/${sf.slug}?school=${id}`} className="group block">
+              <Link key={sf.key} href={sf.href ? `/data-collection/schools/${id}/performance/${sf.href}` : `/data-collection/forms/${sf.slug}?school=${id}`} className="group block">
                 <Card className={`relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${submitted ? 'ring-2 ring-green-200' : 'ring-1 ring-gray-100'}`}>
                   <CardContent className="p-5">
                     <div className="mb-3 flex items-start justify-between">

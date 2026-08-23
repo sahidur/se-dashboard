@@ -15,10 +15,12 @@ import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import api from '@/lib/api';
+import { buildYearOptions } from '@/lib/utils';
 import type { DcSchool, DcTeacherIndividual } from '@/types';
 
-/* ─── Constants ─────────────────────────────────────────── */
+/* ─── Constants ────────────────────────────────────────── */
 
+const YEARS = buildYearOptions();
 const DESIGNATIONS = ['Head Teacher', 'Assistant Teacher', 'Junior Teacher'];
 const GENDERS = ['Male', 'Female'];
 const QUALIFICATIONS = ['HSC', 'Hons', 'Masters'];
@@ -37,6 +39,7 @@ const SCHOOL_TYPE_LABELS: Record<string, string> = {
 };
 
 interface FormState {
+  academicYear: string;
   name: string;
   designation: string;
   gender: string;
@@ -50,6 +53,7 @@ interface FormState {
 }
 
 const BLANK_FORM: FormState = {
+  academicYear: '',
   name: '',
   designation: '',
   gender: '',
@@ -190,6 +194,7 @@ export function TeachersInfoForm({ schoolId }: Props) {
   /* Validate */
   const validate = (): boolean => {
     const errs: Record<string, string> = {};
+    if (!form.academicYear) errs.academicYear = 'Please select an academic year.';
     if (!form.name.trim()) errs.name = 'Name is required';
     if (!form.designation) errs.designation = 'Designation is required';
     if (!form.gender) errs.gender = 'Gender is required';
@@ -218,6 +223,7 @@ export function TeachersInfoForm({ schoolId }: Props) {
     try {
       await api.post('/data-collection/teachers/individual', {
         schoolId,
+        academicYear: Number(form.academicYear),
         name: form.name.trim(),
         designation: form.designation,
         gender: form.gender,
@@ -350,8 +356,25 @@ export function TeachersInfoForm({ schoolId }: Props) {
               </div>
             )}
 
-            {/* Row 1: Name & Designation */}
-            <div className="grid gap-4 sm:grid-cols-2">
+            {/* Row 1: Academic Year, Name & Designation */}
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <Label className="mb-1.5 block text-xs font-medium text-gray-600">
+                  Academic Year <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <select
+                    value={form.academicYear}
+                    onChange={(e) => setField('academicYear', e.target.value)}
+                    className={`w-full appearance-none rounded-lg border bg-white px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300 ${fieldErrors.academicYear ? 'border-red-400' : 'border-gray-200'}`}
+                  >
+                    <option value="">Select academic year...</option>
+                    {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                  <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-3 text-gray-400" />
+                </div>
+                {fieldErrors.academicYear && <p className="mt-1 text-xs text-red-500">{fieldErrors.academicYear}</p>}
+              </div>
               <div>
                 <Label className="mb-1.5 block text-xs font-medium text-gray-600">
                   Name of Teacher <span className="text-red-500">*</span>
@@ -442,7 +465,7 @@ export function TeachersInfoForm({ schoolId }: Props) {
               </div>
               <div>
                 <Label className="mb-1.5 block text-xs font-medium text-gray-600">
-                  Score in Teachers' Assessment (0–100)
+                  Score in Teachers&apos; Assessment (0–100)
                 </Label>
                 <Input
                   type="number"
@@ -533,6 +556,7 @@ export function TeachersInfoForm({ schoolId }: Props) {
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/70">
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">#</th>
+                    <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Academic Year</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Name</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Designation</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Gender</th>
@@ -549,6 +573,7 @@ export function TeachersInfoForm({ schoolId }: Props) {
                   {records.map((r, idx) => (
                     <tr key={r.id} className={`transition-colors hover:brightness-95 ${idx % 2 === 0 ? 'bg-white' : 'bg-pink-50/30'}`}>
                       <td className="px-4 py-3 text-xs text-gray-400">{idx + 1}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{r.academicYear ?? '—'}</td>
                       <td className="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap">{r.name}</td>
                       <td className="px-4 py-3">
                         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${

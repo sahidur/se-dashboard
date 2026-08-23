@@ -12,7 +12,7 @@ import { DcSchool } from './dc-school.entity';
 import { User } from '../../users/entities/user.entity';
 
 @Entity('dc_infrastructure')
-@Unique(['schoolId'])
+@Unique(['schoolId', 'academicYear'])
 export class DcInfrastructure {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -23,6 +23,10 @@ export class DcInfrastructure {
 
   @Column({ name: 'school_id' })
   schoolId: string;
+
+  /** Academic year the record belongs to, e.g. 2026 */
+  @Column({ name: 'academic_year', type: 'int', default: 0 })
+  academicYear: number;
 
   // ── Infrastructure Status ──────────────────────────────────
 

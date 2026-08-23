@@ -160,7 +160,7 @@ export default function EditSurveyPage() {
       }
     };
     fetchSurvey();
-  }, [id]);
+  }, [id, router]);
 
   // Section operations
   const addSection = () => {

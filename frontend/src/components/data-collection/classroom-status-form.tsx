@@ -14,6 +14,7 @@ import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import api from '@/lib/api';
+import { buildYearOptions } from '@/lib/utils';
 import type { DcSchool } from '@/types';
 
 const SCHOOL_CATEGORY_LABELS: Record<string, string> = {
@@ -26,7 +27,10 @@ const SCHOOL_TYPE_LABELS: Record<string, string> = {
   haor: 'Haor',
 };
 
+const YEARS = buildYearOptions();
+
 interface FormState {
+  academicYear: string;
   digitallyEquippedClassrooms: number;
   floorSittingClassrooms: number;
   classroomsWithWhiteboard: number;
@@ -36,6 +40,7 @@ interface FormState {
 }
 
 const defaultState: FormState = {
+  academicYear: '',
   digitallyEquippedClassrooms: 0,
   floorSittingClassrooms: 0,
   classroomsWithWhiteboard: 0,
@@ -43,6 +48,18 @@ const defaultState: FormState = {
   classroomNewFurniture: null,
   classroomRenovationRequired: null,
 };
+
+function mapRecord(d: Record<string, any>): FormState {
+  return {
+    academicYear: d.academicYear != null ? String(d.academicYear) : '',
+    digitallyEquippedClassrooms: d.digitallyEquippedClassrooms ?? 0,
+    floorSittingClassrooms: d.floorSittingClassrooms ?? 0,
+    classroomsWithWhiteboard: d.classroomsWithWhiteboard ?? 0,
+    classroomsWithBlackboard: d.classroomsWithBlackboard ?? 0,
+    classroomNewFurniture: d.classroomNewFurniture ?? null,
+    classroomRenovationRequired: d.classroomRenovationRequired ?? null,
+  };
+}
 
 interface Props { schoolId: string }
 
@@ -83,7 +100,7 @@ const COUNT_FIELDS = [
 
 type CountKey = (typeof COUNT_FIELDS)[number]['key'];
 
-type ClassroomFieldErrors = Partial<Record<'classroomNewFurniture' | 'classroomRenovationRequired', string>>;
+type ClassroomFieldErrors = Partial<Record<'academicYear' | 'classroomNewFurniture' | 'classroomRenovationRequired', string>>;
 
 export function ClassroomStatusForm({ schoolId }: Props) {
   const router = useRouter();
@@ -94,6 +111,7 @@ export function ClassroomStatusForm({ schoolId }: Props) {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<ClassroomFieldErrors>({});
+  const [loadingYear, setLoadingYear] = useState(false);
   const draft = useFormDraft<FormState>('classroom-status', schoolId);
   const [tab, setTab] = useState<'entry' | 'data'>('entry');
   const [savedRecord, setSavedRecord] = useState<FormState | null>(null);
@@ -108,14 +126,7 @@ export function ClassroomStatusForm({ schoolId }: Props) {
         setSchool(dashRes.data.school);
         const d = infraRes.data;
         if (d) {
-          const loaded: FormState = {
-            digitallyEquippedClassrooms: d.digitallyEquippedClassrooms ?? 0,
-            floorSittingClassrooms: d.floorSittingClassrooms ?? 0,
-            classroomsWithWhiteboard: d.classroomsWithWhiteboard ?? 0,
-            classroomsWithBlackboard: d.classroomsWithBlackboard ?? 0,
-            classroomNewFurniture: d.classroomNewFurniture ?? null,
-            classroomRenovationRequired: d.classroomRenovationRequired ?? null,
-          };
+          const loaded = mapRecord(d);
           setForm(loaded);
           setSavedRecord(loaded);
         }
@@ -151,6 +162,31 @@ export function ClassroomStatusForm({ schoolId }: Props) {
     setFieldErrors({});
   };
 
+  // Changing the academic year reloads that year's record (or blanks the form).
+  const handleYearChange = async (y: string) => {
+    setForm((prev) => ({ ...prev, academicYear: y }));
+    setError('');
+    setFieldErrors((prev) => { const n = { ...prev }; delete n.academicYear; return n; });
+    if (!y) { setSavedRecord(null); return; }
+    setLoadingYear(true);
+    try {
+      const { data } = await api.get(`/data-collection/infrastructure/school/${schoolId}?academicYear=${y}`);
+      if (data) {
+        const loaded = { ...mapRecord(data), academicYear: y };
+        setForm(loaded);
+        setSavedRecord(loaded);
+      } else {
+        setForm({ ...defaultState, academicYear: y });
+        setSavedRecord(null);
+      }
+    } catch {
+      setForm({ ...defaultState, academicYear: y });
+      setSavedRecord(null);
+    } finally {
+      setLoadingYear(false);
+    }
+  };
+
   const setNum = (key: CountKey, val: string) =>
     setForm((prev) => ({ ...prev, [key]: parseInt(val, 10) || 0 }));
 
@@ -164,6 +200,11 @@ export function ClassroomStatusForm({ schoolId }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.academicYear) {
+      setFieldErrors({ academicYear: 'Required' });
+      setError('Please select an academic year.');
+      return;
+    }
     // Validate required boolean fields
     const errs: ClassroomFieldErrors = {};
     if (form.classroomNewFurniture === null) errs.classroomNewFurniture = 'Required';
@@ -179,6 +220,7 @@ export function ClassroomStatusForm({ schoolId }: Props) {
     try {
       await api.post('/data-collection/infrastructure', {
         schoolId,
+        academicYear: Number(form.academicYear),
         digitallyEquippedClassrooms: form.digitallyEquippedClassrooms,
         floorSittingClassrooms: form.floorSittingClassrooms,
         classroomsWithWhiteboard: form.classroomsWithWhiteboard,
@@ -284,7 +326,32 @@ export function ClassroomStatusForm({ schoolId }: Props) {
           {error}
         </div>
       )}
-
+      {/* ── Academic Year ─────────────────────── */}
+      <Card className="overflow-hidden border-0 shadow-sm transition-all duration-200 hover:shadow-md">
+        <CardContent className="px-5 py-5">
+          <div className="max-w-xs">
+            <Label className="mb-1.5 block text-sm font-medium text-gray-700">
+              Academic Year <span className="text-red-500">*</span>
+            </Label>
+            <select
+              value={form.academicYear}
+              onChange={(e) => handleYearChange(e.target.value)}
+              className={`w-full rounded-lg border bg-white px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-cyan-400 focus:border-cyan-400 ${
+                fieldErrors.academicYear ? 'border-red-300' : 'border-gray-300'
+              }`}
+            >
+              <option value="">Select academic year…</option>
+              {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+            </select>
+            {fieldErrors.academicYear && (
+              <p className="mt-1.5 text-xs text-red-600">{fieldErrors.academicYear}</p>
+            )}
+            {loadingYear && (
+              <p className="mt-1.5 text-xs text-cyan-600">Loading {form.academicYear} data…</p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
       {/* ── Section 1: Classroom Counts ─────────── */}
       <Card className="overflow-hidden border-0 shadow-sm transition-all duration-200 hover:shadow-md">
         <CardHeader className="pb-3 pt-5 px-5">
@@ -378,6 +445,7 @@ export function ClassroomStatusForm({ schoolId }: Props) {
             ) : (
               <div className="space-y-5">
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <SummaryItem label="Academic Year" value={savedRecord.academicYear || '—'} />
                   {COUNT_FIELDS.map(({ key, label }) => (
                     <SummaryItem key={key} label={label} value={String(savedRecord[key])} />
                   ))}

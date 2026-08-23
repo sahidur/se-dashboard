@@ -4,12 +4,38 @@ import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { FORM_CATEGORIES } from './form-catalog';
+import { FORM_CATEGORIES, type FormCatalogItem } from './form-catalog';
 
 interface CategoryMenuProps {
   schoolId: string;
   schoolName?: string;
   schoolCode?: string;
+}
+
+/** Consecutive forms sharing a `group` are collapsed into one parent entry. */
+function groupForms(forms: FormCatalogItem[]): { group?: string; forms: FormCatalogItem[] }[] {
+  const entries: { group?: string; forms: FormCatalogItem[] }[] = [];
+  for (const form of forms) {
+    const last = entries[entries.length - 1];
+    if (form.group && last?.group === form.group) last.forms.push(form);
+    else entries.push({ group: form.group, forms: [form] });
+  }
+  return entries;
+}
+
+function FormLink({ form, href, onNavigate }: { form: FormCatalogItem; href: string; onNavigate: () => void }) {
+  const FormIcon = form.icon;
+  return (
+    <Link
+      href={href}
+      className="group flex items-start gap-2.5 px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
+      onClick={onNavigate}
+    >
+      <FormIcon size={14} className="mt-0.5 shrink-0 text-gray-400 group-hover:text-indigo-500" />
+      <span className="flex-1 break-words font-medium leading-snug">{form.label}</span>
+      <ChevronRight size={13} className="mt-0.5 shrink-0 text-gray-300 opacity-0 transition-opacity group-hover:opacity-100 group-hover:text-indigo-500" />
+    </Link>
+  );
 }
 
 /**
@@ -76,24 +102,35 @@ export function CategoryMenu({ schoolId, schoolName, schoolCode }: CategoryMenuP
                   <div
                     onMouseEnter={cancelClose}
                     onMouseLeave={scheduleClose}
-                    className={`absolute left-0 top-full z-20 mt-1.5 w-64 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-lg ring-1 ${cat.ring}`}
+                    className={`absolute left-0 top-full z-20 mt-1.5 max-h-[70vh] w-80 overflow-y-auto rounded-xl border border-gray-100 bg-white shadow-lg ring-1 sm:w-96 ${cat.ring}`}
                   >
                     <div className="flex flex-col divide-y divide-gray-50 py-1">
-                      {cat.forms.map((form) => {
-                        const FormIcon = form.icon;
-                        return (
-                          <Link
-                            key={form.key}
-                            href={`/data-collection/school-information/${schoolId}/${form.key}${query}`}
-                            className="group flex items-center gap-2.5 px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700"
-                            onClick={() => setOpenKey(null)}
-                          >
-                            <FormIcon size={14} className="shrink-0 text-gray-400 group-hover:text-indigo-500" />
-                            <span className="flex-1 truncate font-medium">{form.label}</span>
-                            <ChevronRight size={13} className="shrink-0 text-gray-300 opacity-0 transition-opacity group-hover:opacity-100 group-hover:text-indigo-500" />
-                          </Link>
-                        );
-                      })}
+                      {groupForms(cat.forms).map((entry) =>
+                        entry.group ? (
+                          <div key={entry.group} className="py-1">
+                            <p className="px-3 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                              {entry.group}
+                            </p>
+                            <div className="ml-4 border-l border-dashed border-gray-200">
+                              {entry.forms.map((form) => (
+                                <FormLink
+                                  key={form.key}
+                                  form={form}
+                                  href={`/data-collection/school-information/${schoolId}/${form.key}${query}`}
+                                  onNavigate={() => setOpenKey(null)}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <FormLink
+                            key={entry.forms[0].key}
+                            form={entry.forms[0]}
+                            href={`/data-collection/school-information/${schoolId}/${entry.forms[0].key}${query}`}
+                            onNavigate={() => setOpenKey(null)}
+                          />
+                        ),
+                      )}
                     </div>
                   </div>
                 )}

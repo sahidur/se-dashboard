@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -165,8 +166,10 @@ export default function ProfilePage() {
       alert('New passwords do not match');
       return;
     }
-    if (passwords.newPassword.length < 6) {
-      alert('Password must be at least 6 characters');
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(passwords.newPassword)) {
+      alert(
+        'Password must be at least 8 characters and include an uppercase letter, a lowercase letter and a number',
+      );
       return;
     }
     try {
@@ -218,9 +221,12 @@ export default function ProfilePage() {
             <div className="relative flex flex-col items-center gap-4 p-6 pb-5 sm:flex-row sm:items-end sm:gap-6 sm:p-8 sm:pb-6">
               <div className="relative group">
                 {displayUser?.profilePicture ? (
-                  <img
+                  <Image
                     src={resolveAssetUrl(displayUser.profilePicture)}
                     alt={`${displayUser.firstName} ${displayUser.lastName}`}
+                    width={96}
+                    height={96}
+                    unoptimized
                     className="h-24 w-24 rounded-2xl border-4 border-white/30 object-cover shadow-xl transition-transform duration-300 group-hover:scale-105"
                   />
                 ) : (

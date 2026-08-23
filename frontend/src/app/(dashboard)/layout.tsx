@@ -1,10 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuthStore } from '@/store/auth-store';
+import {
+  useAuthStore,
+  hasSessionCookie,
+  setSessionCookie,
+  isLoggingOut,
+} from '@/store/auth-store';
 import { Sidebar } from '@/components/layout/sidebar';
 import api from '@/lib/api';
+
+const SIDEBAR_COLLAPSED_KEY = 'bep-sidebar-collapsed';
 
 export default function DashboardLayout({
   children,
@@ -17,15 +24,37 @@ export default function DashboardLayout({
   // Without this, isAuthenticated is always false on the first render, causing
   // a redirect loop back to login on every page load/refresh.
   const [hydrated, setHydrated] = useState(false);
+  // Owned here (not inside Sidebar) so <main> can reclaim the space the
+  // collapsed sidebar gives up; read after mount to avoid an SSR mismatch.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     setHydrated(true);
+    setSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1');
+  }, []);
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0');
+      return next;
+    });
   }, []);
 
   useEffect(() => {
-    if (hydrated && !isAuthenticated) {
-      router.push('/auth/login');
+    if (!hydrated) return;
+    if (!isAuthenticated) {
+      // A logout already triggers its own full-page navigation; a second,
+      // competing soft navigation here only races with it.
+      if (!isLoggingOut()) router.replace('/auth/login');
+      return;
     }
+    // We got here authenticated, so the login page's redirect worked — release
+    // its loop guard. Also re-issue the middleware cookie if it expired or was
+    // cleared while the persisted store survived; otherwise the next navigation
+    // would be bounced to the login page, which would send us right back here.
+    sessionStorage.removeItem('bep-login-redirect-attempt');
+    if (!hasSessionCookie()) setSessionCookie();
   }, [hydrated, isAuthenticated, router]);
 
   // The `user` object (roles + permissions) is only ever populated at login
@@ -65,8 +94,12 @@ export default function DashboardLayout({
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar />
-      <main className="min-w-0 flex-1 overflow-x-hidden pt-14 lg:ml-64 lg:pt-0">
+      <Sidebar collapsed={sidebarCollapsed} onToggleCollapsed={toggleSidebar} />
+      <main
+        className={`min-w-0 flex-1 overflow-x-hidden pt-14 transition-[margin] duration-300 lg:pt-0 ${
+          sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'
+        }`}
+      >
         {children}
       </main>
     </div>

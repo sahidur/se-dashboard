@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
-import { useAuthStore } from '@/store/auth-store';
+import { useAuthStore, logoutAndRedirect } from '@/store/auth-store';
 import { Bell, User, LogOut } from 'lucide-react';
 import { getInitials, resolveAssetUrl } from '@/lib/utils';
 
@@ -13,7 +14,7 @@ interface HeaderProps {
 }
 
 export function Header({ title, subtitle, actions }: HeaderProps) {
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
   const [profileOpen, setProfileOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -29,8 +30,7 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
   }, []);
 
   const handleLogout = () => {
-    logout();
-    window.location.href = '/auth/login';
+    logoutAndRedirect();
   };
 
   return (
@@ -51,9 +51,12 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
             className="flex items-center gap-2 rounded-lg p-1 transition-colors hover:bg-gray-100"
           >
             {user?.profilePicture ? (
-              <img
+              <Image
                 src={resolveAssetUrl(user.profilePicture)}
                 alt="Profile"
+                width={32}
+                height={32}
+                unoptimized
                 className="h-8 w-8 rounded-full object-cover ring-2 ring-gray-200"
               />
             ) : (

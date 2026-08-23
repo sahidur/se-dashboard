@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Sparkles, School, MapPin, Save, Trash2, AlertCircle, CheckCircle2, PlusCircle,
 } from 'lucide-react';
@@ -14,16 +14,19 @@ import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import api from '@/lib/api';
+import { buildYearOptions } from '@/lib/utils';
 import type { DcSchool } from '@/types';
 
 /* ─── Constants ──────────────────────────────────────────── */
+
+const YEARS = buildYearOptions();
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-const GRADES = ['Play', 'Nursery', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5'];
+const GRADES = ['Play & Learn', 'Nursery', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10'];
 
 const ACTIVITY_FIELDS: { key: keyof ActivityFields; label: string }[] = [
   { key: 'song',         label: 'Song' },
@@ -54,12 +57,14 @@ interface ActivityFields {
 }
 
 interface FormState extends ActivityFields {
+  academicYear: string;
   month: string;
   grade: string;
 }
 
 interface CocurricularRecord {
   id: string;
+  academicYear: number;
   month: string;
   grade: string;
   song: number;
@@ -76,7 +81,7 @@ interface CocurricularRecord {
 }
 
 const BLANK: FormState = {
-  month: '', grade: '',
+  academicYear: '', month: '', grade: '',
   song: '', dance: '', recitation: '', acting: '', debate: '',
   quiz: '', wallMagazine: '', indoorGame: '', outdoorGame: '', others: '',
 };
@@ -106,10 +111,16 @@ export function CocurricularForm({ schoolId }: Props) {
     toastTimer.current = setTimeout(() => setToast(null), 4000);
   };
 
+  const loadRecords = useCallback(() => {
+    api.get(`/data-collection/cocurricular/school/${schoolId}`)
+      .then(({ data }) => setRecords(data))
+      .catch(() => {});
+  }, [schoolId]);
+
   useEffect(() => {
     api.get(`/data-collection/schools/${schoolId}`).then(({ data }) => setSchool(data)).catch(() => {});
     loadRecords();
-  }, [schoolId]);
+  }, [schoolId, loadRecords]);
 
   // Overlay the user's private draft (an in-progress unsubmitted new entry).
   useEffect(() => {
@@ -133,16 +144,11 @@ export function CocurricularForm({ schoolId }: Props) {
     setForm(BLANK);
   };
 
-  const loadRecords = () => {
-    api.get(`/data-collection/cocurricular/school/${schoolId}`)
-      .then(({ data }) => setRecords(data))
-      .catch(() => {});
-  };
-
   const set = (key: keyof FormState, val: string) =>
     setForm((prev) => ({ ...prev, [key]: val }));
 
-  const inputsDisabled = !form.month;
+  const monthDisabled = !form.academicYear;
+  const inputsDisabled = !form.academicYear || !form.month;
 
   const resetForm = () => {
     setForm(BLANK);
@@ -152,6 +158,7 @@ export function CocurricularForm({ schoolId }: Props) {
 
   const handleEdit = (rec: CocurricularRecord) => {
     setForm({
+      academicYear: rec.academicYear ? String(rec.academicYear) : '',
       month: rec.month, grade: rec.grade,
       song: String(rec.song || ''), dance: String(rec.dance || ''),
       recitation: String(rec.recitation || ''), acting: String(rec.acting || ''),
@@ -179,6 +186,7 @@ export function CocurricularForm({ schoolId }: Props) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!form.academicYear) { setError('Please select an academic year.'); return; }
     if (!form.month) { setError('Please select a month.'); return; }
     if (!form.grade) { setError('Please select a grade.'); return; }
 
@@ -186,6 +194,7 @@ export function CocurricularForm({ schoolId }: Props) {
     try {
       const payload: Record<string, unknown> = {
         schoolId,
+        academicYear: Number(form.academicYear),
         month: form.month,
         grade: form.grade,
       };
@@ -193,7 +202,7 @@ export function CocurricularForm({ schoolId }: Props) {
         payload[key] = form[key] !== '' ? Number(form[key]) : 0;
       }
       await api.post('/data-collection/cocurricular', payload);
-      showToast('success', `Co-curricular data for ${form.month} / ${form.grade} saved.`);
+      showToast('success', `Co-curricular data for ${form.academicYear} / ${form.month} / ${form.grade} saved.`);
       await draft.clearDraft();
       resetForm();
       loadRecords();
@@ -209,11 +218,18 @@ export function CocurricularForm({ schoolId }: Props) {
     brac_academy: 'BRAC Academy', brac_primary: 'BRAC Primary', brac_secondary: 'BRAC Secondary',
   };
 
-  /* ── Group records by month for display ── */
-  const groupedByMonth = MONTHS.map((m) => ({
-    month: m,
-    rows: records.filter((r) => r.month === m),
-  })).filter((g) => g.rows.length > 0);
+  /* ── Group records by academic year + month for display ──
+     Records are unique per (year, month, grade), so grouping on month alone
+     would merge different academic years into a single card. */
+  const yearsPresent = [...new Set(records.map((r) => Number(r.academicYear)))].sort((a, b) => b - a);
+  const groupedByMonth = yearsPresent.flatMap((year) =>
+    MONTHS.map((m) => ({
+      key: `${year}-${m}`,
+      year,
+      month: m,
+      rows: records.filter((r) => Number(r.academicYear) === year && r.month === m),
+    })),
+  ).filter((g) => g.rows.length > 0);
 
   return (
     <div className="space-y-6">
@@ -263,13 +279,28 @@ export function CocurricularForm({ schoolId }: Props) {
               {editingId ? 'Edit Co-curricular Record' : 'Add Co-curricular Record'}
             </CardTitle>
             <p className="text-sm text-gray-500 mt-0.5">
-              Select a month and grade, then enter students&apos; participation percentage (%) for each activity.
+              Select an academic year, month and grade, then enter students&apos; participation percentage (%) for each activity.
             </p>
           </CardHeader>
           <CardContent className="px-6 pb-6">
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Month + Grade selectors */}
-              <div className="grid gap-4 sm:grid-cols-2">
+              {/* Academic Year + Month + Grade selectors */}
+              <div className="grid gap-4 sm:grid-cols-3">
+                {/* Academic Year */}
+                <div>
+                  <Label className="mb-1.5 block text-sm font-medium text-gray-700">
+                    Academic Year <span className="text-red-500">*</span>
+                  </Label>
+                  <select
+                    value={form.academicYear}
+                    onChange={(e) => { set('academicYear', e.target.value); set('month', ''); set('grade', ''); }}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-purple-400 focus:border-purple-400"
+                  >
+                    <option value="">Select academic year…</option>
+                    {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                </div>
+
                 {/* Month */}
                 <div>
                   <Label className="mb-1.5 block text-sm font-medium text-gray-700">
@@ -278,7 +309,8 @@ export function CocurricularForm({ schoolId }: Props) {
                   <select
                     value={form.month}
                     onChange={(e) => { set('month', e.target.value); if (!e.target.value) set('grade', ''); }}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-purple-400 focus:border-purple-400"
+                    disabled={monthDisabled}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-purple-400 focus:border-purple-400 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <option value="">Select month…</option>
                     {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
@@ -330,7 +362,7 @@ export function CocurricularForm({ schoolId }: Props) {
                 </div>
                 {inputsDisabled && (
                   <p className="mt-2 text-xs text-amber-600 flex items-center gap-1">
-                    <AlertCircle size={12} /> Please select a month to enable input fields.
+                    <AlertCircle size={12} /> Please select an academic year and month to enable input fields.
                   </p>
                 )}
               </div>
@@ -372,11 +404,11 @@ export function CocurricularForm({ schoolId }: Props) {
       )}
 
       {/* Records Table — grouped by month */}
-      {tab === 'data' && groupedByMonth.map(({ month, rows }) => (
-        <Card key={month} className="overflow-hidden">
+      {tab === 'data' && groupedByMonth.map(({ key, year, month, rows }) => (
+        <Card key={key} className="overflow-hidden">
           <CardHeader className="pb-2 pt-4 px-6">
             <CardTitle className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-              {month}
+              {year} &bull; {month}
               <Badge variant="default">{rows.length} grade{rows.length > 1 ? 's' : ''}</Badge>
             </CardTitle>
           </CardHeader>
@@ -385,6 +417,7 @@ export function CocurricularForm({ schoolId }: Props) {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-gray-100">
+                    <th className="py-2 pr-3 text-left text-gray-500 uppercase tracking-wider font-semibold">Academic Year</th>
                     <th className="py-2 pr-3 text-left text-gray-500 uppercase tracking-wider font-semibold">Grade</th>
                     {ACTIVITY_FIELDS.map(({ label }) => (
                       <th key={label} className="py-2 pr-3 text-right text-gray-500 uppercase tracking-wider font-semibold whitespace-nowrap">{label}</th>
@@ -395,6 +428,7 @@ export function CocurricularForm({ schoolId }: Props) {
                 <tbody className="divide-y divide-gray-50">
                   {rows.map((rec) => (
                     <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="py-2.5 pr-3 text-gray-700 font-medium">{rec.academicYear ?? '—'}</td>
                       <td className="py-2.5 pr-3">
                         <Badge variant="default" className="text-purple-700 border-purple-200 bg-purple-50 font-medium">
                           {rec.grade}

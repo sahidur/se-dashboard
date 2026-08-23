@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useMemo } from 'react';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -43,6 +44,14 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 const fmtTaka = (n: number) => `৳${Math.round(n || 0).toLocaleString('en-IN')}`;
+
+const signedTaka = (n: number) => `${n < 0 ? '-' : ''}${fmtTaka(Math.abs(n))}`;
+
+/** Billed to actually-enrolled students but not yet collected; over-collection reports as zero. */
+const dues = (s: SchoolRow) => Math.max(s.actualRevenueTarget - s.actualRevenueAchievement, 0);
+
+/** Budget variance against the planned target — negative means a shortfall. */
+const deficit = (s: SchoolRow) => s.actualRevenueAchievement - s.budgetRevenueTarget;
 
 const pctRaw = (a: number, b: number) => (b > 0 ? (a / b) * 100 : 0);
 
@@ -163,13 +172,13 @@ const METRICS: Record<string, MetricConfig> = {
     ],
   },
   'budget-target': {
-    title: 'Budget Revenue Target',
-    description: 'Budgeted revenue target per school (sum of all fee heads) behind the total budget target.',
+    title: 'Planned Revenue Target',
+    description: 'Planned (budgeted) revenue target per school (sum of all fee heads) behind the total planned target.',
     columns: [
       schoolCol,
       categoryCol,
       {
-        key: 'budgetTarget', label: 'Budget Target', align: 'right',
+        key: 'budgetTarget', label: 'Planned Target', align: 'right',
         value: (s) => s.budgetRevenueTarget, sum: true, money: true,
         cell: (s) => <span className="text-gray-700">{fmtTaka(s.budgetRevenueTarget)}</span>,
       },
@@ -224,9 +233,51 @@ const METRICS: Record<string, MetricConfig> = {
       },
     ],
   },
+  'revenue-gap': {
+    title: 'Outstanding Dues & Revenue Deficit',
+    description:
+      'Outstanding dues = Actual Revenue Target − revenue collected (money billed to enrolled students but not yet received). Revenue deficit = revenue collected − Planned Revenue Target, shown with negative marking. The deficit is the enrolment/target gap plus the outstanding dues.',
+    columns: [
+      schoolCol,
+      categoryCol,
+      {
+        key: 'plannedTarget', label: 'Planned Target', align: 'right',
+        value: (s) => s.budgetRevenueTarget, sum: true, money: true,
+        cell: (s) => <span className="text-gray-600">{fmtTaka(s.budgetRevenueTarget)}</span>,
+      },
+      {
+        key: 'actualTarget', label: 'Actual Target', align: 'right',
+        value: (s) => s.actualRevenueTarget, sum: true, money: true,
+        cell: (s) => <span className="text-gray-600">{fmtTaka(s.actualRevenueTarget)}</span>,
+      },
+      {
+        key: 'collected', label: 'Collected', align: 'right',
+        value: (s) => s.actualRevenueAchievement, sum: true, money: true,
+        cell: (s) => achievementCell(s.actualRevenueAchievement, s.actualRevenueTarget),
+      },
+      {
+        key: 'dues', label: 'Outstanding Dues', align: 'right',
+        value: (s) => dues(s), sum: true, money: true,
+        cell: (s) => (
+          <span className={`font-semibold ${dues(s) > 0 ? 'text-red-600' : 'text-green-600'}`}>
+            {fmtTaka(dues(s))}
+          </span>
+        ),
+      },
+      {
+        key: 'deficit', label: 'Revenue Deficit', align: 'right',
+        value: (s) => deficit(s), sum: true, money: true,
+        cell: (s) => (
+          <span className={`font-semibold ${deficit(s) < 0 ? 'text-red-600' : 'text-green-600'}`}>
+            {signedTaka(deficit(s))}
+          </span>
+        ),
+      },
+    ],
+  },
 };
 
-/* ─── Export helpers ──────────────────────────────────── */
+/* ─── Export helpers ────────────────────────────── */
 
 function triggerDownload(content: string, mime: string, filename: string) {
   const blob = new Blob([content], { type: mime });
@@ -257,21 +308,24 @@ export default function ProgrammeMetricDetailPage() {
 
   const metric = String(params?.metric ?? '');
   const category = searchParams.get('category') ?? '';
+  const academicYear = searchParams.get('academicYear') ?? '';
   const config = METRICS[metric];
 
-  const [schools, setSchools] = useState<SchoolRow[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
-  const load = useCallback(() => {
-    setLoading(true);
-    api.get('/data-collection/programme-overview', { params: category ? { category } : {} })
-      .then(({ data }: { data: OverviewData }) => setSchools(data.schools ?? []))
-      .catch(() => setSchools([]))
-      .finally(() => setLoading(false));
-  }, [category]);
-
-  useEffect(() => { load(); }, [load]);
+  const { data: schools = [], isFetching: loading } = useQuery({
+    queryKey: ['programme-overview-schools', category, academicYear],
+    queryFn: () =>
+      api
+        .get('/data-collection/programme-overview', {
+          params: {
+            ...(category ? { category } : {}),
+            ...(academicYear ? { academicYear } : {}),
+          },
+        })
+        .then(({ data }: { data: OverviewData }) => data.schools ?? []),
+    placeholderData: keepPreviousData,
+  });
 
   const filtered = useMemo(() => {
     if (!search) return schools;
@@ -313,8 +367,13 @@ export default function ProgrammeMetricDetailPage() {
     );
   }
 
-  const fileBase = `programme-${metric}${category ? `-${category}` : ''}`;
+  const fileBase = `programme-${metric}${category ? `-${category}` : ''}${academicYear ? `-${academicYear}` : ''}`;
   const headers = ['#', ...config.columns.map((c) => c.label)];
+
+  const backQuery = new URLSearchParams();
+  if (category) backQuery.set('category', category);
+  if (academicYear) backQuery.set('academicYear', academicYear);
+  const backHref = `/data-collection/programme-overview${backQuery.toString() ? `?${backQuery.toString()}` : ''}`;
 
   const exportCsv = () => {
     const lines = [headers.map(escapeCsv).join(',')];
@@ -344,9 +403,13 @@ export default function ProgrammeMetricDetailPage() {
     <>
       <Header
         title={config.title}
-        subtitle={category ? `${catLabel(category)} • school-level breakdown` : 'School-level breakdown'}
+        subtitle={[
+          category ? catLabel(category) : null,
+          academicYear ? `Academic year ${academicYear}` : null,
+          'school-level breakdown',
+        ].filter(Boolean).join(' • ')}
         actions={
-          <Button variant="outline" size="sm" onClick={() => router.push(`/data-collection/programme-overview${category ? `?category=${category}` : ''}`)} className="gap-2">
+          <Button variant="outline" size="sm" onClick={() => router.push(backHref)} className="gap-2">
             <ArrowLeft size={14} />
             Back
           </Button>
@@ -434,7 +497,7 @@ export default function ProgrammeMetricDetailPage() {
                           <td key={c.key} className={`py-3 pr-3 ${c.align === 'right' ? 'text-right' : 'text-left'}`}>
                             {c.sum
                               ? c.money
-                                ? fmtTaka(footerSums[c.key])
+                                ? signedTaka(footerSums[c.key])
                                 : footerSums[c.key].toLocaleString()
                               : ''}
                           </td>

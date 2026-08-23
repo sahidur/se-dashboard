@@ -26,10 +26,12 @@ import {
 } from '@nestjs/swagger';
 import { FilesService } from './files.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AccessGuard } from '../auth/guards/access.guard';
+import { Permissions } from '../common/decorators/permissions.decorator';
 
 @ApiTags('Files')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, AccessGuard)
 @Controller('files')
 export class FilesController {
   constructor(private readonly filesService: FilesService) {}
@@ -77,8 +79,16 @@ export class FilesController {
   }
 
   @Delete(':key')
-  @ApiOperation({ summary: 'Delete a file' })
+  @Permissions({ module: 'recycle-bin', action: 'delete' })
+  @ApiOperation({ summary: 'Permanently delete a file (privileged)' })
   async deleteFile(@Param('key') key: string) {
+    // Deleting a stored file is irreversible and was previously open to any
+    // authenticated user, which allowed destroying other people's evidence
+    // photos/attachments. It now requires the same permission as emptying the
+    // recycle bin.
+    if (!/^[A-Za-z0-9._/-]+$/.test(key) || key.includes('..')) {
+      throw new BadRequestException('Invalid file key');
+    }
     await this.filesService.deleteFile(key);
     return { message: 'File deleted successfully' };
   }

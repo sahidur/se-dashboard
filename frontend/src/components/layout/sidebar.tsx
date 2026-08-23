@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { useAuthStore } from '@/store/auth-store';
+import { useAuthStore, logoutAndRedirect } from '@/store/auth-store';
 import {
   Users,
   Shield,
@@ -162,10 +162,15 @@ const navigation: NavEntry[] = [
   },
 ];
 
-export function Sidebar() {
+export function Sidebar({
+  collapsed = false,
+  onToggleCollapsed,
+}: {
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
+}) {
   const pathname = usePathname();
-  const { user, hasAnyRole, hasPermission, logout } = useAuthStore();
-  const [collapsed, setCollapsed] = useState(false);
+  const { user, hasAnyRole, hasPermission } = useAuthStore();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
     'Admin Tools': true,
@@ -173,10 +178,14 @@ export function Sidebar() {
     'School Monitoring': true,
   });
 
-  // Close mobile sidebar on route change
-  useEffect(() => {
+  // Close mobile sidebar on route change. Adjusting the state during render
+  // (React's documented pattern) instead of in an effect avoids an extra render
+  // pass with the drawer still open over the newly navigated page.
+  const [lastPathname, setLastPathname] = useState(pathname);
+  if (pathname !== lastPathname) {
+    setLastPathname(pathname);
     setMobileOpen(false);
-  }, [pathname]);
+  }
 
   // Close mobile sidebar on resize to desktop
   useEffect(() => {
@@ -289,7 +298,7 @@ export function Sidebar() {
         )}
         {/* Desktop collapse button */}
         <button
-          onClick={() => setCollapsed(!collapsed)}
+          onClick={() => onToggleCollapsed?.()}
           className="hidden rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 lg:block"
         >
           {collapsed ? <Menu size={20} /> : <ChevronLeft size={20} />}
@@ -325,10 +334,7 @@ export function Sidebar() {
           </div>
         )}
         <button
-          onClick={() => {
-            logout();
-            window.location.href = '/auth/login';
-          }}
+          onClick={() => logoutAndRedirect()}
           className={cn(
             'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50',
             collapsed && 'justify-center px-2',

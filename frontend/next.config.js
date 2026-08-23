@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Hides the floating Next.js dev overlay badge in the browser corner
+  devIndicators: false,
   images: {
     remotePatterns: [
       {

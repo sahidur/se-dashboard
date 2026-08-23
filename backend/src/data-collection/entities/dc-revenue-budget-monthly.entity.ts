@@ -16,7 +16,7 @@ import { User } from '../../users/entities/user.entity';
  * One record per (school, month).
  */
 @Entity('dc_revenue_budget_monthly')
-@Unique(['schoolId', 'month'])
+@Unique(['schoolId', 'academicYear', 'month'])
 export class DcRevenueBudgetMonthly {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -27,6 +27,10 @@ export class DcRevenueBudgetMonthly {
 
   @Column({ name: 'school_id' })
   schoolId: string;
+
+  /** Academic year the record belongs to, e.g. 2026 */
+  @Column({ name: 'academic_year', type: 'int', default: 0 })
+  academicYear: number;
 
   /** January … December */
   @Column({ length: 20 })

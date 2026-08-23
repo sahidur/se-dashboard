@@ -37,7 +37,7 @@ export default function TeachersSubPage() {
       .then(({ data }) => setDashboard(data))
       .catch(() => router.push('/data-collection/schools'))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, router]);
 
   const loadIndividual = useCallback(async () => {
     setLoadingIndividual(true);
@@ -284,7 +284,7 @@ export default function TeachersSubPage() {
                       <BookOpen size={22} className="text-rose-600" />
                     </div>
                     {devCount > 0 ? (
-                      <Badge variant="success" className="gap-1"><CheckCircle2 size={12} /> {devCount}/12 Months</Badge>
+                      <Badge variant="success" className="gap-1"><CheckCircle2 size={12} /> {devCount} month{devCount > 1 ? 's' : ''} recorded</Badge>
                     ) : (
                       <Badge variant="default" className="gap-1"><XCircle size={12} /> No entries yet</Badge>
                     )}

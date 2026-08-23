@@ -28,6 +28,20 @@ import { AuditModule } from './common/audit/audit.module';
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'uploads'),
       serveRoot: '/api/uploads',
+      serveStaticOptions: {
+        index: false,
+        dotfiles: 'deny',
+        // Uploads are user-supplied content served from the API origin. Even
+        // though the upload allowlist only permits images/pdf/spreadsheets,
+        // these headers make sure nothing here can execute in that origin.
+        setHeaders: (res) => {
+          res.setHeader('X-Content-Type-Options', 'nosniff');
+          res.setHeader(
+            'Content-Security-Policy',
+            "default-src 'none'; img-src 'self'; sandbox",
+          );
+        },
+      },
     }),
     // Rate limiting: 100 req per 60 s globally (OWASP: A04 – Insecure Design)
     ThrottlerModule.forRoot([{

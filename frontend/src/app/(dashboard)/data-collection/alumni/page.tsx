@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,7 +26,7 @@ export default function AlumniPage() {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
 
-  const fetchAlumni = async () => {
+  const fetchAlumni = useCallback(async () => {
     if (!schoolId) return;
     setLoading(true);
     try {
@@ -34,9 +34,9 @@ export default function AlumniPage() {
       setAlumni(data || []);
     } catch { setAlumni([]); }
     finally { setLoading(false); }
-  };
+  }, [schoolId]);
 
-  useEffect(() => { fetchAlumni(); }, [schoolId]);
+  useEffect(() => { fetchAlumni(); }, [fetchAlumni]);
 
   const openCreate = () => { setForm({ ...emptyForm }); setEditing(null); setModal(true); };
   const openEdit = (a: DcAlumni) => {

@@ -235,7 +235,7 @@ export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmi
             <StepTitle icon={ClipboardCheck} title="Observation details" subtitle="Basic information about this observation visit" />
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <Label htmlFor="observer">Observer's name</Label>
+                <Label htmlFor="observer">Observer&apos;s name</Label>
                 <Input id="observer" value={observerName} onChange={(e) => setObserverName(e.target.value)} placeholder="Your name" />
               </div>
               <div>
@@ -244,7 +244,7 @@ export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmi
               </div>
               {form.hasTeacher && (
                 <div>
-                  <Label htmlFor="teacher">Teacher's name</Label>
+                  <Label htmlFor="teacher">Teacher&apos;s name</Label>
                   <Input id="teacher" value={teacherName} onChange={(e) => setTeacherName(e.target.value)} placeholder="Name of the observed teacher" />
                 </div>
               )}

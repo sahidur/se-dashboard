@@ -14,9 +14,12 @@ import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import api from '@/lib/api';
+import { buildYearOptions } from '@/lib/utils';
 import type { DcSchool, DcEventParticipation } from '@/types';
 
 /* ─── Constants ──────────────────────────────────────────── */
+
+const YEARS = buildYearOptions();
 
 const EVENT_NAMES = [
   'Sports Competition', 'Cultural Competition', 'Science Fair',
@@ -26,6 +29,7 @@ const EVENT_NAMES = [
 const AWARD_LEVELS = ['Upazila', 'Zila', 'National'];
 
 interface FormState {
+  academicYear: string;
   eventName: string;
   awardLevel: string;
   maleAwarded: string;
@@ -34,7 +38,7 @@ interface FormState {
 }
 
 const BLANK: FormState = {
-  eventName: '', awardLevel: '', maleAwarded: '', femaleAwarded: '', othersAwarded: '',
+  academicYear: '', eventName: '', awardLevel: '', maleAwarded: '', femaleAwarded: '', othersAwarded: '',
 };
 
 interface Props { schoolId: string }
@@ -102,6 +106,8 @@ export function EventParticipationForm({ schoolId }: Props) {
   const totalPreview =
     (Number(form.maleAwarded) || 0) + (Number(form.femaleAwarded) || 0) + (Number(form.othersAwarded) || 0);
 
+  const fieldsDisabled = !form.academicYear;
+
   const resetForm = () => {
     setForm(BLANK);
     setEditingId(null);
@@ -110,6 +116,7 @@ export function EventParticipationForm({ schoolId }: Props) {
 
   const handleEdit = (rec: DcEventParticipation) => {
     setForm({
+      academicYear: rec.academicYear ? String(rec.academicYear) : '',
       eventName: rec.eventName,
       awardLevel: rec.awardLevel,
       maleAwarded: String(rec.maleAwarded ?? ''),
@@ -136,6 +143,7 @@ export function EventParticipationForm({ schoolId }: Props) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!form.academicYear) { setError('Please select an academic year.'); return; }
     if (!form.eventName) { setError('Please select an event name.'); return; }
     if (!form.awardLevel) { setError('Please select an award level.'); return; }
 
@@ -143,6 +151,7 @@ export function EventParticipationForm({ schoolId }: Props) {
     try {
       const payload = {
         schoolId,
+        academicYear: Number(form.academicYear),
         eventName: form.eventName,
         awardLevel: form.awardLevel,
         maleAwarded: form.maleAwarded !== '' ? Number(form.maleAwarded) : 0,
@@ -221,7 +230,21 @@ export function EventParticipationForm({ schoolId }: Props) {
           </CardHeader>
           <CardContent className="px-6 pb-6">
             <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div>
+                  <Label className="mb-1.5 block text-sm font-medium text-gray-700">
+                    Academic Year <span className="text-red-500">*</span>
+                  </Label>
+                  <select
+                    value={form.academicYear}
+                    onChange={(e) => { set('academicYear', e.target.value); set('eventName', ''); set('awardLevel', ''); }}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-rose-400 focus:border-rose-400"
+                  >
+                    <option value="">Select academic year…</option>
+                    {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                </div>
+
                 <div>
                   <Label className="mb-1.5 block text-sm font-medium text-gray-700">
                     Name of Event <span className="text-red-500">*</span>
@@ -229,7 +252,8 @@ export function EventParticipationForm({ schoolId }: Props) {
                   <select
                     value={form.eventName}
                     onChange={(e) => set('eventName', e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-rose-400 focus:border-rose-400"
+                    disabled={fieldsDisabled}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-rose-400 focus:border-rose-400 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <option value="">Select event…</option>
                     {EVENT_NAMES.map((e) => <option key={e} value={e}>{e}</option>)}
@@ -243,7 +267,8 @@ export function EventParticipationForm({ schoolId }: Props) {
                   <select
                     value={form.awardLevel}
                     onChange={(e) => set('awardLevel', e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-rose-400 focus:border-rose-400"
+                    disabled={fieldsDisabled}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-rose-400 focus:border-rose-400 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <option value="">Select level…</option>
                     {AWARD_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
@@ -256,15 +281,15 @@ export function EventParticipationForm({ schoolId }: Props) {
                 <div className="grid gap-3 sm:grid-cols-4">
                   <div>
                     <Label className="mb-1 block text-xs text-gray-500">Male</Label>
-                    <Input type="number" min={0} value={form.maleAwarded} onChange={(e) => set('maleAwarded', e.target.value)} placeholder="0" className="h-9 text-sm" />
+                    <Input type="number" min={0} disabled={fieldsDisabled} value={form.maleAwarded} onChange={(e) => set('maleAwarded', e.target.value)} placeholder="0" className="h-9 text-sm disabled:opacity-50 disabled:cursor-not-allowed" />
                   </div>
                   <div>
                     <Label className="mb-1 block text-xs text-gray-500">Female</Label>
-                    <Input type="number" min={0} value={form.femaleAwarded} onChange={(e) => set('femaleAwarded', e.target.value)} placeholder="0" className="h-9 text-sm" />
+                    <Input type="number" min={0} disabled={fieldsDisabled} value={form.femaleAwarded} onChange={(e) => set('femaleAwarded', e.target.value)} placeholder="0" className="h-9 text-sm disabled:opacity-50 disabled:cursor-not-allowed" />
                   </div>
                   <div>
                     <Label className="mb-1 block text-xs text-gray-500">Others</Label>
-                    <Input type="number" min={0} value={form.othersAwarded} onChange={(e) => set('othersAwarded', e.target.value)} placeholder="0" className="h-9 text-sm" />
+                    <Input type="number" min={0} disabled={fieldsDisabled} value={form.othersAwarded} onChange={(e) => set('othersAwarded', e.target.value)} placeholder="0" className="h-9 text-sm disabled:opacity-50 disabled:cursor-not-allowed" />
                   </div>
                   <div>
                     <Label className="mb-1 block text-xs text-gray-500">Total</Label>
@@ -284,7 +309,7 @@ export function EventParticipationForm({ schoolId }: Props) {
               <div className="flex items-center gap-3">
                 {editingId ? (
                   <>
-                    <Button type="submit" disabled={saving} className="gap-2">
+                    <Button type="submit" disabled={saving || fieldsDisabled} className="gap-2">
                       <Save size={15} />
                       {saving ? 'Saving…' : 'Update Record'}
                     </Button>
@@ -300,6 +325,7 @@ export function EventParticipationForm({ schoolId }: Props) {
                       onClearDraft={handleClearDraft}
                       submitLabel="Save Record"
                       submittingLabel="Saving…"
+                      disabled={fieldsDisabled}
                     />
                   </div>
                 )}
@@ -323,6 +349,7 @@ export function EventParticipationForm({ schoolId }: Props) {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-gray-100">
+                    <th className="py-2 pr-3 text-left text-gray-500 uppercase tracking-wider font-semibold">Academic Year</th>
                     <th className="py-2 pr-3 text-left text-gray-500 uppercase tracking-wider font-semibold">Event</th>
                     <th className="py-2 pr-3 text-left text-gray-500 uppercase tracking-wider font-semibold">Award Level</th>
                     <th className="py-2 pr-3 text-right text-gray-500 uppercase tracking-wider font-semibold">Male</th>
@@ -335,6 +362,7 @@ export function EventParticipationForm({ schoolId }: Props) {
                 <tbody className="divide-y divide-gray-50">
                   {records.map((rec) => (
                     <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="py-2.5 pr-3 text-gray-700 font-medium">{rec.academicYear ?? '—'}</td>
                       <td className="py-2.5 pr-3 text-gray-700">{rec.eventName}</td>
                       <td className="py-2.5 pr-3">
                         <Badge variant="default" className="text-rose-700 border-rose-200 bg-rose-50 font-medium">

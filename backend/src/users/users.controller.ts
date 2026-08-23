@@ -14,6 +14,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger'
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AccessGuard } from '../auth/guards/access.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
@@ -63,12 +64,11 @@ export class UsersController {
   @ApiOperation({ summary: 'Update own profile' })
   async updateOwnProfile(
     @CurrentUser('id') userId: string,
-    @Body() updateUserDto: UpdateUserDto,
+    @Body() updateProfileDto: UpdateProfileDto,
   ) {
-    // Users can only update their own non-role fields
-    delete updateUserDto.roleIds;
-    delete updateUserDto.isActive;
-    return this.usersService.update(userId, updateUserDto);
+    // UpdateProfileDto is an explicit allowlist — role, active-status and
+    // school-access fields are not accepted here (see the DTO for why).
+    return this.usersService.update(userId, updateProfileDto);
   }
 
   @Get('schools/available')

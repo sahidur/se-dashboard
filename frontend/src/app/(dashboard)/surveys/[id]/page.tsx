@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Header } from '@/components/layout/header';
@@ -80,39 +80,39 @@ export default function SurveyDetailPage() {
     variant: 'info',
   });
 
-  const fetchSurvey = async () => {
+  const fetchSurvey = useCallback(async () => {
     try {
       const { data } = await api.get(`/surveys/${id}`);
       setSurvey(data);
     } catch {
       router.push('/surveys');
     }
-  };
+  }, [id, router]);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       const { data } = await api.get(`/surveys/${id}/stats`);
       setTotalResponses(data.totalResponses);
     } catch {
       /* empty */
     }
-  };
+  }, [id]);
 
-  const fetchStatusLogs = async () => {
+  const fetchStatusLogs = useCallback(async () => {
     try {
       const { data } = await api.get(`/surveys/${id}/status-logs`);
       setStatusLogs(data);
     } catch {
       /* empty */
     }
-  };
+  }, [id]);
 
   useEffect(() => {
     setLoading(true);
     Promise.all([fetchSurvey(), fetchStats(), fetchStatusLogs()]).finally(() =>
       setLoading(false),
     );
-  }, [id]);
+  }, [fetchSurvey, fetchStats, fetchStatusLogs]);
 
   const fetchUsersAndRoles = async () => {
     try {

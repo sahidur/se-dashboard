@@ -7,6 +7,9 @@ import {
   IsEmail,
   IsNotEmpty,
   IsObject,
+  IsArray,
+  ArrayMaxSize,
+  ValidateNested,
   Min,
   Max,
   IsIn,
@@ -92,7 +95,7 @@ export class UpsertBasicInfoDto {
   @IsUUID()
   schoolId: string;
 
-  @IsOptional() @IsString() academicYear?: string;
+  @Type(() => Number) @IsNumber() @Min(1990) academicYear: number;
   @IsOptional() @IsString() schoolCategory?: string;
   @IsOptional() @IsString() mediumOfInstruction?: string;
   @IsOptional() @IsString() shiftSystem?: string;
@@ -114,6 +117,8 @@ export class UpsertBasicInfoDto {
 export class UpsertInfrastructureDto {
   @IsUUID()
   schoolId: string;
+
+  @Type(() => Number) @IsNumber() @Min(1990) academicYear: number;
 
   // ── Infrastructure Status ──────────────────────────────────
   @IsOptional() @IsString() campusStatus?: string;
@@ -157,10 +162,12 @@ export class UpsertStudentsInfoDto {
   @IsUUID()
   schoolId: string;
 
+  @Type(() => Number) @IsNumber() @Min(1990) academicYear: number;
+
   /** Full month name: 'January' … 'December' */
   @IsString() @IsNotEmpty() month: string;
 
-  /** Grade key: 'play_learn' | 'nursery' | 'g1' … 'g5' */
+  /** Grade key: 'play_learn' | 'nursery' | 'g1' … 'g10' */
   @IsString() @IsNotEmpty() grade: string;
 
   @IsOptional() @Type(() => Number) @IsNumber() boys?: number;
@@ -170,6 +177,8 @@ export class UpsertStudentsInfoDto {
   @IsOptional() @Type(() => Number) @IsNumber() ethnic?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(100) attendanceRate?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(100) dropoutRate?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(100) replacedStudentsRate?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(100) retentionRate?: number;
   @IsOptional() @Type(() => Number) @IsNumber() remedialSupport?: number;
 }
 
@@ -199,7 +208,7 @@ export class UpsertRevenueDto {
   @IsUUID()
   schoolId: string;
 
-  @IsOptional() @IsString() academicYear?: string;
+  @Type(() => Number) @IsNumber() @Min(1990) academicYear: number;
   @IsOptional() @Type(() => Number) @IsNumber() monthlyTuitionFee?: number;
   @IsOptional() @Type(() => Number) @IsNumber() admissionFee?: number;
   @IsOptional() @Type(() => Number) @IsNumber() examFee?: number;
@@ -221,7 +230,7 @@ export class UpsertPerformanceDto {
   @IsUUID()
   schoolId: string;
 
-  @IsOptional() @IsString() academicYear?: string;
+  @Type(() => Number) @IsNumber() @Min(1990) academicYear: number;
   @IsOptional() @Type(() => Number) @IsNumber() avgPassRate?: number;
   @IsOptional() @Type(() => Number) @IsNumber() avgGpa?: number;
   @IsOptional() @Type(() => Number) @IsNumber() boardExamPassRate?: number;
@@ -241,6 +250,8 @@ export class UpsertPerformanceDto {
 export class CreateAlumniDto {
   @IsUUID()
   schoolId: string;
+
+  @Type(() => Number) @IsNumber() @Min(1990) academicYear: number;
 
   @IsString()
   alumniName: string;
@@ -264,6 +275,8 @@ export class UpdateAlumniDto extends PartialType(CreateAlumniDto) {}
 export class CreateTeacherIndividualDto {
   @IsUUID()
   schoolId: string;
+
+  @Type(() => Number) @IsNumber() @Min(1990) academicYear: number;
 
   @IsString() @IsNotEmpty() name: string;
 
@@ -296,6 +309,8 @@ export class UpsertTeachersDevelopmentDto {
   @IsUUID()
   schoolId: string;
 
+  @Type(() => Number) @IsNumber() @Min(1990) academicYear: number;
+
   @IsString() @IsNotEmpty() month: string;
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) onlineRefresher?: number;
@@ -316,10 +331,12 @@ export class UpsertTeachersDevelopmentDto {
 export class UpsertFeeStructureDto {
   @IsUUID() schoolId: string;
 
+  @Type(() => Number) @IsNumber() @Min(1990) academicYear: number;
+
   @IsString() @IsNotEmpty() month: string;
 
   @IsString()
-  @IsIn(['Play', 'Nursery', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5'])
+  @IsIn(['Play & Learn', 'Nursery', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5'])
   grade: string;
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) admissionFee?: number;
@@ -338,6 +355,8 @@ export class UpsertFeeStructureDto {
 
 export class UpsertRevenueBudgetTotalDto {
   @IsUUID() schoolId: string;
+
+  @Type(() => Number) @IsNumber() @Min(1990) academicYear: number;
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) totalStudentsTarget?: number;
 
@@ -370,6 +389,7 @@ export class UpsertRevenueBudgetTotalDto {
 
 export class UpsertRevenueBudgetMonthlyDto {
   @IsUUID() schoolId: string;
+  @Type(() => Number) @IsNumber() @Min(1990) academicYear: number;
   @IsString() @IsNotEmpty() month: string;
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) tuitionFeeTarget?: number;
@@ -380,6 +400,8 @@ export class UpsertRevenueBudgetMonthlyDto {
 
 export class UpsertRevenueActualTotalDto {
   @IsUUID() schoolId: string;
+
+  @Type(() => Number) @IsNumber() @Min(1990) academicYear: number;
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) totalStudentsTarget?: number;
 
@@ -412,6 +434,7 @@ export class UpsertRevenueActualTotalDto {
 
 export class UpsertRevenueActualMonthlyDto {
   @IsUUID() schoolId: string;
+  @Type(() => Number) @IsNumber() @Min(1990) academicYear: number;
   @IsString() @IsNotEmpty() month: string;
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) tuitionFeeTarget?: number;
@@ -425,20 +448,20 @@ export class UpsertPedagogicalAchievementDto {
 
   @Type(() => Number) @IsNumber() @Min(1990) year: number;
 
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) kgParticipated?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) kgScholarship?: number;
-  @IsOptional() @IsString() kgUniqueApproach?: string;
 
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) primaryParticipated?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) primaryScholarship?: number;
-  @IsOptional() @IsString() primaryUniqueApproach?: string;
 
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) jrParticipated?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) jrScholarship?: number;
-  @IsOptional() @IsString() jrUniqueApproach?: string;
 
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) sscParticipated?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) sscScholarship?: number;
-  @IsOptional() @IsString() sscUniqueApproach?: string;
 
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) othersParticipated?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) othersScholarship?: number;
-  @IsOptional() @IsString() othersUniqueApproach?: string;
 }
 
 // ===================== Co-curricular =====================
@@ -446,10 +469,12 @@ export class UpsertPedagogicalAchievementDto {
 export class UpsertCocurricularDto {
   @IsUUID() schoolId: string;
 
+  @Type(() => Number) @IsNumber() @Min(1990) academicYear: number;
+
   @IsString() @IsNotEmpty() month: string;
 
   @IsString()
-  @IsIn(['Play', 'Nursery', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5'])
+  @IsIn(['Play & Learn', 'Nursery', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10'])
   grade: string;
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(100) song?: number;
@@ -468,6 +493,8 @@ export class UpsertCocurricularDto {
 
 export class UpsertStudentsPerformanceDto {
   @IsUUID() schoolId: string;
+
+  @Type(() => Number) @IsNumber() @Min(1990) academicYear: number;
 
   @IsString()
   @IsIn(['Play & Learn', 'Nursery', 'G1', 'G2', 'G3', 'G4', 'G5'])
@@ -494,14 +521,66 @@ export class UpsertStudentsPerformanceDto {
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) progressNeedImprove?: number;
 }
 
+// ===================== Student Performance (BA / BPS / BSS) =====================
+
+export const STUDENT_PERFORMANCE_FORM_KEYS = ['ba-1', 'ba-2', 'ba-3', 'bps-1', 'bps-2', 'bss-1'] as const;
+
+export class StudentPerformanceRowDto {
+  @IsString() @IsNotEmpty() code: string;
+
+  @IsString() @IsNotEmpty() label: string;
+
+  @IsOptional() @IsString() domain?: string;
+
+  /** Scale label -> percentage. Values are validated/normalised in the service. */
+  @IsObject() values: Record<string, number>;
+}
+
+export class UpsertStudentPerformanceDto {
+  @IsUUID() schoolId: string;
+
+  @Type(() => Number) @IsNumber() @Min(1990) academicYear: number;
+
+  @IsString() @IsIn(STUDENT_PERFORMANCE_FORM_KEYS as unknown as string[])
+  formKey: string;
+
+  @IsString() @IsNotEmpty() grade: string;
+
+  @IsString() @IsIn(['Half-yearly', 'Annual'])
+  evaluationPeriod: string;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) numberOfStudents?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(100) appearedPercent?: number;
+
+  @IsArray()
+  @ArrayMaxSize(60)
+  @ValidateNested({ each: true })
+  @Type(() => StudentPerformanceRowDto)
+  rows: StudentPerformanceRowDto[];
+}
+
 // ===================== Activity Participation (Corner/Club/Library/Lab) =====================
 
 export class UpsertActivityParticipationDto {
   @IsUUID() schoolId: string;
 
   @IsString()
-  @IsIn(['Corner Activity', 'Club Activity', 'Library Activity', 'Lab Activity'])
+  @IsIn([
+    'Corner activity',
+    'Language & Literacy club',
+    'Nature & Environment club',
+    'Music club',
+    'Creative club',
+    'Science & Technology club',
+    'Science lab',
+    'ICT lab',
+    'Agriculture lab',
+    'Use of library',
+  ])
   item: string;
+
+  @Type(() => Number) @IsNumber() @Min(1990) year: number;
 
   @IsString() @IsNotEmpty() month: string;
 
@@ -520,6 +599,8 @@ export class UpsertActivityParticipationDto {
 
 export class CreateEventParticipationDto {
   @IsUUID() schoolId: string;
+
+  @Type(() => Number) @IsNumber() @Min(1990) academicYear: number;
 
   @IsString() @IsNotEmpty() eventName: string;
 

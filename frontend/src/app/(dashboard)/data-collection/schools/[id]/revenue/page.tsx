@@ -37,7 +37,7 @@ const SUB_FORMS = [
   {
     key: 'revenue-budget-total',
     slug: 'revenue-budget-total',
-    label: 'Revenue Collection as per Budget — Total',
+    label: 'Planned Revenue Collection - Total',
     description: 'Yearly budget targets and achievements per fee category',
     icon: Banknote,
     color: 'from-orange-500 to-orange-600',
@@ -49,7 +49,7 @@ const SUB_FORMS = [
   {
     key: 'revenue-budget-monthly',
     slug: 'revenue-budget-monthly',
-    label: 'Revenue Collection as per Budget — Monthly',
+    label: 'Planned Revenue Collection - Monthly',
     description: 'Monthly tuition fee budget tracking with % collection achieved',
     icon: CalendarDays,
     color: 'from-orange-400 to-amber-500',
@@ -61,7 +61,7 @@ const SUB_FORMS = [
   {
     key: 'revenue-actual-total',
     slug: 'revenue-actual-total',
-    label: 'Revenue Collection as per Actual Student — Total',
+    label: 'Actual Revenue Collection - Total',
     description: 'Yearly actual student revenue targets and achievements per category',
     icon: TrendingUp,
     color: 'from-yellow-500 to-yellow-600',
@@ -73,7 +73,7 @@ const SUB_FORMS = [
   {
     key: 'revenue-actual-monthly',
     slug: 'revenue-actual-monthly',
-    label: 'Revenue Collection as per Actual Student — Monthly',
+    label: 'Actual Revenue Collection - Monthly',
     description: 'Monthly actual student revenue tracking with % collection achieved',
     icon: Calculator,
     color: 'from-yellow-400 to-yellow-500',

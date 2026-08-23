@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useQueries } from '@tanstack/react-query';
+import Link from 'next/link';
 
 export default function DashboardPage() {
   const { user, hasPermission } = useAuthStore();
@@ -130,7 +131,7 @@ export default function DashboardPage() {
             <CardContent>
               <div className="space-y-3">
                 {hasPermission('surveys', 'create') && (
-                  <a
+                  <Link
                     href="/surveys/create"
                     className="flex items-center gap-3 rounded-lg border border-gray-200 p-3 transition-colors hover:bg-gray-50"
                   >
@@ -143,10 +144,10 @@ export default function DashboardPage() {
                         Design and publish a new survey
                       </p>
                     </div>
-                  </a>
+                  </Link>
                 )}
                 {isAdmin && (
-                  <a
+                  <Link
                     href="/users"
                     className="flex items-center gap-3 rounded-lg border border-gray-200 p-3 transition-colors hover:bg-gray-50"
                   >
@@ -159,10 +160,10 @@ export default function DashboardPage() {
                         Add or modify user accounts
                       </p>
                     </div>
-                  </a>
+                  </Link>
                 )}
                 {(hasPermission('data-collection', 'read') || hasPermission('school-information', 'read')) && (
-                  <a
+                  <Link
                     href="/data-collection/school-information"
                     className="flex items-center gap-3 rounded-lg border border-gray-200 p-3 transition-colors hover:bg-gray-50"
                   >
@@ -175,7 +176,7 @@ export default function DashboardPage() {
                         Browse and manage school data
                       </p>
                     </div>
-                  </a>
+                  </Link>
                 )}
               </div>
             </CardContent>

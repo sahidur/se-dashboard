@@ -20,6 +20,11 @@ import { AlumniForm } from '@/components/data-collection/alumni-form';
 import { PedagogicalAchievementsForm } from '@/components/data-collection/pedagogical-achievements-form';
 import { CocurricularForm } from '@/components/data-collection/cocurricular-form';
 import { StudentsPerformanceForm } from '@/components/data-collection/students-performance-form';
+import { StudentPerformanceForm } from '@/components/data-collection/student-performance-form';
+import {
+  STUDENT_PERFORMANCE_FORMS,
+  STUDENT_PERFORMANCE_SECTIONS,
+} from '@/components/data-collection/student-performance-catalog';
 import { ActivityParticipationForm } from '@/components/data-collection/activity-participation-form';
 import { EventParticipationForm } from '@/components/data-collection/event-participation-form';
 
@@ -499,7 +504,7 @@ export default function DemoFormPage() {
     return (
       <>
         <Header
-          title="Revenue Collection as per Budget — Total"
+          title="Planned Revenue Collection - Total"
           subtitle="Yearly budget targets and achievements per fee category"
           actions={
             <Button variant="outline" onClick={() => router.back()}>
@@ -519,7 +524,7 @@ export default function DemoFormPage() {
     return (
       <>
         <Header
-          title="Revenue Collection as per Budget — Monthly"
+          title="Planned Revenue Collection - Monthly"
           subtitle="Monthly tuition fee budget and collection tracking"
           actions={
             <Button variant="outline" onClick={() => router.back()}>
@@ -539,7 +544,7 @@ export default function DemoFormPage() {
     return (
       <>
         <Header
-          title="Revenue Collection as per Actual Student — Total"
+          title="Actual Revenue Collection - Total"
           subtitle="Yearly actual student revenue targets and achievements"
           actions={
             <Button variant="outline" onClick={() => router.back()}>
@@ -559,7 +564,7 @@ export default function DemoFormPage() {
     return (
       <>
         <Header
-          title="Revenue Collection as per Actual Student — Monthly"
+          title="Actual Revenue Collection - Monthly"
           subtitle="Monthly actual student revenue tracking"
           actions={
             <Button variant="outline" onClick={() => router.back()}>
@@ -639,7 +644,7 @@ export default function DemoFormPage() {
     return (
       <>
         <Header
-          title="Students' Performance"
+          title="Students' Academic Performance"
           subtitle="Exam-wise grade results and progress indicators"
           actions={
             <Button variant="outline" onClick={() => router.back()}>
@@ -650,6 +655,29 @@ export default function DemoFormPage() {
         />
         <div className="p-4 sm:p-6 max-w-5xl mx-auto">
           <StudentsPerformanceForm schoolId={schoolId ?? ''} />
+        </div>
+      </>
+    );
+  }
+
+  /* ── Student Performance (BA / BPS / BSS) ── */
+  const studentPerfDef = STUDENT_PERFORMANCE_FORMS.find((f) => f.slug === slug);
+  if (studentPerfDef) {
+    const section = STUDENT_PERFORMANCE_SECTIONS.find((s) => s.key === studentPerfDef.sectionKey)!;
+    return (
+      <>
+        <Header
+          title={`${section.label} — Form ${studentPerfDef.formNo}`}
+          subtitle={studentPerfDef.label}
+          actions={
+            <Button variant="outline" onClick={() => router.back()}>
+              <ArrowLeft size={16} className="mr-1.5" />
+              <span className="hidden sm:inline">Back</span>
+            </Button>
+          }
+        />
+        <div className="mx-auto max-w-6xl p-4 sm:p-6">
+          <StudentPerformanceForm schoolId={schoolId ?? ''} formKey={studentPerfDef.key} />
         </div>
       </>
     );

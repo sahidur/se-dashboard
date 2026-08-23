@@ -14,9 +14,12 @@ import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import api from '@/lib/api';
+import { buildYearOptions } from '@/lib/utils';
 import type { DcSchool, DcStudentsInfo } from '@/types';
 
-/* ─── Constants ─────────────────────────────────────────── */
+/* ─── Constants ────────────────────────────────── */
+
+const YEARS = buildYearOptions();
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -31,6 +34,11 @@ const GRADES: { value: string; label: string }[] = [
   { value: 'g3',         label: 'Grade 3' },
   { value: 'g4',         label: 'Grade 4' },
   { value: 'g5',         label: 'Grade 5' },
+  { value: 'g6',         label: 'Grade 6' },
+  { value: 'g7',         label: 'Grade 7' },
+  { value: 'g8',         label: 'Grade 8' },
+  { value: 'g9',         label: 'Grade 9' },
+  { value: 'g10',        label: 'Grade 10' },
 ];
 
 const SCHOOL_CATEGORY_LABELS: Record<string, string> = {
@@ -50,6 +58,8 @@ interface FormState {
   ethnic: number;
   attendanceRate: number;
   dropoutRate: number;
+  replacedStudentsRate: number;
+  retentionRate: number;
   remedialSupport: number;
 }
 
@@ -60,10 +70,12 @@ const emptyForm: FormState = {
   ethnic: 0,
   attendanceRate: 0,
   dropoutRate: 0,
+  replacedStudentsRate: 0,
+  retentionRate: 0,
   remedialSupport: 0,
 };
 
-type FieldErrors = Partial<Record<'month' | 'grade', string>>;
+type FieldErrors = Partial<Record<'academicYear' | 'month' | 'grade', string>>;
 
 interface Props { schoolId: string }
 
@@ -77,6 +89,7 @@ export function StudentsInfoForm({ schoolId }: Props) {
   const [saving, setSaving]           = useState(false);
   const [loadingEntry, setLoadingEntry] = useState(false);
 
+  const [academicYear, setAcademicYear] = useState('');
   const [month, setMonth]             = useState('');
   const [grade, setGrade]             = useState('');
   const [form, setForm]               = useState<FormState>(emptyForm);
@@ -87,7 +100,7 @@ export function StudentsInfoForm({ schoolId }: Props) {
   const [successMsg, setSuccessMsg]   = useState('');
   const [toast, setToast]             = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const toastTimer                    = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const draft = useFormDraft<{ month: string; grade: string; form: FormState }>('students-info-entry', schoolId);
+  const draft = useFormDraft<{ academicYear: string; month: string; grade: string; form: FormState }>('students-info-entry', schoolId);
   const draftAppliedRef = useRef(false);
   const [tab, setTab] = useState<'entry' | 'data'>('entry');
   const [allRecords, setAllRecords] = useState<DcStudentsInfo[]>([]);
@@ -124,6 +137,7 @@ export function StudentsInfoForm({ schoolId }: Props) {
       const d = await draft.loadDraft();
       if (d) {
         draftAppliedRef.current = true;
+        setAcademicYear(d.academicYear ?? '');
         setMonth(d.month);
         setGrade(d.grade);
         setForm(d.form);
@@ -133,7 +147,7 @@ export function StudentsInfoForm({ schoolId }: Props) {
   }, [loading]);
 
   const handleSaveDraft = async () => {
-    await draft.saveDraft({ month, grade, form });
+    await draft.saveDraft({ academicYear, month, grade, form });
   };
 
   const handleClearDraft = async () => {
@@ -141,9 +155,9 @@ export function StudentsInfoForm({ schoolId }: Props) {
     setForm(emptyForm);
   };
 
-  /* ── Load entry when month + grade both selected ── */
-  const loadEntry = useCallback(async (m: string, g: string) => {
-    if (!m || !g) return;
+  /* ── Load entry when academic year + month + grade all selected ── */
+  const loadEntry = useCallback(async (y: string, m: string, g: string) => {
+    if (!y || !m || !g) return;
     setLoadingEntry(true);
     setError('');
     // Do NOT clear successMsg here — let it persist after save
@@ -151,7 +165,9 @@ export function StudentsInfoForm({ schoolId }: Props) {
       const all = await api.get<DcStudentsInfo[]>(
         `/data-collection/students/school/${schoolId}`,
       );
-      const match = all.data.find((r) => r.month === m && r.grade === g);
+      const match = all.data.find(
+        (r) => Number(r.academicYear) === Number(y) && r.month === m && r.grade === g,
+      );
       if (match) {
         setForm({
           boys: match.boys,
@@ -160,6 +176,8 @@ export function StudentsInfoForm({ schoolId }: Props) {
           ethnic: match.ethnic,
           attendanceRate: Number(match.attendanceRate),
           dropoutRate: Number(match.dropoutRate),
+          replacedStudentsRate: Number(match.replacedStudentsRate ?? 0),
+          retentionRate: Number(match.retentionRate ?? 0),
           remedialSupport: match.remedialSupport,
         });
         setIsEditing(true);
@@ -176,18 +194,29 @@ export function StudentsInfoForm({ schoolId }: Props) {
     }
   }, [schoolId]);
 
+  const handleYearChange = (y: string) => {
+    setAcademicYear(y);
+    setFieldErrors((p) => { const n = { ...p }; delete n.academicYear; return n; });
+    setSuccessMsg('');
+    // Dependent selections are year-scoped — reset them.
+    setMonth('');
+    setGrade('');
+    setForm(emptyForm);
+    setIsEditing(false);
+  };
+
   const handleMonthChange = (m: string) => {
     setMonth(m);
     setFieldErrors((p) => { const n = { ...p }; delete n.month; return n; });
     setSuccessMsg('');
-    if (grade) loadEntry(m, grade);
+    if (grade) loadEntry(academicYear, m, grade);
   };
 
   const handleGradeChange = (g: string) => {
     setGrade(g);
     setFieldErrors((p) => { const n = { ...p }; delete n.grade; return n; });
     setSuccessMsg('');
-    if (month) loadEntry(month, g);
+    if (month) loadEntry(academicYear, month, g);
   };
 
   const total = form.boys + form.girls;
@@ -211,6 +240,11 @@ export function StudentsInfoForm({ schoolId }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!academicYear) {
+      setFieldErrors((p) => ({ ...p, academicYear: 'Please select an academic year' }));
+      setError('Please select an academic year.');
+      return;
+    }
     if (!validate()) return;
     setSaving(true);
     setError('');
@@ -218,6 +252,7 @@ export function StudentsInfoForm({ schoolId }: Props) {
     try {
       await api.post('/data-collection/students', {
         schoolId,
+        academicYear: Number(academicYear),
         month,
         grade,
         boys: form.boys,
@@ -227,6 +262,8 @@ export function StudentsInfoForm({ schoolId }: Props) {
         ethnic: form.ethnic,
         attendanceRate: form.attendanceRate,
         dropoutRate: form.dropoutRate,
+        replacedStudentsRate: form.replacedStudentsRate,
+        retentionRate: form.retentionRate,
         remedialSupport: form.remedialSupport,
       });
       const gradeName = GRADES.find((g) => g.value === grade)?.label ?? grade;
@@ -241,7 +278,7 @@ export function StudentsInfoForm({ schoolId }: Props) {
       if (idx !== -1 && idx < GRADES.length - 1) {
         const nextGrade = GRADES[idx + 1].value;
         setGrade(nextGrade);
-        loadEntry(month, nextGrade);
+        loadEntry(academicYear, month, nextGrade);
       }
     } catch (err: unknown) {
       const anyErr = err as { response?: { data?: { message?: string } } };
@@ -254,7 +291,7 @@ export function StudentsInfoForm({ schoolId }: Props) {
   };
 
   /* ─── Derived ─── */
-  const fieldsDisabled = !month || !grade || loadingEntry;
+  const fieldsDisabled = !academicYear || !month || !grade || loadingEntry;
   const gradeLabel = GRADES.find((g) => g.value === grade)?.label ?? '';
 
   if (loading) {
@@ -354,7 +391,30 @@ export function StudentsInfoForm({ schoolId }: Props) {
           </CardTitle>
         </CardHeader>
         <CardContent className="px-5 pb-5">
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-3">
+            {/* Academic Year */}
+            <div>
+              <Label className="mb-1.5 block text-sm font-medium text-gray-700">
+                Academic Year <span className="text-red-500">*</span>
+              </Label>
+              <div className="relative">
+                <select
+                  value={academicYear}
+                  onChange={(e) => handleYearChange(e.target.value)}
+                  className={`w-full appearance-none rounded-xl border-2 bg-white px-4 py-2.5 pr-9 text-sm font-medium shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-violet-300 ${
+                    fieldErrors.academicYear ? 'border-red-300' : academicYear ? 'border-violet-400 text-violet-800' : 'border-gray-200 text-gray-500'
+                  }`}
+                >
+                  <option value="">-- Select Academic Year --</option>
+                  {YEARS.map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+                <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              </div>
+              {fieldErrors.academicYear && <p className="mt-1 text-xs text-red-600">{fieldErrors.academicYear}</p>}
+            </div>
+
             {/* Month */}
             <div>
               <Label className="mb-1.5 block text-sm font-medium text-gray-700">
@@ -364,7 +424,8 @@ export function StudentsInfoForm({ schoolId }: Props) {
                 <select
                   value={month}
                   onChange={(e) => handleMonthChange(e.target.value)}
-                  className={`w-full appearance-none rounded-xl border-2 bg-white px-4 py-2.5 pr-9 text-sm font-medium shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-violet-300 ${
+                  disabled={!academicYear}
+                  className={`w-full appearance-none rounded-xl border-2 bg-white px-4 py-2.5 pr-9 text-sm font-medium shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-violet-300 disabled:cursor-not-allowed disabled:opacity-50 ${
                     fieldErrors.month ? 'border-red-300' : month ? 'border-violet-400 text-violet-800' : 'border-gray-200 text-gray-500'
                   }`}
                 >
@@ -387,7 +448,7 @@ export function StudentsInfoForm({ schoolId }: Props) {
                 <select
                   value={grade}
                   onChange={(e) => handleGradeChange(e.target.value)}
-                  disabled={!month}
+                  disabled={!academicYear || !month}
                   className={`w-full appearance-none rounded-xl border-2 bg-white px-4 py-2.5 pr-9 text-sm font-medium shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-violet-300 disabled:cursor-not-allowed disabled:opacity-50 ${
                     fieldErrors.grade ? 'border-red-300' : grade ? 'border-violet-400 text-violet-800' : 'border-gray-200 text-gray-500'
                   }`}
@@ -412,7 +473,7 @@ export function StudentsInfoForm({ schoolId }: Props) {
           )}
 
           {/* Edit badge */}
-          {!loadingEntry && isEditing && month && grade && (
+          {!loadingEntry && isEditing && academicYear && month && grade && (
             <div className="mt-3 flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs font-medium text-amber-700">
               <RefreshCw size={13} />
               Existing record found — submitting will update it.
@@ -470,6 +531,10 @@ export function StudentsInfoForm({ schoolId }: Props) {
               onChange={(v) => setNum('attendanceRate', v)} />
             <PercentField label="Dropout Rate" value={form.dropoutRate} disabled={fieldsDisabled}
               onChange={(v) => setNum('dropoutRate', v)} />
+            <PercentField label="Replaced Students' Rate" value={form.replacedStudentsRate} disabled={fieldsDisabled}
+              onChange={(v) => setNum('replacedStudentsRate', v)} />
+            <PercentField label="Retention Rate" value={form.retentionRate} disabled={fieldsDisabled}
+              onChange={(v) => setNum('retentionRate', v)} />
             <NumberField label="Remedial Support" value={form.remedialSupport} disabled={fieldsDisabled}
               onChange={(v) => setNum('remedialSupport', v)} color="slate" />
           </div>
@@ -525,6 +590,7 @@ export function StudentsInfoForm({ schoolId }: Props) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/70">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 whitespace-nowrap">Academic Year</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Month</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Grade</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Boys</th>
@@ -534,6 +600,8 @@ export function StudentsInfoForm({ schoolId }: Props) {
                   <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Ethnic</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500 whitespace-nowrap">Attendance</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500 whitespace-nowrap">Dropout</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500 whitespace-nowrap">Replaced</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500 whitespace-nowrap">Retention</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500 whitespace-nowrap">Remedial</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Submitted By</th>
                 </tr>
@@ -541,6 +609,7 @@ export function StudentsInfoForm({ schoolId }: Props) {
               <tbody className="divide-y divide-gray-100">
                 {allRecords.map((r, idx) => (
                   <tr key={r.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}>
+                    <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{r.academicYear ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{r.month}</td>
                     <td className="px-4 py-3 text-gray-700">{GRADES.find((g) => g.value === r.grade)?.label ?? r.grade}</td>
                     <td className="px-4 py-3 text-right text-gray-700">{r.boys}</td>
@@ -550,6 +619,8 @@ export function StudentsInfoForm({ schoolId }: Props) {
                     <td className="px-4 py-3 text-right text-gray-700">{r.ethnic}</td>
                     <td className="px-4 py-3 text-right text-gray-700">{Number(r.attendanceRate).toFixed(1)}%</td>
                     <td className="px-4 py-3 text-right text-gray-700">{Number(r.dropoutRate).toFixed(1)}%</td>
+                    <td className="px-4 py-3 text-right text-gray-700">{Number(r.replacedStudentsRate ?? 0).toFixed(1)}%</td>
+                    <td className="px-4 py-3 text-right text-gray-700">{Number(r.retentionRate ?? 0).toFixed(1)}%</td>
                     <td className="px-4 py-3 text-right text-gray-700">{r.remedialSupport}</td>
                     <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
                       {r.createdBy ? `${r.createdBy.firstName} ${r.createdBy.lastName}` : '—'}

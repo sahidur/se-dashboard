@@ -16,7 +16,7 @@ import { User } from '../../users/entities/user.entity';
  * Up to 12 entries per school (one per month).
  */
 @Entity('dc_teachers_development')
-@Unique(['schoolId', 'month'])
+@Unique(['schoolId', 'academicYear', 'month'])
 export class DcTeachersDevelopment {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -27,6 +27,10 @@ export class DcTeachersDevelopment {
 
   @Column({ name: 'school_id' })
   schoolId: string;
+
+  /** Academic year the record belongs to, e.g. 2026 */
+  @Column({ name: 'academic_year', type: 'int', default: 0 })
+  academicYear: number;
 
   /** Full month name: January … December */
   @Column({ length: 20 })

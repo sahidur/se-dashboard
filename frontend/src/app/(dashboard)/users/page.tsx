@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import Image from 'next/image';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,9 +33,10 @@ import {
 } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth-store';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import type { User, Role, GeoLocation, PaginatedResponse } from '@/types';
 import { USER_DESIGNATIONS } from '@/types';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 
 export default function UsersPage() {
   const { hasPermission } = useAuthStore();
@@ -47,16 +49,22 @@ export default function UsersPage() {
   const [searchEmail, setSearchEmail] = useState('');
   const [page, setPage] = useState(1);
 
+  // The inputs stay instant; only the query key waits for the user to pause.
+  const qName = useDebouncedValue(searchName);
+  const qPhone = useDebouncedValue(searchPhone);
+  const qEmail = useDebouncedValue(searchEmail);
+
   const { data: usersData, isLoading: loading } = useQuery({
-    queryKey: ['users', page, searchName, searchPhone, searchEmail],
+    queryKey: ['users', page, qName, qPhone, qEmail],
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: '20' });
-      if (searchName) params.set('searchName', searchName);
-      if (searchPhone) params.set('searchPhone', searchPhone);
-      if (searchEmail) params.set('searchEmail', searchEmail);
+      if (qName) params.set('searchName', qName);
+      if (qPhone) params.set('searchPhone', qPhone);
+      if (qEmail) params.set('searchEmail', qEmail);
       const { data } = await api.get<PaginatedResponse<User>>(`/users?${params}`);
       return data;
     },
+    placeholderData: keepPreviousData,
   });
 
   const { data: roles = [] } = useQuery<Role[]>({
@@ -408,9 +416,12 @@ export default function UsersPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           {user.profilePicture ? (
-                            <img
+                            <Image
                               src={resolveAssetUrl(user.profilePicture)}
                               alt=""
+                              width={36}
+                              height={36}
+                              unoptimized
                               className="h-9 w-9 shrink-0 rounded-xl object-cover shadow-sm"
                             />
                           ) : (
@@ -560,9 +571,12 @@ export default function UsersPage() {
         <div className="space-y-4">
           <div className="flex items-center gap-4">
             {formData.profilePicture ? (
-              <img
+              <Image
                 src={resolveAssetUrl(formData.profilePicture)}
                 alt="Profile"
+                width={64}
+                height={64}
+                unoptimized
                 className="h-16 w-16 shrink-0 rounded-2xl object-cover shadow-sm border border-gray-200"
               />
             ) : (

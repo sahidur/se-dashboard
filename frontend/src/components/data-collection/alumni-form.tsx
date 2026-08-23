@@ -17,6 +17,7 @@ import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import api from '@/lib/api';
+import { buildYearOptions } from '@/lib/utils';
 import type { DcSchool, DcAlumni } from '@/types';
 
 /* ─── Constants ──────────────────────────────────────────── */
@@ -36,10 +37,10 @@ const OCCUPATION_OPTIONS = [
   'Others',
 ];
 
-const CURRENT_YEAR = new Date().getFullYear();
-const YEAR_OPTIONS = Array.from({ length: 40 }, (_, i) => CURRENT_YEAR - i);
+const YEAR_OPTIONS = buildYearOptions();
 
 interface AlumniFormState {
+  academicYear: string;
   alumniName: string;
   graduationYear: number | '';
   presentAddress: string;
@@ -51,6 +52,7 @@ interface AlumniFormState {
 }
 
 const BLANK_FORM: AlumniFormState = {
+  academicYear: '',
   alumniName: '',
   graduationYear: '',
   presentAddress: '',
@@ -137,6 +139,7 @@ export function AlumniForm({ schoolId }: Props) {
 
   const validate = (): boolean => {
     const errs: Partial<Record<keyof AlumniFormState, string>> = {};
+    if (!form.academicYear) errs.academicYear = 'Please select an academic year.';
     if (!form.alumniName.trim()) errs.alumniName = 'Name is required.';
     if (form.contactPhone && !/^\+?[\d\s\-()]{6,20}$/.test(form.contactPhone)) errs.contactPhone = 'Invalid phone number.';
     if (form.contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.contactEmail)) errs.contactEmail = 'Invalid email address.';
@@ -154,6 +157,11 @@ export function AlumniForm({ schoolId }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.academicYear) {
+      setError('Please select an academic year.');
+      setFieldErrors((prev) => ({ ...prev, academicYear: 'Please select an academic year.' }));
+      return;
+    }
     if (!validate()) return;
     setSaving(true);
     setError('');
@@ -164,6 +172,7 @@ export function AlumniForm({ schoolId }: Props) {
 
     const payload = {
       schoolId,
+      academicYear: Number(form.academicYear),
       alumniName: form.alumniName.trim(),
       graduationYear: form.graduationYear !== '' ? Number(form.graduationYear) : undefined,
       presentAddress: form.presentAddress.trim() || undefined,
@@ -198,6 +207,7 @@ export function AlumniForm({ schoolId }: Props) {
     const knownOccupations = OCCUPATION_OPTIONS.filter((o) => o !== 'Others');
     const isKnown = knownOccupations.includes(record.currentOccupation ?? '');
     setForm({
+      academicYear: record.academicYear ? String(record.academicYear) : '',
       alumniName: record.alumniName,
       graduationYear: record.graduationYear ?? '',
       presentAddress: record.presentAddress ?? '',
@@ -318,8 +328,25 @@ export function AlumniForm({ schoolId }: Props) {
                 </div>
               )}
 
-              {/* Row 1: Name + Passing Year */}
-              <div className="grid gap-4 sm:grid-cols-2">
+              {/* Row 1: Academic Year + Name + Passing Year */}
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div>
+                  <Label className="mb-1.5 block text-xs font-medium text-gray-600">
+                    Academic Year <span className="text-red-500">*</span>
+                  </Label>
+                  <div className="relative">
+                    <select
+                      value={form.academicYear}
+                      onChange={(e) => setField('academicYear', e.target.value)}
+                      className={`w-full appearance-none rounded-lg border bg-white px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 ${fieldErrors.academicYear ? 'border-red-400' : 'border-gray-200'}`}
+                    >
+                      <option value="">Select academic year...</option>
+                      {YEAR_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-3 text-gray-400" />
+                  </div>
+                  {fieldErrors.academicYear && <p className="mt-1 text-xs text-red-500">{fieldErrors.academicYear}</p>}
+                </div>
                 <div>
                   <Label className="mb-1.5 block text-xs font-medium text-gray-600">
                     Name of Student <span className="text-red-500">*</span>
@@ -496,6 +523,7 @@ export function AlumniForm({ schoolId }: Props) {
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/70">
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">#</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 whitespace-nowrap">Academic Year</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Name</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 whitespace-nowrap">Passing Year</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Present Address</th>
@@ -517,6 +545,7 @@ export function AlumniForm({ schoolId }: Props) {
                     }`}
                   >
                     <td className="px-4 py-3 text-xs text-gray-400 font-medium">{idx + 1}</td>
+                    <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">{r.academicYear ?? '—'}</td>
                     <td className="px-4 py-3">
                       <p className="font-semibold text-gray-800 whitespace-nowrap">{r.alumniName}</p>
                     </td>

@@ -16,7 +16,7 @@ import { User } from '../../users/entities/user.entity';
  * One record per school (upsert).
  */
 @Entity('dc_revenue_budget_total')
-@Unique(['schoolId'])
+@Unique(['schoolId', 'academicYear'])
 export class DcRevenueBudgetTotal {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -27,6 +27,10 @@ export class DcRevenueBudgetTotal {
 
   @Column({ name: 'school_id' })
   schoolId: string;
+
+  /** Academic year the record belongs to, e.g. 2026 */
+  @Column({ name: 'academic_year', type: 'int', default: 0 })
+  academicYear: number;
 
   @Column({ name: 'total_students_target', type: 'int', default: 0 })
   totalStudentsTarget: number;

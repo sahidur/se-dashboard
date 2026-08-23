@@ -36,6 +36,7 @@ import {
   UpsertPedagogicalAchievementDto,
   UpsertCocurricularDto,
   UpsertStudentsPerformanceDto,
+  UpsertStudentPerformanceDto,
   UpsertActivityParticipationDto,
   CreateEventParticipationDto,
   UpdateEventParticipationDto,
@@ -127,8 +128,9 @@ export class DataCollectionController {
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
     @CurrentUser('roles') roles: string[],
+    @Query('academicYear') academicYear?: string,
   ) {
-    return this.service.getBasicInfo(schoolId, userId, roles);
+    return this.service.getBasicInfo(schoolId, userId, roles, academicYear ? Number(academicYear) : undefined);
   }
 
   // ===================== Infrastructure =====================
@@ -149,8 +151,9 @@ export class DataCollectionController {
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
     @CurrentUser('roles') roles: string[],
+    @Query('academicYear') academicYear?: string,
   ) {
-    return this.service.getInfrastructure(schoolId, userId, roles);
+    return this.service.getInfrastructure(schoolId, userId, roles, academicYear ? Number(academicYear) : undefined);
   }
 
   // ===================== Students Info =====================
@@ -201,20 +204,32 @@ export class DataCollectionController {
 
   @Post('teachers/individual')
   @Permissions({ module: 'data-collection', action: 'create' })
-  createTeacherIndividual(@Body() dto: CreateTeacherIndividualDto, @CurrentUser('id') userId: string) {
-    return this.service.createTeacherIndividual(dto, userId);
+  createTeacherIndividual(
+    @Body() dto: CreateTeacherIndividualDto,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.createTeacherIndividual(dto, userId, roles);
   }
 
   @Get('teachers/individual/school/:schoolId')
   @Permissions({ module: 'data-collection', action: 'read' })
-  getTeacherIndividuals(@Param('schoolId', ParseUUIDPipe) schoolId: string, @CurrentUser('id') userId: string) {
-    return this.service.getTeacherIndividuals(schoolId, userId);
+  getTeacherIndividuals(
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.getTeacherIndividuals(schoolId, userId, roles);
   }
 
   @Delete('teachers/individual/:id')
   @Permissions({ module: 'data-collection', action: 'delete' })
-  deleteTeacherIndividual(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('id') userId: string) {
-    return this.service.deleteTeacherIndividual(id, userId);
+  deleteTeacherIndividual(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.deleteTeacherIndividual(id, userId, roles);
   }
 
   // ===================== Teachers Development (per month) =====================
@@ -257,8 +272,9 @@ export class DataCollectionController {
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
     @CurrentUser('roles') roles: string[],
+    @Query('academicYear') academicYear?: string,
   ) {
-    return this.service.getRevenue(schoolId, userId, roles);
+    return this.service.getRevenue(schoolId, userId, roles, academicYear ? Number(academicYear) : undefined);
   }
 
   // ===================== Performance =====================
@@ -279,22 +295,31 @@ export class DataCollectionController {
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
     @CurrentUser('roles') roles: string[],
+    @Query('academicYear') academicYear?: string,
   ) {
-    return this.service.getPerformance(schoolId, userId, roles);
+    return this.service.getPerformance(schoolId, userId, roles, academicYear ? Number(academicYear) : undefined);
   }
 
   // ===================== Alumni =====================
 
   @Post('alumni')
   @Permissions({ module: 'data-collection', action: 'create' })
-  createAlumni(@Body() dto: CreateAlumniDto, @CurrentUser('id') userId: string) {
-    return this.service.createAlumni(dto, userId);
+  createAlumni(
+    @Body() dto: CreateAlumniDto,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.createAlumni(dto, userId, roles);
   }
 
   @Get('alumni/school/:schoolId')
   @Permissions({ module: 'data-collection', action: 'read' })
-  getAlumniBySchool(@Param('schoolId', ParseUUIDPipe) schoolId: string, @CurrentUser('id') userId: string) {
-    return this.service.getAlumniBySchool(schoolId, userId);
+  getAlumniBySchool(
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.getAlumniBySchool(schoolId, userId, roles);
   }
 
   @Patch('alumni/:id')
@@ -310,8 +335,12 @@ export class DataCollectionController {
 
   @Delete('alumni/:id')
   @Permissions({ module: 'data-collection', action: 'delete' })
-  deleteAlumni(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('id') userId: string) {
-    return this.service.deleteAlumni(id, userId);
+  deleteAlumni(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.deleteAlumni(id, userId, roles);
   }
 
   // ===================== Fee Structure =====================
@@ -364,8 +393,9 @@ export class DataCollectionController {
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
     @CurrentUser('roles') roles: string[],
+    @Query('academicYear') academicYear?: string,
   ) {
-    return this.service.getRevenueBudgetTotal(schoolId, userId, roles);
+    return this.service.getRevenueBudgetTotal(schoolId, userId, roles, academicYear ? Number(academicYear) : undefined);
   }
 
   // ===================== Revenue Budget Monthly =====================
@@ -408,8 +438,9 @@ export class DataCollectionController {
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
     @CurrentUser('roles') roles: string[],
+    @Query('academicYear') academicYear?: string,
   ) {
-    return this.service.getRevenueActualTotal(schoolId, userId, roles);
+    return this.service.getRevenueActualTotal(schoolId, userId, roles, academicYear ? Number(academicYear) : undefined);
   }
 
   // ===================== Revenue Actual Monthly =====================
@@ -530,6 +561,51 @@ export class DataCollectionController {
     return this.service.deleteStudentsPerformance(id, userId, roles);
   }
 
+  // ===================== Student Performance (BA / BPS / BSS) =====================
+
+  @Post('student-performance')
+  @Permissions({ module: 'data-collection', action: 'create' })
+  upsertStudentPerformance(
+    @Body() dto: UpsertStudentPerformanceDto,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.upsertStudentPerformance(dto, userId, roles);
+  }
+
+  @Get('student-performance/school/:schoolId')
+  @Permissions({ module: 'data-collection', action: 'read' })
+  getStudentPerformance(
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+    @Query('formKey') formKey?: string,
+  ) {
+    return this.service.getStudentPerformance(schoolId, userId, roles, formKey);
+  }
+
+  /** Flattened variant used by the generic School Information form-data viewer. */
+  @Get('student-performance/:formKey/school/:schoolId')
+  @Permissions({ module: 'data-collection', action: 'read' })
+  getStudentPerformanceFlat(
+    @Param('formKey') formKey: string,
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.getStudentPerformanceFlat(schoolId, userId, roles, formKey);
+  }
+
+  @Delete('student-performance/:id')
+  @Permissions({ module: 'data-collection', action: 'delete' })
+  deleteStudentPerformance(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.deleteStudentPerformance(id, userId, roles);
+  }
+
   // ===================== Activity Participation (Corner/Club/Library/Lab) =====================
 
   @Post('activity-participation')
@@ -616,8 +692,14 @@ export class DataCollectionController {
     @CurrentUser('id') userId: string,
     @CurrentUser('roles') roles: string[],
     @Query('category') category?: string,
+    @Query('academicYear') academicYear?: string,
   ) {
-    return this.service.getProgrammeOverview(userId, roles, category);
+    return this.service.getProgrammeOverview(
+      userId,
+      roles,
+      category,
+      academicYear ? Number(academicYear) : undefined,
+    );
   }
 
   // ===================== School Profile Overview =====================
@@ -631,8 +713,14 @@ export class DataCollectionController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser('id') userId: string,
     @CurrentUser('roles') roles: string[],
+    @Query('academicYear') academicYear?: string,
   ) {
-    return this.service.getSchoolProfile(id, userId, roles);
+    return this.service.getSchoolProfile(
+      id,
+      userId,
+      roles,
+      academicYear ? Number(academicYear) : undefined,
+    );
   }
 
   // ===================== Form Drafts (server-side, per-user) =====================

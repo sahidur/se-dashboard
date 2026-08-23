@@ -9,7 +9,7 @@ const PUBLIC_PATHS = new Set([
 // Static asset paths that should never be blocked
 const STATIC_PREFIXES = ['/_next', '/favicon', '/icons', '/images'];
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Never intercept static assets or Next.js internals
@@ -29,7 +29,7 @@ export function middleware(request: NextRequest) {
   //
   // NOTE: Tokens are NOT in the cookie — the cookie only signals "was
   // authenticated". Real token validation happens on every API call via
-  // the NestJS JwtAuthGuard. This edge check prevents the unauthenticated
+  // the NestJS JwtAuthGuard. This check prevents the unauthenticated
   // flash and protects dashboard routes from crawlers/bots.
   const sessionCookie = request.cookies.get('bep-session');
 
@@ -55,6 +55,8 @@ export const config = {
     '/recycle-bin/:path*',
     '/geo-locations/:path*',
     '/data-collection/:path*',
+    '/school-monitoring/:path*',
+    '/activity-logs/:path*',
     '/profile/:path*',
   ],
 };

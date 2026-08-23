@@ -15,9 +15,12 @@ import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import api from '@/lib/api';
+import { buildYearOptions } from '@/lib/utils';
 import type { DcSchool, DcRevenueMonthlyRecord } from '@/types';
 
-/* ─── Constants ──────────────────────────────────────────── */
+/* ─── Constants ─────────────────────────────────── */
+
+const YEARS = buildYearOptions();
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -35,6 +38,11 @@ function calcPct(target: number, achievement: number): number {
   return Math.min((achievement / target) * 100, 9999.99);
 }
 
+function calcDuesPct(target: number, achievement: number): string {
+  if (!target) return '—';
+  return (((target - achievement) / target) * 100).toFixed(1) + '%';
+}
+
 interface Props { schoolId: string; mode: 'budget' | 'actual' }
 
 /* ─── Component ─────────────────────────────────────────── */
@@ -42,6 +50,7 @@ interface Props { schoolId: string; mode: 'budget' | 'actual' }
 export function RevenueMonthlyForm({ schoolId, mode }: Props) {
   const router = useRouter();
   const [school, setSchool] = useState<DcSchool | null>(null);
+  const [academicYear, setAcademicYear] = useState('');
   const [month, setMonth] = useState('');
   const [tuitionFeeTarget, setTuitionFeeTarget] = useState<number>(0);
   const [tuitionFeeAchievement, setTuitionFeeAchievement] = useState<number>(0);
@@ -51,7 +60,7 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [records, setRecords] = useState<DcRevenueMonthlyRecord[]>([]);
   const [loadingRecords, setLoadingRecords] = useState(true);
-  const draft = useFormDraft<{ month: string; tuitionFeeTarget: number; tuitionFeeAchievement: number }>(`revenue-monthly-${mode}`, schoolId);
+  const draft = useFormDraft<{ academicYear: string; month: string; tuitionFeeTarget: number; tuitionFeeAchievement: number }>(`revenue-monthly-${mode}`, schoolId);
   const draftAppliedRef = useRef(false);
   const skipPrefillRef = useRef(false);
   const [tab, setTab] = useState<'entry' | 'data'>('entry');
@@ -86,11 +95,13 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
 
   useEffect(() => { loadRecords(); }, [loadRecords]);
 
-  /* Pre-fill form when month is selected and data exists */
+  /* Pre-fill form when academic year + month are selected and data exists */
   useEffect(() => {
     if (skipPrefillRef.current) { skipPrefillRef.current = false; return; }
-    if (month) {
-      const existing = records.find((r) => r.month === month);
+    if (academicYear && month) {
+      const existing = records.find(
+        (r) => Number(r.academicYear) === Number(academicYear) && r.month === month,
+      );
       if (existing) {
         setTuitionFeeTarget(Number(existing.tuitionFeeTarget) || 0);
         setTuitionFeeAchievement(Number(existing.tuitionFeeAchievement) || 0);
@@ -99,7 +110,7 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
         setTuitionFeeAchievement(0);
       }
     }
-  }, [month, records]);
+  }, [academicYear, month, records]);
 
   // Overlay the user's private draft (if any) once records have loaded.
   useEffect(() => {
@@ -109,6 +120,7 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
       if (d) {
         draftAppliedRef.current = true;
         skipPrefillRef.current = true;
+        setAcademicYear(d.academicYear ?? '');
         setMonth(d.month);
         setTuitionFeeTarget(d.tuitionFeeTarget);
         setTuitionFeeAchievement(d.tuitionFeeAchievement);
@@ -118,7 +130,7 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
   }, [loadingRecords]);
 
   const handleSaveDraft = async () => {
-    await draft.saveDraft({ month, tuitionFeeTarget, tuitionFeeAchievement });
+    await draft.saveDraft({ academicYear, month, tuitionFeeTarget, tuitionFeeAchievement });
   };
 
   const handleClearDraft = async () => {
@@ -127,13 +139,28 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
     setTuitionFeeAchievement(0);
   };
 
+  // Changing the academic year re-scopes the month selection, so reset it.
+  const handleYearChange = (y: string) => {
+    setAcademicYear(y);
+    setMonth('');
+    setTuitionFeeTarget(0);
+    setTuitionFeeAchievement(0);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!academicYear) { setError('Please select an academic year.'); return; }
     if (!month) { setError('Please select a month.'); return; }
     setSaving(true);
     setError('');
     try {
-      await api.post(endpoint, { schoolId, month, tuitionFeeTarget, tuitionFeeAchievement });
+      await api.post(endpoint, {
+        schoolId,
+        academicYear: Number(academicYear),
+        month,
+        tuitionFeeTarget,
+        tuitionFeeAchievement,
+      });
       await draft.clearDraft();
       showToast('success', `Monthly tuition revenue saved for ${month}!`);
       await loadRecords();
@@ -156,9 +183,16 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
 
   const livePct = calcPct(tuitionFeeTarget, tuitionFeeAchievement);
   const livePctLabel = tuitionFeeTarget > 0 ? livePct.toFixed(1) + '%' : '—';
+  const liveDeficit = tuitionFeeTarget - tuitionFeeAchievement;
   const pctColor = livePct >= 100 ? 'text-emerald-600' : livePct >= 70 ? 'text-amber-600' : tuitionFeeTarget > 0 ? 'text-red-500' : 'text-gray-400';
 
-  const submittedMonths = new Set(records.map((r) => r.month));
+  const yearRecords = academicYear
+    ? records.filter((r) => Number(r.academicYear) === Number(academicYear))
+    : records;
+  const submittedMonths = new Set(yearRecords.map((r) => r.month));
+  const sortedRecords = [...records].sort(
+    (a, b) => (Number(b.academicYear) - Number(a.academicYear)) || (MONTHS.indexOf(a.month) - MONTHS.indexOf(b.month)),
+  );
   const totalTarget = records.reduce((s, r) => s + Number(r.tuitionFeeTarget), 0);
   const totalAchievement = records.reduce((s, r) => s + Number(r.tuitionFeeAchievement), 0);
   const totalPct = calcPct(totalTarget, totalAchievement);
@@ -202,12 +236,12 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
             <div className="flex flex-col items-end gap-1">
               <Badge variant={records.length > 0 ? 'success' : 'default'} className="gap-1">
                 {records.length > 0 ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
-                {records.length}/12 Months
+                {submittedMonths.size}/12 Months{academicYear ? ` · ${academicYear}` : ''}
               </Badge>
             </div>
           </div>
           {/* Month pills */}
-          {records.length > 0 && (
+          {yearRecords.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-2">
               {MONTHS.map((m) => (
                 submittedMonths.has(m) ? (
@@ -229,7 +263,7 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
         <Card className="overflow-hidden border-0 shadow-sm">
           <CardHeader className="pb-3 pt-5 px-5">
             <CardTitle className="text-base font-semibold text-gray-800">
-              Revenue — {mode === 'budget' ? 'Budget' : 'Actual'} (Monthly Tuition Fee)
+              {mode === 'budget' ? 'Planned' : 'Actual'} Revenue Collection - Monthly (Tuition Fee)
             </CardTitle>
           </CardHeader>
           <CardContent className="px-5 pb-5 space-y-5">
@@ -240,51 +274,80 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
               </div>
             )}
 
-            {/* Month selector */}
-            <div className="max-w-xs">
-              <Label className="mb-1.5 block text-xs font-medium text-gray-600">
-                Select Month <span className="text-red-500">*</span>
-              </Label>
-              <div className="relative">
-                <select
-                  value={month}
-                  onChange={(e) => setMonth(e.target.value)}
-                  className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
-                >
-                  <option value="">Choose a month...</option>
-                  {MONTHS.map((m) => (
-                    <option key={m} value={m}>
-                      {m} {submittedMonths.has(m) ? '✓' : ''}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-3 text-gray-400" />
+            {/* Academic Year + Month selectors */}
+            <div className="grid gap-4 sm:grid-cols-2 max-w-xl">
+              <div>
+                <Label className="mb-1.5 block text-xs font-medium text-gray-600">
+                  Academic Year <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <select
+                    value={academicYear}
+                    onChange={(e) => handleYearChange(e.target.value)}
+                    className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                  >
+                    <option value="">Choose an academic year...</option>
+                    {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                  <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-3 text-gray-400" />
+                </div>
+              </div>
+
+              <div>
+                <Label className="mb-1.5 block text-xs font-medium text-gray-600">
+                  Select Month <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <select
+                    value={month}
+                    onChange={(e) => setMonth(e.target.value)}
+                    disabled={!academicYear}
+                    className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="">Choose a month...</option>
+                    {MONTHS.map((m) => (
+                      <option key={m} value={m}>
+                        {m} {submittedMonths.has(m) ? '✓' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-3 text-gray-400" />
+                </div>
               </div>
             </div>
 
-            {/* 3-column inputs */}
-            <div className="grid gap-5 sm:grid-cols-3">
+            {/* Value inputs */}
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
               <div>
-                <Label className="mb-1.5 block text-xs font-medium text-gray-600">Monthly Tuition Fee Target (BDT)</Label>
+                <Label className="mb-1.5 block text-xs font-medium text-gray-600">{mode === 'budget' ? 'Planned' : 'Actual'} Revenue Target (Monthly) - BDT</Label>
                 <Input
                   type="number"
                   min={0}
                   value={tuitionFeeTarget}
                   onChange={(e) => setTuitionFeeTarget(Number(e.target.value) || 0)}
                   placeholder="BDT"
-                  disabled={!month}
+                  disabled={!academicYear || !month}
                 />
               </div>
               <div>
-                <Label className="mb-1.5 block text-xs font-medium text-gray-600">Monthly Tuition Fee Achievement (BDT)</Label>
+                <Label className="mb-1.5 block text-xs font-medium text-gray-600">Actual Collected Revenue (Monthly) - BDT</Label>
                 <Input
                   type="number"
                   min={0}
                   value={tuitionFeeAchievement}
                   onChange={(e) => setTuitionFeeAchievement(Number(e.target.value) || 0)}
                   placeholder="BDT"
-                  disabled={!month}
+                  disabled={!academicYear || !month}
                 />
+              </div>
+              <div>
+                <Label className="mb-1.5 block text-xs font-medium text-gray-600">{mode === 'budget' ? 'Revenue Deficit (BDT)' : 'Outstanding Dues %'}</Label>
+                <div className="flex h-10 items-center gap-2 rounded-lg border border-gray-100 bg-gray-50/70 px-3">
+                  <span className={`font-mono text-sm font-bold ${liveDeficit > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                    {mode === 'budget' ? formatAmount(liveDeficit) : calcDuesPct(tuitionFeeTarget, tuitionFeeAchievement)}
+                  </span>
+                  <span className="text-xs text-gray-400">(auto)</span>
+                </div>
               </div>
               <div>
                 <Label className="mb-1.5 block text-xs font-medium text-gray-600">% of Revenue Collection</Label>
@@ -311,7 +374,7 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
                 onSaveDraft={handleSaveDraft}
                 onClearDraft={handleClearDraft}
                 submitLabel={month ? `Submit ${month}` : 'Submit Data'}
-                disabled={!month}
+                disabled={!academicYear || !month}
               />
             </div>
           </CardContent>
@@ -341,32 +404,39 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/70">
+                    <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Academic Year</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Month</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Target (BDT)</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Achievement (BDT)</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">{mode === 'budget' ? 'Planned' : 'Actual'} Revenue Target (BDT)</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Actual Collected Revenue (BDT)</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">{mode === 'budget' ? 'Revenue Deficit (BDT)' : 'Outstanding Dues %'}</th>
                     <th className="px-4 py-3 text-center text-xs font-semibold uppercase text-gray-500">% Collection</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Updated</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {MONTHS.filter((m) => submittedMonths.has(m)).map((m, idx) => {
-                    const r = records.find((x) => x.month === m)!;
+                  {sortedRecords.map((r, idx) => {
                     const pct = calcPct(Number(r.tuitionFeeTarget), Number(r.tuitionFeeAchievement));
                     const pctColor2 = pct >= 100 ? 'text-emerald-600' : pct >= 70 ? 'text-amber-600' : 'text-red-500';
                     return (
                       <tr
-                        key={m}
+                        key={r.id}
                         className={`cursor-pointer transition-colors hover:brightness-95 ${
-                          month === m ? 'ring-inset ring-2 ring-orange-300' :
+                          month === r.month && Number(academicYear) === Number(r.academicYear) ? 'ring-inset ring-2 ring-orange-300' :
                           idx % 2 === 0 ? 'bg-white' : 'bg-orange-50/20'
                         }`}
-                        onClick={() => { setMonth(m); setTab('entry'); }}
+                        onClick={() => { setAcademicYear(String(r.academicYear ?? '')); setMonth(r.month); setTab('entry'); }}
                       >
+                        <td className="px-4 py-3 text-sm font-medium text-gray-700">{r.academicYear ?? '—'}</td>
                         <td className="px-4 py-3">
-                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${accentClasses.badgeBase}`}>{m}</span>
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${accentClasses.badgeBase}`}>{r.month}</span>
                         </td>
                         <td className="px-4 py-3 text-right font-mono text-sm text-gray-700">{formatAmount(Number(r.tuitionFeeTarget))}</td>
                         <td className="px-4 py-3 text-right font-mono text-sm text-gray-700">{formatAmount(Number(r.tuitionFeeAchievement))}</td>
+                        <td className={`px-4 py-3 text-right font-mono text-sm ${Number(r.tuitionFeeTarget) - Number(r.tuitionFeeAchievement) > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                          {mode === 'budget'
+                            ? formatAmount(Number(r.tuitionFeeTarget) - Number(r.tuitionFeeAchievement))
+                            : calcDuesPct(Number(r.tuitionFeeTarget), Number(r.tuitionFeeAchievement))}
+                        </td>
                         <td className="px-4 py-3 text-center">
                           <div className="space-y-0.5">
                             <span className={`text-sm font-bold ${pctColor2}`}>{pct.toFixed(1)}%</span>
@@ -384,8 +454,12 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
                 <tfoot>
                   <tr className="border-t-2 border-orange-200 bg-orange-50/40 font-bold">
                     <td className="px-4 py-3 text-sm text-gray-700">Total</td>
+                    <td />
                     <td className="px-4 py-3 text-right font-mono text-sm text-gray-800">{formatAmount(totalTarget)}</td>
                     <td className="px-4 py-3 text-right font-mono text-sm text-gray-800">{formatAmount(totalAchievement)}</td>
+                    <td className={`px-4 py-3 text-right font-mono text-sm ${totalTarget - totalAchievement > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                      {mode === 'budget' ? formatAmount(totalTarget - totalAchievement) : calcDuesPct(totalTarget, totalAchievement)}
+                    </td>
                     <td className="px-4 py-3 text-center">
                       <span className={`text-sm font-bold ${totalPct >= 100 ? 'text-emerald-600' : totalPct >= 70 ? 'text-amber-600' : totalTarget > 0 ? 'text-red-500' : 'text-gray-400'}`}>
                         {totalTarget > 0 ? totalPct.toFixed(1) + '%' : '—'}

@@ -2,7 +2,7 @@
 # =============================================================================
 #  BEP Social Enterprise Platform – One-Click DigitalOcean Deployment
 #  Domain  : se.somadhanhobe.com
-#  OS      : Ubuntu 20.04 | 22.04 | 24.04 LTS
+#  OS      : Ubuntu 22.04 | 24.04 LTS  (Node 24 needs glibc >= 2.28)
 #  Run as  : sudo bash deploy.sh
 #  Re-run  : safe – the script is fully idempotent
 # =============================================================================
@@ -39,10 +39,16 @@ APP_BRANCH="${APP_BRANCH:-main}"  # Git branch to deploy
 APP_USER="${APP_USER:-bep}"       # Dedicated OS user for the app
 APP_DIR="${APP_DIR:-/opt/bep-se}" # Installation directory
 LOG_DIR="${LOG_DIR:-/var/log/bep-se}"
-NODE_MAJOR="${NODE_MAJOR:-20}"    # Node.js LTS major version
+NODE_MAJOR="${NODE_MAJOR:-24}"    # Node.js Active LTS major version
 BACKEND_PORT="${BACKEND_PORT:-4000}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 SKIP_SSL="${SKIP_SSL:-false}"     # Set to 'true' to skip certbot (CI/testing)
+
+# Number of trusted reverse-proxy hops in front of the API. This deployment
+# always puts nginx in front, so 1 is correct. The backend ignores
+# X-Forwarded-For unless this is set, which would make the login rate limiter
+# bucket every visitor under nginx's 127.0.0.1 and record that as the audit IP.
+TRUST_PROXY="${TRUST_PROXY:-1}"
 
 # DB / S3 defaults (populated from current .env – override via env vars)
 DB_HOST="${DB_HOST:-db-postgresql-ams-do-user-2226216-0.i.db.ondigitalocean.com}"
@@ -87,6 +93,25 @@ if [[ -z "${JWT_REFRESH_SECRET:-}" ]]; then
   warn "  JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}"
 fi
 
+# Reject the placeholder/short secrets that shipped in .env.example — a guessable
+# signing key means anyone can mint an admin token.
+for _s in JWT_SECRET JWT_REFRESH_SECRET; do
+  _v="${!_s}"
+  [[ ${#_v} -ge 32 ]] || die "${_s} must be at least 32 characters (got ${#_v}). Generate one with: openssl rand -hex 64"
+  [[ "$_v" == *CHANGE_ME* || "$_v" == *change-in-production* ]] && die "${_s} is still a placeholder value. Set a real secret."
+done
+unset _s _v
+ok "JWT secrets validated"
+
+# Password used by `npm run seed` for the initial admin@bep.org account. Must
+# satisfy the app's policy: 8+ chars with an upper, a lower and a digit.
+if [[ -z "${SEED_ADMIN_PASSWORD:-}" ]]; then
+  SEED_ADMIN_PASSWORD="$(openssl rand -base64 12 | tr -d '/+=')Aa1"
+  warn "Auto-generated SEED_ADMIN_PASSWORD – save this in a password manager!"
+  warn "  SEED_ADMIN_PASSWORD=${SEED_ADMIN_PASSWORD}"
+  warn "  (used only by 'npm run seed' when admin@bep.org does not exist yet)"
+fi
+
 # If no repo URL and code is not present, ask
 if [[ -z "$REPO_URL" && ! -d "$APP_DIR/backend" ]]; then
   ask "Git repository URL (leave empty if you will upload files via rsync/scp)" REPO_URL
@@ -117,6 +142,7 @@ if command -v node &>/dev/null; then
 fi
 
 if [[ "$INSTALLED_NODE_MAJOR" -lt "$NODE_MAJOR" ]]; then
+  info "Node ${INSTALLED_NODE_MAJOR:-none} found – installing Node ${NODE_MAJOR}.x from NodeSource"
   curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - >/dev/null
   apt-get install -y -qq nodejs
 fi
@@ -178,7 +204,9 @@ cat > "${APP_DIR}/backend/.env" <<ENV
 # ── App ──────────────────────────────────────────────────────────────────────
 APP_PORT=${BACKEND_PORT}
 APP_ENV=production
-
+# Trust the nginx reverse proxy in front of us so rate limiting and audit logs
+# see the real client IP instead of 127.0.0.1.
+TRUST_PROXY=${TRUST_PROXY}
 # ── Database (DigitalOcean Managed PostgreSQL) ───────────────────────────────
 DB_HOST=${DB_HOST}
 DB_PORT=${DB_PORT}
@@ -205,7 +233,9 @@ S3_SECRET_KEY=${S3_SECRET_KEY}
 
 # ── CORS ─────────────────────────────────────────────────────────────────────
 CORS_ORIGIN=https://${DOMAIN}
-
+# ── Seeding ───────────────────────────────────────────────────────
+# Only read by 'npm run seed' when admin@bep.org does not already exist.
+SEED_ADMIN_PASSWORD=${SEED_ADMIN_PASSWORD}
 # ── WebAuthn / Passkeys ──────────────────────────────────────────────────────
 WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID}
 WEBAUTHN_RP_NAME=${WEBAUTHN_RP_NAME}
@@ -311,17 +341,28 @@ EnvironmentFile=${APP_DIR}/backend/.env
 # ── Hardening ───────────────────────────────────────────────────────────────
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=true
+ProtectProc=invisible
+ProtectHostname=true
+ProtectClock=true
 ReadWritePaths=${APP_DIR}/backend/uploads ${LOG_DIR}
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+# The service listens on :${BACKEND_PORT} behind nginx — no privileged port needed.
+CapabilityBoundingSet=
 AmbientCapabilities=
 ProtectKernelTunables=true
 ProtectKernelModules=true
+ProtectKernelLogs=true
 ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 RestrictRealtime=true
 RestrictSUIDSGID=true
+SystemCallArchitectures=native
 LockPersonality=true
+# Uploaded files and logs are readable only by the app user.
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target
@@ -370,17 +411,26 @@ Environment=PORT=${FRONTEND_PORT}
 # ── Hardening ───────────────────────────────────────────────────────────────
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=true
+ProtectProc=invisible
+ProtectHostname=true
+ProtectClock=true
 ReadWritePaths=${APP_DIR}/frontend/.next ${LOG_DIR}
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=
 AmbientCapabilities=
 ProtectKernelTunables=true
 ProtectKernelModules=true
+ProtectKernelLogs=true
 ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 RestrictRealtime=true
 RestrictSUIDSGID=true
+SystemCallArchitectures=native
 LockPersonality=true
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target
@@ -398,6 +448,22 @@ ok "Services enabled for auto-start on reboot"
 step "Configuring Nginx (initial HTTP config)"
 
 rm -f /etc/nginx/sites-enabled/default
+
+# http{}-level directives. limit_req_zone can only live here, not in a server{}.
+cat > /etc/nginx/conf.d/bep-hardening.conf <<'NGINX'
+# Generated by deploy.sh — global hardening for the BEP SE vhosts.
+
+# Don't advertise the nginx version in responses and error pages.
+server_tokens off;
+
+# Brute-force throttles, keyed on the client IP. These sit in front of the
+# app's own @Throttle guards as a second layer that also protects the box from
+# the request volume itself.
+limit_req_zone $binary_remote_addr zone=bep_auth:10m rate=10r/m;
+limit_req_zone $binary_remote_addr zone=bep_api:10m  rate=20r/s;
+limit_req_status 429;
+limit_conn_zone $binary_remote_addr zone=bep_conn:10m;
+NGINX
 
 cat > /etc/nginx/sites-available/bep-se-http <<NGINX
 # Temporary HTTP-only vhost used during Let's Encrypt certificate issuance.
@@ -515,9 +581,14 @@ server {
     add_header Strict-Transport-Security  "max-age=63072000; includeSubDomains; preload" always;
     add_header X-Frame-Options            "DENY"                                          always;
     add_header X-Content-Type-Options     "nosniff"                                       always;
-    add_header X-XSS-Protection           "1; mode=block"                                 always;
+    # Explicitly disabled: the legacy auditor is itself exploitable and is
+    # ignored by every current browser. CSP is the real defence (set by Next.js).
+    add_header X-XSS-Protection           "0"                                             always;
     add_header Referrer-Policy            "strict-origin-when-cross-origin"               always;
     add_header Permissions-Policy         "camera=(), microphone=(), geolocation=()"      always;
+
+    # Cap concurrent connections per IP (slowloris / scraping)
+    limit_conn bep_conn 40;
 
     # ── Gzip ─────────────────────────────────────────────────────────────────
     gzip on;
@@ -544,8 +615,51 @@ server {
     keepalive_timeout    65s;
     send_timeout         30s;
 
+    # ── Never serve dotfiles (.env, .git, editor backups) ─────────────────────
+    # Regex locations outrank prefix ones, so /.well-known must be excluded
+    # explicitly or certbot renewals would start returning 403.
+    location ~ /\.(?!well-known) {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+
+    # ── Auth endpoints: strict brute-force throttle ───────────────────────────
+    # Longest-prefix match wins, so this takes precedence over /api/ below.
+    location /api/auth/ {
+        limit_req           zone=bep_auth burst=20 nodelay;
+
+        proxy_pass          http://127.0.0.1:${BACKEND_PORT}/api/auth/;
+        proxy_http_version  1.1;
+        proxy_set_header    Host               \$host;
+        proxy_set_header    X-Real-IP          \$remote_addr;
+        proxy_set_header    X-Forwarded-For    \$proxy_add_x_forwarded_for;
+        proxy_set_header    X-Forwarded-Proto  \$scheme;
+        proxy_read_timeout  60s;
+        proxy_buffering     off;
+    }
+
+    # ── User-uploaded files ───────────────────────────────────────────────────
+    # Served from the same origin as the app, so they get their own locked-down
+    # header set (the backend sets these too; add_header in a location block
+    # discards the server-level ones, hence the repetition).
+    location /api/uploads/ {
+        proxy_pass          http://127.0.0.1:${BACKEND_PORT}/api/uploads/;
+        proxy_http_version  1.1;
+        proxy_set_header    Host               \$host;
+        proxy_set_header    X-Forwarded-Proto  \$scheme;
+
+        add_header X-Content-Type-Options    "nosniff"                           always;
+        add_header Content-Security-Policy   "default-src 'none'; sandbox"       always;
+        add_header X-Frame-Options           "DENY"                              always;
+        add_header Cross-Origin-Resource-Policy "same-origin"                    always;
+        add_header Cache-Control             "private, max-age=300"              always;
+    }
+
     # ── Backend API (NestJS on :${BACKEND_PORT}) ──────────────────────────────
     location /api/ {
+        limit_req           zone=bep_api burst=60 nodelay;
+
         proxy_pass          http://127.0.0.1:${BACKEND_PORT}/api/;
         proxy_http_version  1.1;
 
@@ -672,12 +786,13 @@ step "Configuring firewall"
 ufw --force reset
 ufw default deny incoming
 ufw default allow outgoing
-ufw allow ssh
+# 'limit' rate-limits repeated SSH connection attempts from the same IP
+ufw limit ssh        comment 'SSH (rate-limited)'
 ufw allow 80/tcp     comment 'HTTP (certbot + redirect)'
 ufw allow 443/tcp    comment 'HTTPS'
 # Backend and frontend ports are NOT opened – nginx proxies them internally
 ufw --force enable
-ok "ufw active:  allow 22, 80, 443 | deny everything else"
+ok "ufw active:  limit 22, allow 80/443 | deny everything else"
 
 # =============================================================================
 #  Step 15 – Start application services
@@ -723,6 +838,19 @@ echo -e "  ${BOLD}App dir${NC}    :  ${APP_DIR}/"
 echo ""
 echo -e "  ${BOLD}SSL renewal${NC} : automatic via certbot.timer"
 echo -e "    Test with:  certbot renew --dry-run"
+echo ""
+echo -e "  ${BOLD}First-run seeding${NC} (only if admin@bep.org does not exist yet):"
+echo -e "    cd ${APP_DIR}/backend && sudo -u ${APP_USER} npm run seed"
+echo -e "    Login: admin@bep.org / ${SEED_ADMIN_PASSWORD}"
+echo -e "    ${YELLOW}Change this password immediately after the first login.${NC}"
+echo ""
+echo -e "  ${BOLD}Security notes${NC}:"
+echo -e "    · TRUST_PROXY=${TRUST_PROXY} — required so login rate limiting and audit"
+echo -e "      logs see the real client IP instead of nginx's 127.0.0.1."
+echo -e "    · nginx throttles /api/auth/ to 10 req/min per IP (burst 20)."
+echo -e "    · Uploads under /api/uploads/ are served with nosniff + a"
+echo -e "      'default-src none; sandbox' CSP so they cannot execute."
+echo -e "    · backend/.env is chmod 600 and owned by ${APP_USER}."
 echo ""
 if [[ "$SKIP_SSL" == "true" ]]; then
   warn "SSL was skipped. Run the following once your DNS is pointing here:"

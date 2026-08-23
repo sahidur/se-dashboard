@@ -9,32 +9,38 @@ import { Badge } from '@/components/ui/badge';
 import { SchoolSelector } from '@/components/data-collection/school-selector';
 import { Wallet, Save, CheckCircle2 } from 'lucide-react';
 import api from '@/lib/api';
+import { buildYearOptions } from '@/lib/utils';
 import type { DcRevenue } from '@/types';
+
+const YEAR_OPTIONS = buildYearOptions();
+
+const EMPTY_FORM = {
+  monthlyTuitionFee: 0, admissionFee: 0, examFee: 0,
+  totalAnnualRevenue: 0, governmentGrant: 0, donationsReceived: 0, otherIncome: 0,
+  totalExpenditure: 0, salaryExpenditure: 0, maintenanceExpenditure: 0,
+  pendingFeeAmount: 0, feeCollectionRate: 0, remarks: '',
+};
 
 export default function RevenuePage() {
   const searchParams = useSearchParams();
   const [schoolId, setSchoolId] = useState(searchParams.get('school') || '');
+  const [academicYear, setAcademicYear] = useState(String(new Date().getFullYear()));
   const [existing, setExisting] = useState<DcRevenue | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const [form, setForm] = useState({
-    academicYear: '', monthlyTuitionFee: 0, admissionFee: 0, examFee: 0,
-    totalAnnualRevenue: 0, governmentGrant: 0, donationsReceived: 0, otherIncome: 0,
-    totalExpenditure: 0, salaryExpenditure: 0, maintenanceExpenditure: 0,
-    pendingFeeAmount: 0, feeCollectionRate: 0, remarks: '',
-  });
+  const [form, setForm] = useState({ ...EMPTY_FORM });
 
   useEffect(() => {
-    if (!schoolId) return;
+    if (!schoolId || !academicYear) return;
     setLoading(true);
-    api.get(`/data-collection/revenue/school/${schoolId}`)
+    api.get(`/data-collection/revenue/school/${schoolId}`, { params: { academicYear } })
       .then(({ data }) => {
         if (data) {
           setExisting(data);
           setForm({
-            academicYear: data.academicYear || '', monthlyTuitionFee: data.monthlyTuitionFee || 0,
+            monthlyTuitionFee: data.monthlyTuitionFee || 0,
             admissionFee: data.admissionFee || 0, examFee: data.examFee || 0,
             totalAnnualRevenue: data.totalAnnualRevenue || 0, governmentGrant: data.governmentGrant || 0,
             donationsReceived: data.donationsReceived || 0, otherIncome: data.otherIncome || 0,
@@ -42,19 +48,22 @@ export default function RevenuePage() {
             maintenanceExpenditure: data.maintenanceExpenditure || 0, pendingFeeAmount: data.pendingFeeAmount || 0,
             feeCollectionRate: data.feeCollectionRate || 0, remarks: data.remarks || '',
           });
-        } else setExisting(null);
+        } else {
+          setExisting(null);
+          setForm({ ...EMPTY_FORM });
+        }
       })
-      .catch(() => setExisting(null))
+      .catch(() => { setExisting(null); setForm({ ...EMPTY_FORM }); })
       .finally(() => setLoading(false));
-  }, [schoolId]);
+  }, [schoolId, academicYear]);
 
   const handleSubmit = async () => {
-    if (!schoolId) return;
+    if (!schoolId || !academicYear) return;
     setSaving(true);
     try {
-      await api.post('/data-collection/revenue', { ...form, schoolId });
+      await api.post('/data-collection/revenue', { ...form, schoolId, academicYear: Number(academicYear) });
       setSaved(true); setTimeout(() => setSaved(false), 3000);
-      const { data } = await api.get(`/data-collection/revenue/school/${schoolId}`);
+      const { data } = await api.get(`/data-collection/revenue/school/${schoolId}`, { params: { academicYear } });
       if (data) setExisting(data);
     } catch (e: any) { alert(e?.response?.data?.message || 'Error'); } finally { setSaving(false); }
   };
@@ -115,8 +124,18 @@ export default function RevenuePage() {
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Academic Year</label>
-                  <input type="text" value={form.academicYear} onChange={(e) => setForm({ ...form, academicYear: e.target.value })} placeholder="2025-2026" className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Academic Year <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={academicYear}
+                    onChange={(e) => setAcademicYear(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  >
+                    {YEAR_OPTIONS.map((y) => (
+                      <option key={y} value={String(y)}>{y}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">Fee Collection Rate (%)</label>

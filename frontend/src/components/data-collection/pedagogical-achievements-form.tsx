@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Trophy, School, MapPin, Save, Trash2, AlertCircle, CheckCircle2,
   ChevronDown, PlusCircle,
@@ -14,6 +14,7 @@ import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
+import { buildYearOptions } from '@/lib/utils';
 import api from '@/lib/api';
 import type { DcSchool } from '@/types';
 
@@ -22,53 +23,52 @@ import type { DcSchool } from '@/types';
 interface AchievementRecord {
   id: string;
   year: number;
+  kgParticipated: number;
   kgScholarship: number;
-  kgUniqueApproach: string;
+  primaryParticipated: number;
   primaryScholarship: number;
-  primaryUniqueApproach: string;
+  jrParticipated: number;
   jrScholarship: number;
-  jrUniqueApproach: string;
+  sscParticipated: number;
   sscScholarship: number;
-  sscUniqueApproach: string;
+  othersParticipated: number;
   othersScholarship: number;
-  othersUniqueApproach: string;
   createdAt: string;
 }
 
 interface FormState {
   year: string;
+  kgParticipated: string;
   kgScholarship: string;
-  kgUniqueApproach: string;
+  primaryParticipated: string;
   primaryScholarship: string;
-  primaryUniqueApproach: string;
+  jrParticipated: string;
   jrScholarship: string;
-  jrUniqueApproach: string;
+  sscParticipated: string;
   sscScholarship: string;
-  sscUniqueApproach: string;
+  othersParticipated: string;
   othersScholarship: string;
-  othersUniqueApproach: string;
 }
 
 const BLANK: FormState = {
   year: '',
-  kgScholarship: '', kgUniqueApproach: '',
-  primaryScholarship: '', primaryUniqueApproach: '',
-  jrScholarship: '', jrUniqueApproach: '',
-  sscScholarship: '', sscUniqueApproach: '',
-  othersScholarship: '', othersUniqueApproach: '',
+  kgParticipated: '', kgScholarship: '',
+  primaryParticipated: '', primaryScholarship: '',
+  jrParticipated: '', jrScholarship: '',
+  sscParticipated: '', sscScholarship: '',
+  othersParticipated: '', othersScholarship: '',
 };
 
-/* ─── Year options: 1990 → 3000 ─────────────────────────── */
-const ALL_YEARS: number[] = [];
-for (let y = 3000; y >= 1990; y--) ALL_YEARS.push(y);
+/* ─── Year options: current year first, then upcoming, then past ── */
+const ALL_YEARS = buildYearOptions();
 
 /* ─── Scholarship segments ───────────────────────────────── */
 const SEGMENTS = [
-  { key: 'kg',      countKey: 'kgScholarship',       approachKey: 'kgUniqueApproach',       label: 'KG Scholarship' },
-  { key: 'primary', countKey: 'primaryScholarship',   approachKey: 'primaryUniqueApproach',   label: 'Primary Scholarship' },
-  { key: 'jr',      countKey: 'jrScholarship',        approachKey: 'jrUniqueApproach',        label: 'Jr. Scholarship' },
-  { key: 'ssc',     countKey: 'sscScholarship',       approachKey: 'sscUniqueApproach',       label: 'SSC' },
-  { key: 'others',  countKey: 'othersScholarship',    approachKey: 'othersUniqueApproach',    label: 'Others' },
+  { key: 'kg',      participatedKey: 'kgParticipated',      awardedKey: 'kgScholarship',      label: 'KG Scholarship' },
+  { key: 'primary', participatedKey: 'primaryParticipated', awardedKey: 'primaryScholarship', label: 'Primary Scholarship' },
+  { key: 'jr',      participatedKey: 'jrParticipated',      awardedKey: 'jrScholarship',      label: 'Jr. Scholarship' },
+  { key: 'ssc',     participatedKey: 'sscParticipated',     awardedKey: 'sscScholarship',     label: 'SSC' },
+  { key: 'others',  participatedKey: 'othersParticipated',  awardedKey: 'othersScholarship',  label: 'Others' },
 ] as const;
 
 interface Props { schoolId: string }
@@ -99,10 +99,16 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
     toastTimer.current = setTimeout(() => setToast(null), 4000);
   };
 
+  const loadRecords = useCallback(() => {
+    api.get(`/data-collection/pedagogical-achievements/school/${schoolId}`)
+      .then(({ data }) => setRecords(data))
+      .catch(() => {});
+  }, [schoolId]);
+
   useEffect(() => {
     api.get(`/data-collection/schools/${schoolId}`).then(({ data }) => setSchool(data)).catch(() => {});
     loadRecords();
-  }, [schoolId]);
+  }, [schoolId, loadRecords]);
 
   // Overlay the user's private draft (an in-progress unsubmitted new entry).
   useEffect(() => {
@@ -135,12 +141,6 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const loadRecords = () => {
-    api.get(`/data-collection/pedagogical-achievements/school/${schoolId}`)
-      .then(({ data }) => setRecords(data))
-      .catch(() => {});
-  };
-
   const filteredYears = yearSearch
     ? ALL_YEARS.filter((y) => String(y).includes(yearSearch))
     : ALL_YEARS;
@@ -158,16 +158,16 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
   const handleEdit = (rec: AchievementRecord) => {
     setForm({
       year: String(rec.year),
+      kgParticipated: String(rec.kgParticipated || ''),
       kgScholarship: String(rec.kgScholarship || ''),
-      kgUniqueApproach: rec.kgUniqueApproach || '',
+      primaryParticipated: String(rec.primaryParticipated || ''),
       primaryScholarship: String(rec.primaryScholarship || ''),
-      primaryUniqueApproach: rec.primaryUniqueApproach || '',
+      jrParticipated: String(rec.jrParticipated || ''),
       jrScholarship: String(rec.jrScholarship || ''),
-      jrUniqueApproach: rec.jrUniqueApproach || '',
+      sscParticipated: String(rec.sscParticipated || ''),
       sscScholarship: String(rec.sscScholarship || ''),
-      sscUniqueApproach: rec.sscUniqueApproach || '',
+      othersParticipated: String(rec.othersParticipated || ''),
       othersScholarship: String(rec.othersScholarship || ''),
-      othersUniqueApproach: rec.othersUniqueApproach || '',
     });
     setYearSearch('');
     setEditingId(rec.id);
@@ -197,16 +197,16 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
       await api.post('/data-collection/pedagogical-achievements', {
         schoolId,
         year: Number(form.year),
+        kgParticipated: form.kgParticipated ? Number(form.kgParticipated) : 0,
         kgScholarship: form.kgScholarship ? Number(form.kgScholarship) : 0,
-        kgUniqueApproach: form.kgUniqueApproach || undefined,
+        primaryParticipated: form.primaryParticipated ? Number(form.primaryParticipated) : 0,
         primaryScholarship: form.primaryScholarship ? Number(form.primaryScholarship) : 0,
-        primaryUniqueApproach: form.primaryUniqueApproach || undefined,
+        jrParticipated: form.jrParticipated ? Number(form.jrParticipated) : 0,
         jrScholarship: form.jrScholarship ? Number(form.jrScholarship) : 0,
-        jrUniqueApproach: form.jrUniqueApproach || undefined,
+        sscParticipated: form.sscParticipated ? Number(form.sscParticipated) : 0,
         sscScholarship: form.sscScholarship ? Number(form.sscScholarship) : 0,
-        sscUniqueApproach: form.sscUniqueApproach || undefined,
+        othersParticipated: form.othersParticipated ? Number(form.othersParticipated) : 0,
         othersScholarship: form.othersScholarship ? Number(form.othersScholarship) : 0,
-        othersUniqueApproach: form.othersUniqueApproach || undefined,
       });
       showToast('success', `Achievement data for ${form.year} saved.`);
       await draft.clearDraft();
@@ -329,33 +329,34 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
 
               {/* Scholarship Segments */}
               <div className="space-y-5">
-                <p className="text-sm font-medium text-gray-700">Number of Students Awarded in Scholarship</p>
+                <p className="text-sm font-medium text-gray-700">Number of Students Participated &amp; Awarded in Scholarship</p>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {SEGMENTS.map(({ key, countKey, approachKey, label }) => (
+                  {SEGMENTS.map(({ key, participatedKey, awardedKey, label }) => (
                     <div key={key} className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
                       <div className="flex items-center gap-2">
                         <div className="h-2 w-2 rounded-full bg-indigo-400" />
                         <span className="text-sm font-semibold text-gray-800">{label}</span>
                       </div>
                       <div>
-                        <Label className="mb-1 block text-xs text-gray-500">No. of Students</Label>
+                        <Label className="mb-1 block text-xs text-gray-500">Number of Students Participated</Label>
                         <Input
                           type="number"
                           min={0}
-                          value={form[countKey as keyof FormState]}
-                          onChange={(e) => set(countKey as keyof FormState, e.target.value)}
+                          value={form[participatedKey]}
+                          onChange={(e) => set(participatedKey, e.target.value)}
                           placeholder="0"
                           className="h-9 text-sm"
                         />
                       </div>
                       <div>
-                        <Label className="mb-1 block text-xs text-gray-500">Unique Approach</Label>
-                        <textarea
-                          rows={2}
-                          value={form[approachKey as keyof FormState]}
-                          onChange={(e) => set(approachKey as keyof FormState, e.target.value)}
-                          placeholder="Describe unique approach…"
-                          className="w-full rounded-md border border-input bg-white px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+                        <Label className="mb-1 block text-xs text-gray-500">Number of Students Awarded</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={form[awardedKey]}
+                          onChange={(e) => set(awardedKey, e.target.value)}
+                          placeholder="0"
+                          className="h-9 text-sm"
                         />
                       </div>
                     </div>
@@ -422,6 +423,11 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
                     <th className="py-2 pr-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Total</th>
                     <th className="py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
+                  <tr>
+                    <th colSpan={9} className="pb-2 text-right text-[11px] font-normal normal-case tracking-normal text-gray-400">
+                      Shown as awarded / participated
+                    </th>
+                  </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {records.map((rec, idx) => {
@@ -434,11 +440,21 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
                             {rec.year}
                           </Badge>
                         </td>
-                        <td className="py-3 pr-4 text-right font-medium text-gray-700">{rec.kgScholarship}</td>
-                        <td className="py-3 pr-4 text-right font-medium text-gray-700">{rec.primaryScholarship}</td>
-                        <td className="py-3 pr-4 text-right font-medium text-gray-700">{rec.jrScholarship}</td>
-                        <td className="py-3 pr-4 text-right font-medium text-gray-700">{rec.sscScholarship}</td>
-                        <td className="py-3 pr-4 text-right font-medium text-gray-700">{rec.othersScholarship}</td>
+                        <td className="py-3 pr-4 text-right font-medium text-gray-700">
+                          {rec.kgScholarship}<span className="text-xs font-normal text-gray-400"> / {rec.kgParticipated ?? 0}</span>
+                        </td>
+                        <td className="py-3 pr-4 text-right font-medium text-gray-700">
+                          {rec.primaryScholarship}<span className="text-xs font-normal text-gray-400"> / {rec.primaryParticipated ?? 0}</span>
+                        </td>
+                        <td className="py-3 pr-4 text-right font-medium text-gray-700">
+                          {rec.jrScholarship}<span className="text-xs font-normal text-gray-400"> / {rec.jrParticipated ?? 0}</span>
+                        </td>
+                        <td className="py-3 pr-4 text-right font-medium text-gray-700">
+                          {rec.sscScholarship}<span className="text-xs font-normal text-gray-400"> / {rec.sscParticipated ?? 0}</span>
+                        </td>
+                        <td className="py-3 pr-4 text-right font-medium text-gray-700">
+                          {rec.othersScholarship}<span className="text-xs font-normal text-gray-400"> / {rec.othersParticipated ?? 0}</span>
+                        </td>
                         <td className="py-3 pr-4 text-right">
                           <Badge variant="default" className="font-semibold">{total}</Badge>
                         </td>

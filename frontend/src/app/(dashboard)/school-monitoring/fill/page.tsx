@@ -82,7 +82,7 @@ export default function MonitoringFillPage() {
             ) : history.length === 0 ? (
               <div className="py-6 text-center text-xs text-gray-500">
                 <MessageSquare className="mx-auto mb-2 h-6 w-6 text-gray-300" />
-                No feedback yet for this form. You'll be the first.
+                No feedback yet for this form. You&apos;ll be the first.
               </div>
             ) : (
               <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">

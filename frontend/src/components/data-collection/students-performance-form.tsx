@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   GraduationCap, School, MapPin, Save, Trash2, AlertCircle, CheckCircle2, PlusCircle,
 } from 'lucide-react';
@@ -14,10 +14,12 @@ import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import api from '@/lib/api';
+import { buildYearOptions } from '@/lib/utils';
 import type { DcSchool, DcStudentsPerformance } from '@/types';
 
 /* ─── Constants ──────────────────────────────────────────── */
 
+const YEARS = buildYearOptions();
 const GRADES = ['Play & Learn', 'Nursery', 'G1', 'G2', 'G3', 'G4', 'G5'];
 const EXAM_NAMES = ['Half-yearly', 'Annual'];
 
@@ -56,6 +58,7 @@ interface ProgressFields {
 }
 
 interface FormState extends GradeWiseFields, ProgressFields {
+  academicYear: string;
   grade: string;
   numberOfStudents: string;
   examName: string;
@@ -63,7 +66,7 @@ interface FormState extends GradeWiseFields, ProgressFields {
 }
 
 const BLANK: FormState = {
-  grade: '', numberOfStudents: '', examName: '', studentsAppearedPercent: '',
+  academicYear: '', grade: '', numberOfStudents: '', examName: '', studentsAppearedPercent: '',
   gradeAPlus: '', gradeA: '', gradeAMinus: '', gradeB: '', gradeC: '', gradeD: '', gradeF: '',
   progressGood: '', progressSatisfactory: '', progressNeedImprove: '',
 };
@@ -96,10 +99,16 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
     toastTimer.current = setTimeout(() => setToast(null), 4000);
   };
 
+  const loadRecords = useCallback(() => {
+    api.get(`/data-collection/students-performance/school/${schoolId}`)
+      .then(({ data }) => setRecords(data))
+      .catch(() => {});
+  }, [schoolId]);
+
   useEffect(() => {
     api.get(`/data-collection/schools/${schoolId}`).then(({ data }) => setSchool(data)).catch(() => {});
     loadRecords();
-  }, [schoolId]);
+  }, [schoolId, loadRecords]);
 
   // Overlay the user's private draft (an in-progress unsubmitted new entry).
   useEffect(() => {
@@ -123,16 +132,10 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
     setForm(BLANK);
   };
 
-  const loadRecords = () => {
-    api.get(`/data-collection/students-performance/school/${schoolId}`)
-      .then(({ data }) => setRecords(data))
-      .catch(() => {});
-  };
-
   const set = (key: keyof FormState, val: string) =>
     setForm((prev) => ({ ...prev, [key]: val }));
 
-  const inputsDisabled = !form.grade || !form.examName;
+  const inputsDisabled = !form.academicYear || !form.grade || !form.examName;
 
   const resetForm = () => {
     setForm(BLANK);
@@ -142,6 +145,7 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
 
   const handleEdit = (rec: DcStudentsPerformance) => {
     setForm({
+      academicYear: rec.academicYear ? String(rec.academicYear) : '',
       grade: rec.grade,
       numberOfStudents: String(rec.numberOfStudents ?? ''),
       examName: rec.examName,
@@ -173,6 +177,7 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!form.academicYear) { setError('Please select an academic year.'); return; }
     if (!form.grade) { setError('Please select a grade.'); return; }
     if (!form.examName) { setError('Please select an exam name.'); return; }
 
@@ -189,6 +194,7 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
     try {
       const payload: Record<string, unknown> = {
         schoolId,
+        academicYear: Number(form.academicYear),
         grade: form.grade,
         examName: form.examName,
         numberOfStudents: totalStudents,
@@ -203,7 +209,7 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
         }
       }
       await api.post('/data-collection/students-performance', payload);
-      showToast('success', `Performance data for ${form.grade} / ${form.examName} saved.`);
+      showToast('success', `Performance data for ${form.academicYear} / ${form.grade} / ${form.examName} saved.`);
       await draft.clearDraft();
       resetForm();
       loadRecords();
@@ -269,12 +275,26 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
               {editingId ? 'Edit Performance Record' : 'Add Performance Record'}
             </CardTitle>
             <p className="text-sm text-gray-500 mt-0.5">
-              Select a grade and exam, then enter student counts and grade-wise results.
+              Select an academic year, grade and exam, then enter student counts and grade-wise results.
             </p>
           </CardHeader>
           <CardContent className="px-6 pb-6">
             <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid gap-4 sm:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+                <div>
+                  <Label className="mb-1.5 block text-sm font-medium text-gray-700">
+                    Academic Year <span className="text-red-500">*</span>
+                  </Label>
+                  <select
+                    value={form.academicYear}
+                    onChange={(e) => { set('academicYear', e.target.value); set('grade', ''); set('examName', ''); }}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-400 focus:border-teal-400"
+                  >
+                    <option value="">Select academic year…</option>
+                    {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                </div>
+
                 <div>
                   <Label className="mb-1.5 block text-sm font-medium text-gray-700">
                     Grade <span className="text-red-500">*</span>
@@ -282,7 +302,8 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
                   <select
                     value={form.grade}
                     onChange={(e) => set('grade', e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-400 focus:border-teal-400"
+                    disabled={!form.academicYear}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-400 focus:border-teal-400 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <option value="">Select grade…</option>
                     {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
@@ -296,7 +317,7 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
                   <Input
                     type="number"
                     min={0}
-                    disabled={!form.grade}
+                    disabled={!form.academicYear || !form.grade}
                     value={form.numberOfStudents}
                     onChange={(e) => set('numberOfStudents', e.target.value)}
                     placeholder="0"
@@ -311,7 +332,7 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
                   <select
                     value={form.examName}
                     onChange={(e) => set('examName', e.target.value)}
-                    disabled={!form.grade}
+                    disabled={!form.academicYear || !form.grade}
                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-400 focus:border-teal-400 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <option value="">Select exam…</option>
@@ -328,7 +349,7 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
                     min={0}
                     max={100}
                     step={0.01}
-                    disabled={!form.grade || !form.examName}
+                    disabled={inputsDisabled}
                     value={form.studentsAppearedPercent}
                     onChange={(e) => set('studentsAppearedPercent', e.target.value)}
                     placeholder="0"
@@ -359,7 +380,7 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
                 </div>
                 {inputsDisabled && (
                   <p className="mt-2 text-xs text-amber-600 flex items-center gap-1">
-                    <AlertCircle size={12} /> Please select a grade and exam name to enable input fields.
+                    <AlertCircle size={12} /> Please select an academic year, grade and exam name to enable input fields.
                   </p>
                 )}
                 {!inputsDisabled && form.numberOfStudents !== '' && (
@@ -444,6 +465,7 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-gray-100">
+                    <th className="py-2 pr-3 text-left text-gray-500 uppercase tracking-wider font-semibold">Academic Year</th>
                     <th className="py-2 pr-3 text-left text-gray-500 uppercase tracking-wider font-semibold">Exam</th>
                     <th className="py-2 pr-3 text-right text-gray-500 uppercase tracking-wider font-semibold">Students</th>
                     {GRADE_FIELDS.map(({ label }) => (
@@ -455,6 +477,7 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
                 <tbody className="divide-y divide-gray-50">
                   {rows.map((rec) => (
                     <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="py-2.5 pr-3 text-gray-700 font-medium">{rec.academicYear ?? '—'}</td>
                       <td className="py-2.5 pr-3">
                         <Badge variant="default" className="text-teal-700 border-teal-200 bg-teal-50 font-medium">
                           {rec.examName}

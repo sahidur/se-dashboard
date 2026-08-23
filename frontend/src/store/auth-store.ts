@@ -2,18 +2,49 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { User, Permission } from '@/types';
 
+const SESSION_COOKIE = 'bep-session';
+
 // Set a short-lived session cookie readable by the Next.js edge middleware.
 // This is NOT a security token — it only signals "user has authenticated".
 // The real token validation happens on every API call via the NestJS JWT guard.
-function setSessionCookie() {
+// Only send the cookie over TLS in production; localhost dev is plain HTTP.
+const secureFlag = () =>
+  typeof location !== 'undefined' && location.protocol === 'https:'
+    ? '; Secure'
+    : '';
+
+export function setSessionCookie() {
   if (typeof document === 'undefined') return;
   // SameSite=Strict prevents CSRF. Not HttpOnly because JS must write it.
-  document.cookie = 'bep-session=1; path=/; SameSite=Strict; max-age=604800';
+  document.cookie = `${SESSION_COOKIE}=1; path=/; SameSite=Strict${secureFlag()}; max-age=604800`;
 }
 
 function clearSessionCookie() {
   if (typeof document === 'undefined') return;
-  document.cookie = 'bep-session=; path=/; SameSite=Strict; max-age=0';
+  document.cookie = `${SESSION_COOKIE}=; path=/; SameSite=Strict${secureFlag()}; max-age=0`;
+}
+
+// The middleware gates dashboard routes on this cookie while the client gates
+// them on the persisted store. The two can drift apart (cookie expires after 7
+// days, the browser clears cookies but keeps localStorage, cookies are blocked)
+// and that drift is what produced the login <-> dashboard redirect loop, so
+// callers must be able to ask whether the cookie is actually there.
+export function hasSessionCookie() {
+  if (typeof document === 'undefined') return false;
+  return document.cookie
+    .split('; ')
+    .some((c) => c.startsWith(`${SESSION_COOKIE}=`) && c !== `${SESSION_COOKIE}=`);
+}
+
+// Set while a logout is navigating away, so route guards don't fire their own
+// competing redirect against the full-page navigation.
+let loggingOut = false;
+export const isLoggingOut = () => loggingOut;
+
+export function logoutAndRedirect(target = '/auth/login') {
+  loggingOut = true;
+  useAuthStore.getState().logout();
+  if (typeof window !== 'undefined') window.location.replace(target);
 }
 
 interface AuthState {
@@ -64,6 +95,19 @@ export const useAuthStore = create<AuthState>()(
           refreshToken: null,
           isAuthenticated: false,
         });
+        // Drop the persisted copy as well. Relying on the persist middleware to
+        // write the cleared state back is not enough when the page is being
+        // torn down by a navigation in the same tick — a surviving
+        // `isAuthenticated: true` entry makes the login page bounce straight
+        // back to the dashboard.
+        if (typeof window !== 'undefined') {
+          try {
+            window.localStorage.removeItem('bep-auth');
+          } catch {
+            // Storage can be unavailable (private mode / blocked); state is
+            // already cleared in memory, so there is nothing else to do.
+          }
+        }
       },
 
       hasRole: (roleName) => {
