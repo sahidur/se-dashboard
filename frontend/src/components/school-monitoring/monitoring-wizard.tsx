@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   ChevronLeft, ChevronRight, CheckCircle2, Circle, Check, X, MinusCircle,
   UploadCloud, FileText, Image as ImageIcon, Trash2, Send, AlertCircle, ClipboardCheck,
-  ChevronDown, GraduationCap,
+  ChevronDown, GraduationCap, ImageOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +19,44 @@ import {
 import type {
   MonitoringAnswer, MonitoringAttachment, MonitoringResult, MonitoringSubmission,
 } from '@/types';
+
+/**
+ * Uploads live on the API server's local disk (unless S3 is configured) while
+ * the database is shared, so a stored attachment can be missing on the machine
+ * that serves it. Surface that instead of rendering a broken image.
+ */
+function AttachmentThumb({ attachment, isImage }: { attachment: MonitoringAttachment; isImage: boolean }) {
+  const [failed, setFailed] = useState(false);
+
+  if (isImage && !failed) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={resolveAssetUrl(attachment.url)}
+        alt={attachment.name}
+        className="h-28 w-full object-cover"
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+
+  if (failed) {
+    return (
+      <div className="flex h-28 w-full flex-col items-center justify-center bg-amber-50 p-2 text-center">
+        <ImageOff className="h-7 w-7 text-amber-500" />
+        <span className="mt-1 line-clamp-1 text-xs font-medium text-amber-800">{attachment.name}</span>
+        <span className="text-[11px] text-amber-700">File unavailable on this server</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-28 w-full flex-col items-center justify-center bg-gray-50 p-2 text-center">
+      <FileText className="h-8 w-8 text-gray-400" />
+      <span className="mt-1 line-clamp-2 text-xs text-gray-600">{attachment.name}</span>
+    </div>
+  );
+}
 
 interface Props {
   form: MonitoringFormDef;
@@ -35,6 +73,12 @@ const RESULT_OPTIONS: { value: MonitoringResult; label: string; icon: React.Elem
   { value: 'no', label: 'No / Not Satisfied', icon: X, active: 'bg-red-600 text-white border-red-600', ring: 'hover:border-red-400' },
   { value: 'na', label: 'Not Applicable', icon: MinusCircle, active: 'bg-gray-500 text-white border-gray-500', ring: 'hover:border-gray-400' },
 ];
+
+/** A "No / Not Satisfied" rating must be justified with a comment of at least this length. */
+const MIN_NO_COMMENT_LENGTH = 50;
+
+const needsComment = (a?: { result: MonitoringResult; comment: string }) =>
+  a?.result === 'no' && a.comment.trim().length < MIN_NO_COMMENT_LENGTH;
 
 export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmitted, onCancel }: Props) {
   const router = useRouter();
@@ -93,6 +137,11 @@ export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmi
   const setComment = (code: string, comment: string) =>
     setAnswers((prev) => ({ ...prev, [code]: { ...prev[code], comment } }));
 
+  const missingComments = useMemo(
+    () => Object.entries(answers).filter(([, a]) => needsComment(a)).map(([code]) => code),
+    [answers],
+  );
+
   const scrollTop = () => topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   const goTo = (target: number) => {
@@ -101,16 +150,32 @@ export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmi
     setError('');
     setTimeout(scrollTop, 0);
   };
-  const next = () => step < REVIEW_STEP && goTo(step + 1);
-  const prev = () => step > HEADER_STEP && goTo(step - 1);
-
   const currentSection = step >= FIRST_SECTION_STEP && step <= sectionCount
     ? form.sections[step - FIRST_SECTION_STEP]
     : null;
 
+  const sectionMissingComments = (secIdx: number) =>
+    form.sections[secIdx].indicators
+      .filter((ind) => needsComment(answers[ind.code]))
+      .map((ind) => ind.code);
+
+  const next = () => {
+    if (currentSection) {
+      const missing = sectionMissingComments(step - FIRST_SECTION_STEP);
+      if (missing.length) {
+        setError(
+          `Section ${currentSection.number}: a comment of at least ${MIN_NO_COMMENT_LENGTH} characters is required for every "No / Not Satisfied" answer (${missing.join(', ')}).`,
+        );
+        return;
+      }
+    }
+    if (step < REVIEW_STEP) goTo(step + 1);
+  };
+  const prev = () => step > HEADER_STEP && goTo(step - 1);
+
   const sectionAnswered = (secIdx: number) => {
     const sec = form.sections[secIdx];
-    return sec.indicators.every((ind) => answers[ind.code].result);
+    return sec.indicators.every((ind) => answers[ind.code].result) && sectionMissingComments(secIdx).length === 0;
   };
 
   const handleFiles = async (files: FileList | null) => {
@@ -138,6 +203,16 @@ export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmi
     setAttachments((prev) => prev.filter((a) => a.key !== key));
 
   const handleSubmit = async () => {
+    if (missingComments.length) {
+      const firstIdx = form.sections.findIndex((sec) =>
+        sec.indicators.some((ind) => missingComments.includes(ind.code)),
+      );
+      if (firstIdx >= 0) goTo(FIRST_SECTION_STEP + firstIdx);
+      setError(
+        `A comment of at least ${MIN_NO_COMMENT_LENGTH} characters is required for every "No / Not Satisfied" answer (${missingComments.join(', ')}).`,
+      );
+      return;
+    }
     setSubmitting(true);
     setError('');
     const payload = {
@@ -273,6 +348,9 @@ export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmi
             <div className="space-y-3">
               {currentSection.indicators.map((ind, idx) => {
                 const a = answers[ind.code];
+                const commentRequired = a.result === 'no';
+                const shortBy = MIN_NO_COMMENT_LENGTH - a.comment.trim().length;
+                const commentInvalid = commentRequired && shortBy > 0;
                 return (
                   <div
                     key={ind.code}
@@ -306,9 +384,22 @@ export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmi
                     <input
                       value={a.comment}
                       onChange={(e) => setComment(ind.code, e.target.value)}
-                      placeholder="Add a comment (optional)"
-                      className="mt-2.5 w-full rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-1.5 text-sm focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                      placeholder={commentRequired ? `Explain why (required, minimum ${MIN_NO_COMMENT_LENGTH} characters)` : 'Add a comment (optional)'}
+                      aria-invalid={commentInvalid}
+                      className={cn(
+                        'mt-2.5 w-full rounded-lg border px-3 py-1.5 text-sm focus:bg-white focus:outline-none focus:ring-2',
+                        commentInvalid
+                          ? 'border-red-300 bg-red-50/60 focus:border-red-500 focus:ring-red-500/20'
+                          : 'border-gray-200 bg-gray-50/50 focus:border-brand-500 focus:ring-brand-500/20',
+                      )}
                     />
+                    {commentRequired && (
+                      <p className={cn('mt-1 text-xs', commentInvalid ? 'text-red-600' : 'text-emerald-600')}>
+                        {commentInvalid
+                          ? `Comment is mandatory for "No / Not Satisfied" — ${shortBy} more character${shortBy === 1 ? '' : 's'} needed.`
+                          : 'Comment meets the minimum length.'}
+                      </p>
+                    )}
                   </div>
                 );
               })}
@@ -352,15 +443,7 @@ export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmi
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {attachments.map((a) => (
                   <div key={a.key} className="group relative overflow-hidden rounded-xl border border-gray-200">
-                    {isImg(a) ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={resolveAssetUrl(a.url)} alt={a.name} className="h-28 w-full object-cover" />
-                    ) : (
-                      <div className="flex h-28 w-full flex-col items-center justify-center bg-gray-50 p-2 text-center">
-                        <FileText className="h-8 w-8 text-gray-400" />
-                        <span className="mt-1 line-clamp-2 text-xs text-gray-600">{a.name}</span>
-                      </div>
-                    )}
+                    <AttachmentThumb attachment={a} isImage={isImg(a)} />
                     <button
                       type="button"
                       onClick={() => removeAttachment(a.key)}
@@ -400,6 +483,15 @@ export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmi
               <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>{total - answeredCount} indicator(s) are still unrated. You can submit anyway, or go back to complete them.</span>
+              </div>
+            )}
+            {missingComments.length > 0 && (
+              <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  {missingComments.length} &quot;No / Not Satisfied&quot; answer(s) need a comment of at least {MIN_NO_COMMENT_LENGTH} characters
+                  before you can submit: {missingComments.join(', ')}.
+                </span>
               </div>
             )}
             <div className="space-y-2">

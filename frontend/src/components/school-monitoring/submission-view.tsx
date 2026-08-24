@@ -1,6 +1,7 @@
 'use client';
 
-import { Check, X, MinusCircle, FileText, Download, Calendar, User as UserIcon } from 'lucide-react';
+import { useState } from 'react';
+import { Check, X, MinusCircle, FileText, Download, Calendar, User as UserIcon, ImageOff } from 'lucide-react';
 import { cn, resolveAssetUrl } from '@/lib/utils';
 import { getMonitoringForm } from './form-catalog';
 import type { MonitoringAttachment, MonitoringResult, MonitoringSubmission } from '@/types';
@@ -29,6 +30,57 @@ export function fullName(u?: MonitoringSubmission['submittedBy']): string {
 
 const isImg = (a: MonitoringAttachment) =>
   a.type?.startsWith('image/') || /\.(png|jpe?g|gif|webp)$/i.test(a.name);
+
+/**
+ * A stored attachment can be unreachable when the record was created against a
+ * different deployment: uploads live on the API server's local disk (unless S3
+ * is configured) while the database is shared, so the row can outlive the file.
+ * Show that explicitly rather than a broken image linking to a raw 404 payload.
+ */
+function AttachmentTile({ attachment }: { attachment: MonitoringAttachment }) {
+  const [failed, setFailed] = useState(false);
+  const href = resolveAssetUrl(attachment.url);
+
+  if (failed) {
+    return (
+      <div
+        className="flex h-28 w-full flex-col items-center justify-center rounded-xl border border-dashed border-amber-300 bg-amber-50 p-2 text-center"
+        title={attachment.name}
+      >
+        <ImageOff className="h-6 w-6 text-amber-500" />
+        <span className="mt-1 line-clamp-1 text-xs font-medium text-amber-800">{attachment.name}</span>
+        <span className="text-[11px] text-amber-700">File unavailable on this server</span>
+      </div>
+    );
+  }
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group relative block overflow-hidden rounded-xl border border-gray-200"
+    >
+      {isImg(attachment) ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={href}
+          alt={attachment.name}
+          className="h-28 w-full object-cover"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <div className="flex h-28 w-full flex-col items-center justify-center bg-gray-50 p-2 text-center">
+          <FileText className="h-8 w-8 text-gray-400" />
+          <span className="mt-1 line-clamp-2 text-xs text-gray-600">{attachment.name}</span>
+        </div>
+      )}
+      <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+        <Download className="h-5 w-5 text-white" />
+      </div>
+    </a>
+  );
+}
 
 export function SubmissionView({ submission }: { submission: MonitoringSubmission }) {
   const form = getMonitoringForm(submission.formType);
@@ -93,26 +145,7 @@ export function SubmissionView({ submission }: { submission: MonitoringSubmissio
           <p className="mb-2 text-sm font-semibold text-gray-800">Attachments ({submission.attachments.length})</p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {submission.attachments.map((a) => (
-              <a
-                key={a.key}
-                href={resolveAssetUrl(a.url)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group relative block overflow-hidden rounded-xl border border-gray-200"
-              >
-                {isImg(a) ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={resolveAssetUrl(a.url)} alt={a.name} className="h-28 w-full object-cover" />
-                ) : (
-                  <div className="flex h-28 w-full flex-col items-center justify-center bg-gray-50 p-2 text-center">
-                    <FileText className="h-8 w-8 text-gray-400" />
-                    <span className="mt-1 line-clamp-2 text-xs text-gray-600">{a.name}</span>
-                  </div>
-                )}
-                <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-                  <Download className="h-5 w-5 text-white" />
-                </div>
-              </a>
+              <AttachmentTile key={a.key} attachment={a} />
             ))}
           </div>
         </div>

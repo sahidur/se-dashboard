@@ -2,6 +2,7 @@ import { NestFactory, Reflector } from '@nestjs/core';
 import { ClassSerializerInterceptor, Logger, ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { join } from 'path';
 import { AppModule } from './app.module';
 import helmet from 'helmet';
 
@@ -65,6 +66,28 @@ async function bootstrap() {
 
   // API prefix
   app.setGlobalPrefix('api');
+
+  // Serve locally-stored uploads (used when S3 credentials are not configured).
+  // Mounted here instead of via ServeStaticModule: that module installs an
+  // SPA-style `index.html` fallback, so a request for a missing upload replied
+  // with `ENOENT: no such file or directory, stat '<abs path>/uploads/index.html'`
+  // — a confusing 404 that also disclosed the server's filesystem layout.
+  // A plain static mount simply falls through to Nest's own 404 handler.
+  app.useStaticAssets(join(process.cwd(), 'uploads'), {
+    prefix: '/api/uploads',
+    index: false,
+    dotfiles: 'deny',
+    // Uploads are user-supplied content served from the API origin. Even
+    // though the upload allowlist only permits images/pdf/spreadsheets, these
+    // headers make sure nothing here can execute in that origin.
+    setHeaders: (res) => {
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader(
+        'Content-Security-Policy',
+        "default-src 'none'; img-src 'self'; sandbox",
+      );
+    },
+  });
 
   const port = process.env.APP_PORT || 4000;
 

@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -9,12 +10,16 @@ import { MonitoringSubmission } from './entities/monitoring-submission.entity';
 import { DcSchool } from '../data-collection/entities/dc-school.entity';
 import {
   CreateMonitoringSubmissionDto,
+  MonitoringAnswerDto,
   UpdateMonitoringSubmissionDto,
 } from './dto';
 import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class SchoolMonitoringService {
+  /** Every "No / Not Satisfied" answer must be justified with at least this many characters. */
+  private static readonly MIN_NEGATIVE_COMMENT_LENGTH = 50;
+
   constructor(
     @InjectRepository(MonitoringSubmission)
     private readonly submissionRepo: Repository<MonitoringSubmission>,
@@ -88,6 +93,20 @@ export class SchoolMonitoringService {
     }
   }
 
+  private assertNegativeAnswersExplained(answers?: MonitoringAnswerDto[]): void {
+    const min = SchoolMonitoringService.MIN_NEGATIVE_COMMENT_LENGTH;
+    const missing = (answers ?? [])
+      .filter(
+        (a) => a.result === 'no' && (a.comment?.trim().length ?? 0) < min,
+      )
+      .map((a) => a.code);
+    if (missing.length) {
+      throw new BadRequestException(
+        `Every "No / Not Satisfied" answer needs a comment of at least ${min} characters. Please explain: ${missing.join(', ')}`,
+      );
+    }
+  }
+
   // ===================== CRUD =====================
 
   async create(
@@ -96,6 +115,7 @@ export class SchoolMonitoringService {
     roles: string[],
   ): Promise<MonitoringSubmission> {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
+    this.assertNegativeAnswersExplained(dto.answers);
     const submission = this.submissionRepo.create({
       schoolId: dto.schoolId,
       formType: dto.formType,
@@ -211,6 +231,7 @@ export class SchoolMonitoringService {
   ): Promise<MonitoringSubmission> {
     const submission = await this.findOne(id, userId, roles);
     await this.assertCanEdit(userId, roles);
+    this.assertNegativeAnswersExplained(dto.answers);
     Object.assign(submission, {
       observerName: dto.observerName ?? submission.observerName,
       teacherName: dto.teacherName ?? submission.teacherName,

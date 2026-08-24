@@ -2,9 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { ServeStaticModule } from '@nestjs/serve-static';
 import { APP_GUARD } from '@nestjs/core';
-import { join } from 'path';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { RolesModule } from './roles/roles.module';
@@ -22,27 +20,8 @@ import { AuditModule } from './common/audit/audit.module';
       isGlobal: true,
       envFilePath: '.env',
     }),
-    // Serve locally-stored uploads (used when S3 credentials are not configured).
-    // Served under the /api prefix so the existing reverse-proxy /api route
-    // handles it in production (no separate nginx location needed).
-    ServeStaticModule.forRoot({
-      rootPath: join(process.cwd(), 'uploads'),
-      serveRoot: '/api/uploads',
-      serveStaticOptions: {
-        index: false,
-        dotfiles: 'deny',
-        // Uploads are user-supplied content served from the API origin. Even
-        // though the upload allowlist only permits images/pdf/spreadsheets,
-        // these headers make sure nothing here can execute in that origin.
-        setHeaders: (res) => {
-          res.setHeader('X-Content-Type-Options', 'nosniff');
-          res.setHeader(
-            'Content-Security-Policy',
-            "default-src 'none'; img-src 'self'; sandbox",
-          );
-        },
-      },
-    }),
+    // NOTE: locally-stored uploads are served from `main.ts` via
+    // `app.useStaticAssets()`, not ServeStaticModule — see the comment there.
     // Rate limiting: 100 req per 60 s globally (OWASP: A04 – Insecure Design)
     ThrottlerModule.forRoot([{
       ttl: 60000,
