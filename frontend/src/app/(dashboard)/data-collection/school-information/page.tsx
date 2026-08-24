@@ -285,6 +285,10 @@ const GRADE_POINT: Record<GradeLetter, number> = { A: 3, B: 2, C: 1 };
 const pointToGrade = (pt: number): GradeLetter => (pt >= 2.5 ? 'A' : pt >= 1.5 ? 'B' : 'C');
 const LETTER_COLOR: Record<GradeLetter, GradeName> = { A: 'Green', B: 'Yellow', C: 'Red' };
 
+/* Head Teacher Leadership is reported on its own qualitative scale. */
+const LEADERSHIP_LABEL: Record<string, string> = { strong: 'Strong', moderate: 'Moderate', weak: 'Weak' };
+const LEADERSHIP_GRADE: Record<string, GradeLetter> = { strong: 'A', moderate: 'B', weak: 'C' };
+
 const GRADE_PILL: Record<GradeLetter, string> = {
   A: 'bg-green-100 text-green-700 ring-green-200',
   B: 'bg-yellow-100 text-yellow-700 ring-yellow-200',
@@ -310,9 +314,10 @@ function YesNoPill({ yes }: { yes: boolean }) {
 interface StatusRow {
   indicator: string;
   status: string;
-  kind: 'percent' | 'yesno' | 'info';
+  kind: 'percent' | 'yesno' | 'grade' | 'info';
   pct?: number | null;   // percentage used for grading (percent rows)
   yes?: boolean;         // yes/no rows
+  grade?: GradeLetter;   // rows graded directly on a qualitative scale (e.g. Strong/Moderate/Weak)
   note?: string;         // e.g. 'manual'
   excludeFromAvg?: boolean; // graded row that must NOT be counted in the average (avoids double-counting complementary indicators)
   gradeBasis?: string;   // shown when the grade is computed from the inverse of the displayed status (e.g. dropout graded on retention)
@@ -329,6 +334,7 @@ interface StatusTableDef {
 function rowPoint(r: StatusRow): number | null {
   if (r.kind === 'percent' && r.pct != null) return GRADE_POINT[pctToGrade(r.pct)];
   if (r.kind === 'yesno' && r.yes != null) return r.yes ? GRADE_POINT.A : GRADE_POINT.C;
+  if (r.kind === 'grade' && r.grade) return GRADE_POINT[r.grade];
   return null;
 }
 
@@ -376,6 +382,9 @@ function RowGrade({ row }: { row: StatusRow }) {
   if (row.kind === 'yesno') {
     return row.yes != null ? <YesNoPill yes={row.yes} /> : <span className="text-gray-300">—</span>;
   }
+  if (row.kind === 'grade') {
+    return row.grade ? <GradePill grade={row.grade} /> : <span className="text-gray-300">—</span>;
+  }
   if (row.kind === 'percent' && row.pct != null) {
     return <GradePill grade={pctToGrade(row.pct)} />;
   }
@@ -393,6 +402,10 @@ function ScaleLegend() {
         <span className="mx-1 h-4 w-px bg-gray-200" />
         <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full bg-green-400" /> Yes = Green</span>
         <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full bg-red-400" /> No = Red</span>
+        <span className="mx-1 h-4 w-px bg-gray-200" />
+        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full bg-green-400" /> Strong = A</span>
+        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full bg-yellow-400" /> Moderate = B</span>
+        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full bg-red-400" /> Weak = C</span>
       </CardContent>
     </Card>
   );
@@ -614,9 +627,9 @@ const INDICATOR_INFO: Record<string, IndicatorInfo> = {
     scale: GRADE_SCALE_TEXT,
   },
   "Head Teachers' Status::Leadership Status of HT": {
-    how: 'Green when the most recently reported head-teacher leadership assessment is "Good / Effective"; Red otherwise.',
+    how: 'The most recently reported head-teacher leadership assessment, graded directly on its own scale.',
     source: 'Teachers\u2019 Development form → Head Teacher Leadership',
-    scale: YESNO_SCALE_TEXT,
+    scale: 'Strong = A (Green), Moderate = B (Yellow), Weak = C (Red).',
   },
 
   // ── Revenue Collection Status ──
@@ -722,9 +735,13 @@ function buildStatusTables(p: SchoolProfile): StatusTableDef[] {
   const htDropout = htDropVals.length ? avgOf(htDropVals) : null;
   const htRetention = htDropout == null ? null : 100 - htDropout;
   // Latest month's leadership assessment — the profile endpoint returns the
-  // development records sorted oldest → newest.
-  const htLeadFlags = dev.filter((d) => d.headTeacherLeadershipGood != null);
-  const htLeadership = htLeadFlags.length ? Boolean(htLeadFlags[htLeadFlags.length - 1].headTeacherLeadershipGood) : null;
+  // development records sorted oldest → newest. Records saved before the
+  // Strong/Moderate/Weak scale only carry the legacy good/needs-improvement flag.
+  const leadershipOf = (d: { headTeacherLeadership?: string | null; headTeacherLeadershipGood?: boolean | null }) =>
+    d.headTeacherLeadership ?? (d.headTeacherLeadershipGood == null ? null : d.headTeacherLeadershipGood ? 'strong' : 'weak');
+  const htLeadValues = dev.map(leadershipOf).filter((v): v is string => v != null);
+  const htLeadership = htLeadValues.length ? htLeadValues[htLeadValues.length - 1] : null;
+  const htLeadershipGrade = htLeadership ? LEADERSHIP_GRADE[htLeadership] ?? null : null;
 
   /* ── Revenue (auto, target vs achievement across all fee types) ──
      Mirrors the Programme Overview definitions:
@@ -833,7 +850,7 @@ function buildStatusTables(p: SchoolProfile): StatusTableDef[] {
       graded: true,
       rows: [
         { indicator: 'Yearly Dropout Rate', status: pctStr(htDropout), kind: 'percent', pct: htRetention, gradeBasis: `retention ${pctStr(htRetention)}` },
-        { indicator: 'Leadership Status of HT', status: htLeadership == null ? 'Not reported' : yn(htLeadership), kind: 'yesno', yes: htLeadership ?? undefined },
+        { indicator: 'Leadership Status of HT', status: htLeadership == null ? 'Not reported' : LEADERSHIP_LABEL[htLeadership] ?? htLeadership, kind: 'grade', grade: htLeadershipGrade ?? undefined },
       ],
     },
     {
@@ -976,6 +993,7 @@ function RatingModal({
               <p className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full bg-yellow-400" /> 1.50 – 2.49 → B / Yellow</p>
               <p className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full bg-red-400" /> &lt; 1.50 → C / Red</p>
               <p className="pt-0.5 text-[11px] text-gray-400">Yes = Green (3) · No = Red (1)</p>
+              <p className="text-[11px] text-gray-400">Strong = A (3) · Moderate = B (2) · Weak = C (1)</p>
             </div>
           </div>
         </div>
@@ -1019,7 +1037,7 @@ function RatingModal({
                             )}
                           </td>
                           <td className="w-16 px-3 py-1.5 text-center">
-                            <GradePill grade={r.kind === 'yesno' ? (r.yes ? 'A' : 'C') : pctToGrade(r.pct!)} />
+                            <GradePill grade={r.kind === 'yesno' ? (r.yes ? 'A' : 'C') : r.kind === 'grade' ? r.grade! : pctToGrade(r.pct!)} />
                           </td>
                           <td className="w-12 px-3 py-1.5 text-center font-semibold text-gray-500">
                             {excluded ? <span className="text-gray-300">—</span> : pt}

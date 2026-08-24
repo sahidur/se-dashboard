@@ -482,6 +482,8 @@ export interface DcTeacherIndividual {
   updatedAt: string;
 }
 
+export type HeadTeacherLeadership = 'strong' | 'moderate' | 'weak';
+
 export interface DcTeachersDevelopment {
   id: string;
   schoolId: string;
@@ -496,7 +498,9 @@ export interface DcTeachersDevelopment {
   others: number;
   teacherDropoutRate?: number | null;
   headTeacherDropoutRate?: number | null;
+  /** @deprecated Superseded by `headTeacherLeadership`. */
   headTeacherLeadershipGood?: boolean | null;
+  headTeacherLeadership?: HeadTeacherLeadership | null;
   createdById: string;
   createdBy?: { id: string; firstName: string; lastName: string };
   createdAt: string;

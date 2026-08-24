@@ -16,7 +16,7 @@ import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import api from '@/lib/api';
 import { buildYearOptions } from '@/lib/utils';
-import type { DcSchool, DcTeachersDevelopment } from '@/types';
+import type { DcSchool, DcTeachersDevelopment, HeadTeacherLeadership } from '@/types';
 
 /* ─── Constants ────────────────────────────────── */
 
@@ -43,8 +43,14 @@ interface FormState {
   others: number;
   teacherDropoutRate: number;
   headTeacherDropoutRate: number;
-  headTeacherLeadershipGood: boolean;
+  headTeacherLeadership: HeadTeacherLeadership;
 }
+
+const LEADERSHIP_OPTIONS: { value: HeadTeacherLeadership; label: string }[] = [
+  { value: 'strong',   label: 'Strong' },
+  { value: 'moderate', label: 'Moderate' },
+  { value: 'weak',     label: 'Weak' },
+];
 
 const BLANK_FORM: FormState = {
   onlineRefresher: 0,
@@ -56,10 +62,10 @@ const BLANK_FORM: FormState = {
   others: 0,
   teacherDropoutRate: 0,
   headTeacherDropoutRate: 0,
-  headTeacherLeadershipGood: true,
+  headTeacherLeadership: 'strong',
 };
 
-const DEV_FIELDS: { key: keyof Omit<FormState, 'headTeacherLeadershipGood'>; label: string }[] = [
+const DEV_FIELDS: { key: keyof Omit<FormState, 'headTeacherLeadership'>; label: string }[] = [
   { key: 'onlineRefresher',     label: 'Online Refresher' },
   { key: 'offlineRefresher',    label: 'Offline Refresher' },
   { key: 'developmentForum',    label: 'Development Forum' },
@@ -68,6 +74,13 @@ const DEV_FIELDS: { key: keyof Omit<FormState, 'headTeacherLeadershipGood'>; lab
   { key: 'leadershipTraining',  label: 'Leadership Training' },
   { key: 'others',              label: 'Others' },
 ];
+
+/** Records saved before the 3-level scale only carry the old Good/Needs-Improvement boolean. */
+function resolveLeadership(r: DcTeachersDevelopment): HeadTeacherLeadership {
+  if (r.headTeacherLeadership) return r.headTeacherLeadership;
+  if (r.headTeacherLeadershipGood === false) return 'weak';
+  return 'strong';
+}
 
 interface Props { schoolId: string }
 
@@ -167,7 +180,7 @@ export function TeachersDevForm({ schoolId }: Props) {
           others:              existing.others,
           teacherDropoutRate:      Number(existing.teacherDropoutRate ?? 0),
           headTeacherDropoutRate:  Number(existing.headTeacherDropoutRate ?? 0),
-          headTeacherLeadershipGood: existing.headTeacherLeadershipGood ?? true,
+          headTeacherLeadership:   resolveLeadership(existing),
         });
         setIsEditing(true);
       } else {
@@ -205,7 +218,7 @@ export function TeachersDevForm({ schoolId }: Props) {
     loadEntry(y, r.month);
   };
 
-  const setField = (k: keyof FormState, v: number) =>
+  const setField = (k: keyof Omit<FormState, 'headTeacherLeadership'>, v: number) =>
     setForm((prev) => ({ ...prev, [k]: v }));
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -457,13 +470,14 @@ export function TeachersDevForm({ schoolId }: Props) {
                     <div>
                       <Label className="mb-1.5 block text-xs font-medium text-gray-600">Head Teacher Leadership</Label>
                       <select
-                        value={form.headTeacherLeadershipGood ? 'yes' : 'no'}
-                        onChange={(e) => setForm((prev) => ({ ...prev, headTeacherLeadershipGood: e.target.value === 'yes' }))}
+                        value={form.headTeacherLeadership}
+                        onChange={(e) => setForm((prev) => ({ ...prev, headTeacherLeadership: e.target.value as HeadTeacherLeadership }))}
                         disabled={!academicYear || !month}
                         className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300 disabled:opacity-50"
                       >
-                        <option value="yes">Good / Effective</option>
-                        <option value="no">Needs Improvement</option>
+                        {LEADERSHIP_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
                       </select>
                     </div>
                   </div>

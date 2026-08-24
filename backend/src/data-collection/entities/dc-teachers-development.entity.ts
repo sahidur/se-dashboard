@@ -65,9 +65,13 @@ export class DcTeachersDevelopment {
   @Column({ name: 'head_teacher_dropout_rate', type: 'decimal', precision: 5, scale: 2, nullable: true })
   headTeacherDropoutRate: number | null;
 
-  /** Whether the head teacher's leadership is assessed as good/effective. */
+  /** @deprecated Superseded by `headTeacherLeadership`; kept so historic records stay readable. */
   @Column({ name: 'head_teacher_leadership_good', type: 'boolean', nullable: true, default: null })
   headTeacherLeadershipGood: boolean | null;
+
+  /** Head teacher leadership assessment: strong | moderate | weak. */
+  @Column({ name: 'head_teacher_leadership', type: 'varchar', length: 20, nullable: true })
+  headTeacherLeadership: string | null;
 
   @ManyToOne(() => User)
   @JoinColumn({ name: 'created_by_id' })

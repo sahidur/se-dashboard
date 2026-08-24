@@ -324,6 +324,7 @@ export class UpsertTeachersDevelopmentDto {
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(100) teacherDropoutRate?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(100) headTeacherDropoutRate?: number;
   @IsOptional() @IsBoolean() headTeacherLeadershipGood?: boolean;
+  @IsOptional() @IsString() @IsIn(['strong', 'moderate', 'weak']) headTeacherLeadership?: string;
 }
 
 // ===================== Fee Structure =====================
