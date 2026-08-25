@@ -243,6 +243,22 @@ export const STUDENT_PERFORMANCE_SECTIONS: StudentPerformanceSection[] = [
   },
 ];
 
+/**
+ * A school only sees the performance section matching its own category:
+ * BRAC Academy -> BA, BRAC Primary -> BPS, BRAC Secondary -> BSS.
+ */
+export const SECTION_BY_SCHOOL_CATEGORY: Record<string, StudentPerformanceSection['key']> = {
+  brac_academy: 'ba',
+  brac_primary: 'bps',
+  brac_secondary: 'bss',
+};
+
+/** Sections applicable to the given school category (empty when unknown/missing). */
+export function getSectionsForSchoolCategory(category?: string | null): StudentPerformanceSection[] {
+  const key = category ? SECTION_BY_SCHOOL_CATEGORY[category] : undefined;
+  return key ? STUDENT_PERFORMANCE_SECTIONS.filter((s) => s.key === key) : [];
+}
+
 /* ─── Forms ──────────────────────────────────────────────── */
 
 export const STUDENT_PERFORMANCE_FORMS: StudentPerformanceFormDef[] = [
@@ -257,7 +273,7 @@ export const STUDENT_PERFORMANCE_FORMS: StudentPerformanceFormDef[] = [
     grades: ['Play & Learn'],
     rowHeader: 'Indicators',
     periodLabel: 'Evaluation Period',
-    appearedLabel: 'Students appeared in the Evaluation (%)',
+    appearedLabel: 'Students appeared in the Evaluation (Number)',
     scale: FOUR_POINT,
   },
   {
@@ -271,7 +287,7 @@ export const STUDENT_PERFORMANCE_FORMS: StudentPerformanceFormDef[] = [
     grades: ['Nursery'],
     rowHeader: 'Indicators',
     periodLabel: 'Evaluation Period',
-    appearedLabel: 'Students appeared in the Evaluation (%)',
+    appearedLabel: 'Students appeared in the Evaluation (Number)',
     scale: FOUR_POINT,
   },
   {
@@ -285,7 +301,7 @@ export const STUDENT_PERFORMANCE_FORMS: StudentPerformanceFormDef[] = [
     grades: ['G1', 'G2', 'G3', 'G4', 'G5'],
     rowHeader: 'Subjects',
     periodLabel: 'Assessment Period',
-    appearedLabel: 'Students appeared in the exam (%)',
+    appearedLabel: 'Students appeared in the exam (Number)',
     scale: FOUR_POINT,
   },
   {
@@ -300,7 +316,7 @@ export const STUDENT_PERFORMANCE_FORMS: StudentPerformanceFormDef[] = [
     rowHeader: 'Indicators',
     grouped: true,
     periodLabel: 'Evaluation Period',
-    appearedLabel: 'Students appeared in the Evaluation (%)',
+    appearedLabel: 'Students appeared in the Evaluation (Number)',
     scale: THREE_POINT,
   },
   {
@@ -314,7 +330,7 @@ export const STUDENT_PERFORMANCE_FORMS: StudentPerformanceFormDef[] = [
     grades: ['Nursery', 'G1', 'G2', 'G3', 'G4', 'G5'],
     rowHeader: 'Subjects',
     periodLabel: 'Assessment Period',
-    appearedLabel: 'Students appeared in the exam (%)',
+    appearedLabel: 'Students appeared in the exam (Number)',
     scale: LETTER_GRADES,
   },
   {
@@ -328,7 +344,7 @@ export const STUDENT_PERFORMANCE_FORMS: StudentPerformanceFormDef[] = [
     grades: ['G6', 'G7', 'G8', 'G9', 'G10', 'SSC'],
     rowHeader: 'Subjects',
     periodLabel: 'Assessment Period',
-    appearedLabel: 'Students appeared in the exam (%)',
+    appearedLabel: 'Students appeared in the exam (Number)',
     scale: LETTER_GRADES,
   },
 ];
@@ -356,4 +372,18 @@ export function getSection(key: string): StudentPerformanceSection | undefined {
 
 export function getSectionForms(key: string): StudentPerformanceFormDef[] {
   return STUDENT_PERFORMANCE_FORMS.filter((f) => f.sectionKey === key);
+}
+
+/** Replace "Play & Learn" with "Play World" for BRAC Academy schools. */
+export function getGradeDisplayName(value: string, schoolCategory?: string | null): string {
+  if (schoolCategory === 'brac_academy' && value === 'Play & Learn') return 'Play World';
+  return value;
+}
+
+/** Get display label for a student-performance form, replacing "Play & Learn" with "Play World" for BRAC Academy. */
+export function getFormDisplayLabel(form: StudentPerformanceFormDef, schoolCategory?: string | null): string {
+  if (schoolCategory === 'brac_academy') {
+    return form.label.replace('Play & Learn', 'Play World');
+  }
+  return form.label;
 }

@@ -441,11 +441,11 @@ export default function DcSchoolsPage() {
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between border-t border-gray-100 bg-gray-50/50 px-4 py-2.5">
-                <p className="text-xs text-gray-500">
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-gray-100 bg-gray-50/50 px-4 py-2.5">
+                <p className="order-last w-full text-xs text-gray-500 sm:order-first sm:w-auto">
                   Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
                 </p>
-                <div className="flex items-center gap-1">
+                <div className="flex flex-wrap items-center gap-1">
                   <button
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
                     disabled={page === 1}

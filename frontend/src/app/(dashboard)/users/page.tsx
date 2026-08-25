@@ -34,8 +34,7 @@ import {
 import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth-store';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
-import type { User, Role, GeoLocation, PaginatedResponse } from '@/types';
-import { USER_DESIGNATIONS } from '@/types';
+import type { User, Role, GeoLocation, PaginatedResponse, UserDesignation } from '@/types';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 
 export default function UsersPage() {
@@ -73,6 +72,15 @@ export default function UsersPage() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const { data: designations = [] } = useQuery<UserDesignation[]>({
+    queryKey: ['user-designations'],
+    queryFn: () =>
+      api
+        .get<UserDesignation[]>('/user-designations', { params: { activeOnly: true } })
+        .then((r) => r.data),
+    staleTime: 5 * 60 * 1000,
+  });
+
   const users: User[] = usersData?.data || [];
   const meta = usersData?.meta || { total: 0, totalPages: 0 };
 
@@ -95,6 +103,17 @@ export default function UsersPage() {
   const [saving, setSaving] = useState(false);
   const [uploadingPicture, setUploadingPicture] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Designation options for the dropdown. If the selected user has a
+  // designation that is no longer active, keep it selectable so saving
+  // doesn't silently clear it.
+  const designationOptions = [
+    ...designations.map((d) => ({ value: d.name, label: d.name })),
+    ...(formData.designation &&
+    !designations.some((d) => d.name === formData.designation)
+      ? [{ value: formData.designation, label: `${formData.designation} (inactive)` }]
+      : []),
+  ];
 
   // Reset password modal
   const [resetModal, setResetModal] = useState<{ open: boolean; userId: string; userName: string }>({
@@ -517,13 +536,13 @@ export default function UsersPage() {
 
         {/* Pagination */}
         {meta.totalPages > 1 && (
-          <div className="mt-6 flex items-center justify-between rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-            <p className="text-sm text-gray-500">
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+            <p className="order-last w-full text-sm text-gray-500 sm:order-first sm:w-auto">
               Page <span className="font-semibold text-gray-900">{page}</span> of{' '}
               <span className="font-semibold text-gray-900">{meta.totalPages}</span>
               <span className="ml-2 text-gray-400">({meta.total} total)</span>
             </p>
-            <div className="flex gap-1">
+            <div className="flex flex-wrap gap-1">
               <button
                 onClick={() => setPage(Math.max(1, page - 1))}
                 disabled={page <= 1}
@@ -656,7 +675,7 @@ export default function UsersPage() {
               placeholder="Select designation"
               value={formData.designation}
               onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
-              options={USER_DESIGNATIONS.map((d) => ({ value: d, label: d }))}
+              options={designationOptions}
             />
             <Input
               label="Base"

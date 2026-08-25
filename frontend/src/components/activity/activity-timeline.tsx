@@ -307,7 +307,8 @@ function TimelineItem({ log, showActor }: { log: AuditLogEntry; showActor?: bool
 
               {open && (
                 <div className="mt-2 overflow-hidden rounded-lg border border-gray-100">
-                  <table className="w-full text-left text-xs">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
                     <thead className="bg-gray-50 text-[10px] uppercase tracking-wide text-gray-400">
                       <tr>
                         <th className="px-2.5 py-1.5 font-semibold">Field</th>
@@ -335,6 +336,7 @@ function TimelineItem({ log, showActor }: { log: AuditLogEntry; showActor?: bool
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               )}
             </div>

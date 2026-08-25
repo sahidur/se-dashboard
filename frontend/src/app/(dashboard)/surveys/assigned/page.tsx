@@ -100,10 +100,10 @@ export default function AssignedSurveysPage() {
                 className="cursor-pointer transition-shadow hover:shadow-md"
                 onClick={() => router.push(`/surveys/${survey.id}`)}
               >
-                <CardContent className="flex items-center justify-between p-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-gray-900">
+                <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <h3 className="break-words font-semibold text-gray-900">
                         {survey.title}
                       </h3>
                       <Badge variant={statusColor(survey.status) as any}>
@@ -115,7 +115,7 @@ export default function AssignedSurveysPage() {
                         {survey.description}
                       </p>
                     )}
-                    <div className="mt-2 flex items-center gap-4 text-xs text-gray-400">
+                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400">
                       {survey.startDate && (
                         <span className="flex items-center gap-1">
                           <Calendar size={12} />

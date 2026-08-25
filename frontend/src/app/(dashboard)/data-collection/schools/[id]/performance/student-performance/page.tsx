@@ -9,8 +9,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, CheckCircle2, ChevronRight, GraduationCap, XCircle } from 'lucide-react';
 import {
-  STUDENT_PERFORMANCE_SECTIONS,
+  getSectionsForSchoolCategory,
   getSectionForms,
+  getFormDisplayLabel,
 } from '@/components/data-collection/student-performance-catalog';
 import api from '@/lib/api';
 import type { DcSchool, DcStudentPerformance } from '@/types';
@@ -44,8 +45,10 @@ export default function StudentPerformanceHubPage() {
   }, [id, router]);
 
   const countFor = (formKey: string) => records.filter((r) => r.formKey === formKey).length;
-  const totalForms = STUDENT_PERFORMANCE_SECTIONS.reduce((n, s) => n + getSectionForms(s.key).length, 0);
-  const doneForms = STUDENT_PERFORMANCE_SECTIONS
+  // Only the section matching this school's own category (BA/BPS/BSS) is shown.
+  const visibleSections = getSectionsForSchoolCategory(school?.schoolCategory);
+  const totalForms = visibleSections.reduce((n, s) => n + getSectionForms(s.key).length, 0);
+  const doneForms = visibleSections
     .flatMap((s) => getSectionForms(s.key))
     .filter((f) => countFor(f.key) > 0).length;
 
@@ -100,7 +103,20 @@ export default function StudentPerformanceHubPage() {
         </Card>
 
         <div className="space-y-6">
-          {STUDENT_PERFORMANCE_SECTIONS.map((section) => {
+          {visibleSections.length === 0 && (
+            <Card className="overflow-hidden">
+              <CardContent className="flex flex-col items-center justify-center py-14 text-gray-400">
+                <GraduationCap size={40} className="mb-3 opacity-20" />
+                <p className="text-sm font-medium">No Student Performance forms available.</p>
+                <p className="mt-1 text-xs opacity-70">
+                  {school?.schoolCategory
+                    ? 'This school type has no applicable BA/BPS/BSS performance forms.'
+                    : 'This school has no category assigned, so no performance forms apply.'}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+          {visibleSections.map((section) => {
             const forms = getSectionForms(section.key);
             return (
               <section key={section.key}>
@@ -145,7 +161,7 @@ export default function StudentPerformanceHubPage() {
                               Form {form.formNo}
                             </p>
                             <h4 className="mb-1 font-semibold text-gray-900 transition-colors group-hover:text-brand-600">
-                              {form.label}
+                              {getFormDisplayLabel(form, school?.schoolCategory)}
                             </h4>
                             <p className="text-xs text-gray-400">{form.description}</p>
                             <div className="mt-auto flex items-center gap-1 pt-3 text-xs font-medium text-brand-600 opacity-0 transition-opacity group-hover:opacity-100">

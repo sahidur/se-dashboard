@@ -341,7 +341,7 @@ export default function EditSurveyPage() {
         title="Edit Survey"
         subtitle="Modify your draft survey"
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -356,7 +356,7 @@ export default function EditSurveyPage() {
               onClick={() => handleSave('draft')}
               loading={saving}
             >
-              <Save size={16} className="mr-1" /> Save Draft
+              <Save size={16} className="mr-1" /> <span className="hidden sm:inline">Save Draft</span><span className="sm:hidden">Save</span>
             </Button>
             <Button
               size="sm"

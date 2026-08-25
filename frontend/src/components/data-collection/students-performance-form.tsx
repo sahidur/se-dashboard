@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
+import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
 import { useAuthStore } from '@/store/auth-store';
 import api from '@/lib/api';
 import { buildYearOptions } from '@/lib/utils';
@@ -306,7 +307,7 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-teal-400 focus:border-teal-400 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <option value="">Select grade…</option>
-                    {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+                    {GRADES.map((g) => <option key={g} value={g}>{getGradeDisplayName(g, school?.schoolCategory)}</option>)}
                   </select>
                 </div>
 
@@ -395,7 +396,7 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
               {isPlayLearn && (
                 <div>
                   <p className="mb-3 text-sm font-medium text-gray-700">
-                    Progress Indicators <span className="text-xs font-normal text-gray-400">(Play &amp; Learn only)</span>
+                    Progress Indicators <span className="text-xs font-normal text-gray-400">({getGradeDisplayName('Play & Learn', school?.schoolCategory)} only)</span>
                   </p>
                   <div className="grid gap-3 sm:grid-cols-3">
                     {PROGRESS_FIELDS.map(({ key, label }) => (
@@ -456,7 +457,7 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
         <Card key={grade} className="overflow-hidden">
           <CardHeader className="pb-2 pt-4 px-6">
             <CardTitle className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-              {grade}
+              {getGradeDisplayName(grade, school?.schoolCategory)}
               <Badge variant="default">{rows.length} exam{rows.length > 1 ? 's' : ''}</Badge>
             </CardTitle>
           </CardHeader>

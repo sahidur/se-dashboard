@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/header';
 import { Card, CardContent } from '@/components/ui/card';
@@ -9,7 +9,9 @@ import { ArrowLeft } from 'lucide-react';
 import { findFormByKey } from '@/components/data-collection/form-catalog';
 import { FormDataViewer } from '@/components/data-collection/form-data-viewer';
 import { StudentPerformanceViewer } from '@/components/data-collection/student-performance-viewer';
-import { getStudentPerformanceForm, type StudentPerformanceFormKey } from '@/components/data-collection/student-performance-catalog';
+import { getStudentPerformanceForm, getFormDisplayLabel, type StudentPerformanceFormKey } from '@/components/data-collection/student-performance-catalog';
+import api from '@/lib/api';
+import type { DcSchool } from '@/types';
 
 /* ─── Page ───────────────────────────────────────────────── */
 
@@ -22,6 +24,16 @@ export default function FormDataViewerPage() {
   const formKey = String(params?.formKey ?? '');
   const schoolName = searchParams.get('schoolName') ?? '';
   const schoolCode = searchParams.get('schoolCode') ?? '';
+
+  const [school, setSchool] = useState<DcSchool | null>(null);
+
+  useEffect(() => {
+    if (schoolId) {
+      api.get(`/data-collection/schools/${schoolId}`)
+        .then(({ data }) => setSchool(data))
+        .catch(() => {});
+    }
+  }, [schoolId]);
 
   // NOTE: findFormByKey() returns a brand-new object literal on every call, so it
   // must be memoized on the primitive `formKey` — otherwise `found` gets a new
@@ -58,6 +70,11 @@ export default function FormDataViewerPage() {
   const CategoryIcon = category.icon;
   const FormIcon = form.icon;
 
+  // For student performance forms, use dynamic label based on school category
+  const displayLabel = isStudentPerf && studentPerfKey
+    ? getFormDisplayLabel(getStudentPerformanceForm(studentPerfKey)!, school?.schoolCategory)
+    : form.label;
+
   const backButton = (
     <Button
       variant="outline" size="sm"
@@ -71,7 +88,7 @@ export default function FormDataViewerPage() {
   return (
     <>
       <Header
-        title={form.group ? `${form.group} — ${form.label}` : form.label}
+        title={form.group ? `${form.group} — ${displayLabel}` : displayLabel}
         subtitle={[schoolName, category.label].filter(Boolean).join(' • ')}
         actions={backButton}
       />
@@ -86,7 +103,7 @@ export default function FormDataViewerPage() {
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-base font-semibold text-gray-900">{form.label}</h2>
+                <h2 className="text-base font-semibold text-gray-900">{displayLabel}</h2>
                 <span className={`inline-flex items-center gap-1 rounded-full ${category.bg} px-2 py-0.5 text-[11px] font-medium ${category.text}`}>
                   <CategoryIcon size={11} /> {category.label}
                 </span>
@@ -101,6 +118,7 @@ export default function FormDataViewerPage() {
             schoolId={schoolId}
             formKey={studentPerfKey as StudentPerformanceFormKey}
             fileBase={fileBase}
+            schoolCategory={school?.schoolCategory}
           />
         ) : (
           <FormDataViewer schoolId={schoolId} category={category} form={form} fileBase={fileBase} />

@@ -898,28 +898,28 @@ export default function FillSurveyPage() {
                           <CheckCircle2 size={24} className="text-green-600" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-green-900 text-lg">{selectedSchoolRecord.name}</p>
+                          <p className="break-words font-semibold text-green-900 text-lg">{selectedSchoolRecord.name}</p>
                           <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
                             {selectedSchoolRecord.school && (
                               <div className="flex items-center gap-1.5 text-green-700">
-                                <School size={14} />
-                                <span>School: {selectedSchoolRecord.school.name}</span>
+                                <School size={14} className="shrink-0" />
+                                <span className="min-w-0 break-words">School: {selectedSchoolRecord.school.name}</span>
                               </div>
                             )}
                             <div className="flex items-center gap-1.5 text-green-700">
-                              <Info size={14} />
+                              <Info size={14} className="shrink-0" />
                               <span>ID: {selectedSchoolRecord.id.slice(0, 8)}...</span>
                             </div>
                             <div className="flex items-center gap-1.5 text-green-700">
-                              <Building2 size={14} />
+                              <Building2 size={14} className="shrink-0" />
                               <span>Created: {new Date(selectedSchoolRecord.createdAt).toLocaleDateString()}</span>
                             </div>
                             {selectedSchoolRecord.metadata && Object.keys(selectedSchoolRecord.metadata).length > 0 && (
                               <>
                                 {Object.entries(selectedSchoolRecord.metadata).slice(0, 3).map(([key, val]) => (
                                   <div key={key} className="flex items-center gap-1.5 text-green-700">
-                                    <Info size={14} />
-                                    <span className="capitalize">{key}: {String(val)}</span>
+                                    <Info size={14} className="shrink-0" />
+                                    <span className="capitalize min-w-0 break-words">{key}: {String(val)}</span>
                                   </div>
                                 ))}
                               </>

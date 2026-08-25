@@ -300,7 +300,7 @@ export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmi
       <div
         key={step}
         className={cn(
-          'rounded-2xl border border-gray-200 bg-white p-6 shadow-sm',
+          'rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6',
           direction === 'fwd' ? 'animate-slideUp' : 'animate-fadeIn',
         )}
       >
@@ -447,7 +447,7 @@ export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmi
                     <button
                       type="button"
                       onClick={() => removeAttachment(a.key)}
-                      className="absolute right-1.5 top-1.5 rounded-full bg-black/50 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                      className="absolute right-1.5 top-1.5 rounded-full bg-black/50 p-1 text-white opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -504,10 +504,10 @@ export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmi
                     key={sec.number}
                     type="button"
                     onClick={() => goTo(FIRST_SECTION_STEP + i)}
-                    className="flex w-full items-center justify-between rounded-xl border border-gray-200 px-4 py-2.5 text-left transition-colors hover:bg-gray-50"
+                    className="flex w-full flex-col items-start gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-left transition-colors hover:bg-gray-50 sm:flex-row sm:items-center sm:justify-between"
                   >
-                    <span className="text-sm font-medium text-gray-800">{sec.number}. {sec.title}</span>
-                    <span className="flex items-center gap-2 text-xs">
+                    <span className="min-w-0 break-words text-sm font-medium text-gray-800">{sec.number}. {sec.title}</span>
+                    <span className="flex shrink-0 flex-wrap items-center gap-2 text-xs">
                       <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-700">{yes} Yes</span>
                       <span className="rounded-full bg-red-100 px-2 py-0.5 text-red-700">{no} No</span>
                       <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600">{na} N/A</span>
@@ -521,10 +521,10 @@ export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmi
       </div>
 
       {/* Navigation */}
-      <div className="mt-5 flex items-center justify-between">
+      <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           {step > HEADER_STEP ? (
-            <Button type="button" variant="outline" onClick={prev}>
+            <Button type="button" variant="outline" onClick={prev} className="w-full sm:w-auto">
               <ChevronLeft className="mr-1 h-4 w-4" /> Back
             </Button>
           ) : (
@@ -614,7 +614,7 @@ function GradeMultiSelect({ value, onChange }: { value: string[]; onChange: (v: 
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex h-10 w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+        className="flex min-h-10 w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-left text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
       >
         <span className={cn('flex flex-1 flex-wrap items-center gap-1', value.length === 0 && 'text-gray-400')}>
           <GraduationCap className="h-4 w-4 shrink-0 text-gray-400" />

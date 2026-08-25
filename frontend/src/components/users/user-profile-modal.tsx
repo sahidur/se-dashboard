@@ -228,12 +228,12 @@ export function UserProfileModal({ isOpen, onClose, user, onEdit }: UserProfileM
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 border-b border-gray-100 bg-white px-4 pt-3">
+          <div className="flex gap-1 overflow-x-auto border-b border-gray-100 bg-white px-4 pt-3">
             {(['overview', 'schools', 'activity'] as Tab[]).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
-                className={`rounded-t-lg px-3 py-2 text-sm font-medium capitalize transition-colors ${
+                className={`shrink-0 whitespace-nowrap rounded-t-lg px-3 py-2 text-sm font-medium capitalize transition-colors ${
                   tab === t
                     ? 'border-b-2 border-brand-600 text-brand-700'
                     : 'text-gray-500 hover:text-gray-700'
@@ -285,7 +285,7 @@ export function UserProfileModal({ isOpen, onClose, user, onEdit }: UserProfileM
                     </div>
                     {newPassword && (
                       <div className="mt-3 flex items-center gap-2">
-                        <code className="flex-1 select-all rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-mono font-semibold text-gray-900">
+                        <code className="min-w-0 flex-1 select-all truncate rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-mono font-semibold text-gray-900">
                           {newPassword}
                         </code>
                         <button
@@ -359,7 +359,7 @@ export function UserProfileModal({ isOpen, onClose, user, onEdit }: UserProfileM
                   emptyLabel="No activity matches these filters"
                 />
                 {totalPages > 1 && (
-                  <div className="flex items-center justify-center gap-3 border-t border-gray-100 pt-4">
+                  <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 border-t border-gray-100 pt-4">
                     <Button
                       size="sm"
                       variant="outline"

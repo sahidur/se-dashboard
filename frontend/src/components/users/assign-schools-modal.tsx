@@ -215,7 +215,7 @@ export function AssignSchoolsModal({
           )}
         </div>
 
-        <div className="flex items-center justify-between pt-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
           <p className="text-xs text-gray-500">{selectedIds.length} selected</p>
           <div className="flex gap-3">
             <Button variant="outline" onClick={handleClose}>Cancel</Button>

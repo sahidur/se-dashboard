@@ -111,7 +111,7 @@ export default function SurveyResponsesPage() {
         title={`Responses: ${survey.title}`}
         subtitle={`${totalResponses} total responses`}
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -178,9 +178,9 @@ export default function SurveyResponsesPage() {
           {/* Filters */}
           <Card>
             <CardContent className="p-4">
-              <div className="flex items-center gap-4">
-                <Filter size={16} className="text-gray-400" />
-                <span className="text-sm font-medium text-gray-700">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <Filter size={16} className="text-gray-400" />
                   Filter by date:
                 </span>
                 <Input
@@ -190,10 +190,9 @@ export default function SurveyResponsesPage() {
                     setStartDateFilter(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="w-40"
+                  className="w-full sm:w-40"
                   placeholder="From"
                 />
-                <span className="text-gray-400">to</span>
                 <Input
                   type="date"
                   value={endDateFilter}
@@ -201,7 +200,7 @@ export default function SurveyResponsesPage() {
                     setEndDateFilter(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="w-40"
+                  className="w-full sm:w-40"
                   placeholder="To"
                 />
                 {(startDateFilter || endDateFilter) && (
@@ -238,15 +237,15 @@ export default function SurveyResponsesPage() {
                   {responses.map((resp) => (
                     <div
                       key={resp.id}
-                      className="flex items-center justify-between rounded-lg border border-gray-100 p-3 hover:bg-gray-50"
+                      className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 p-3 hover:bg-gray-50"
                     >
-                      <div>
-                        <p className="text-sm font-medium">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">
                           {resp.respondent
                             ? `${resp.respondent.firstName} ${resp.respondent.lastName}`
                             : 'Anonymous'}
                         </p>
-                        <p className="text-xs text-gray-400">
+                        <p className="break-all text-xs text-gray-400">
                           {resp.respondent?.email && (
                             <span className="mr-3">
                               {resp.respondent.email}
@@ -258,7 +257,7 @@ export default function SurveyResponsesPage() {
                           )}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex shrink-0 items-center gap-2">
                         <Badge
                           variant={resp.isComplete ? 'success' : 'warning'}
                         >
@@ -280,7 +279,7 @@ export default function SurveyResponsesPage() {
 
                   {/* Pagination */}
                   {totalPages > 1 && (
-                    <div className="flex items-center justify-between pt-4">
+                    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pt-4">
                       <p className="text-sm text-gray-500">
                         Page {currentPage} of {totalPages}
                       </p>

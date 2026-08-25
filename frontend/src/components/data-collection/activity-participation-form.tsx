@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
+import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
 import { useAuthStore } from '@/store/auth-store';
 import api from '@/lib/api';
 import { buildYearOptions, resolveAssetUrl } from '@/lib/utils';
@@ -342,7 +343,7 @@ export function ActivityParticipationForm({ schoolId }: Props) {
                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-amber-400 focus:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <option value="">Select grade…</option>
-                    {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+                    {GRADES.map((g) => <option key={g} value={g}>{getGradeDisplayName(g, school?.schoolCategory)}</option>)}
                   </select>
                 </div>
               </div>
@@ -502,7 +503,7 @@ export function ActivityParticipationForm({ schoolId }: Props) {
                       <td className="py-2.5 pr-3 text-gray-700">{rec.month}</td>
                       <td className="py-2.5 pr-3">
                         <Badge variant="default" className="text-amber-700 border-amber-200 bg-amber-50 font-medium">
-                          {rec.grade}
+                          {getGradeDisplayName(rec.grade, school?.schoolCategory)}
                         </Badge>
                       </td>
                       <td className="py-2.5 pr-3 text-gray-700 max-w-[220px] truncate">{rec.activityName || '—'}</td>

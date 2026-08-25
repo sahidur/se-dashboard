@@ -19,7 +19,7 @@ export interface StudentPerformanceRow {
   label: string;
   /** Optional domain grouping (BPS Form 1). */
   domain?: string;
-  /** Scale label -> percentage, e.g. { Excellent: 40, Good: 35, ... }. */
+  /** Scale label -> number of students, e.g. { Excellent: 10, Good: 15 }. */
   values: Record<string, number>;
 }
 
@@ -62,8 +62,8 @@ export class DcStudentPerformance {
   @Column({ name: 'number_of_students', type: 'int', default: 0 })
   numberOfStudents: number;
 
-  /** % of students who appeared in the evaluation/exam */
-  @Column({ name: 'appeared_percent', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  /** Number of students who appeared in the evaluation/exam */
+  @Column({ name: 'appeared_percent', type: 'int', nullable: true })
   appearedPercent: number;
 
   @Column({ type: 'jsonb' })

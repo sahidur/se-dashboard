@@ -654,7 +654,7 @@ function RecordCard({
             {fields.map((c) => (
               <div key={c} className="rounded-xl border border-gray-100 bg-gray-50/50 px-3 py-2.5">
                 <dt className="text-[11px] font-medium uppercase tracking-wider text-gray-500">{humanizeKey(c)}</dt>
-                <dd className="mt-1 text-sm font-medium text-gray-800">
+                <dd className="mt-1 text-sm font-medium text-gray-800 break-words">
                   <CellValue value={row[c]} kind={kinds[c]} fieldKey={c} />
                 </dd>
               </div>

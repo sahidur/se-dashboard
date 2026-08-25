@@ -9,6 +9,7 @@ import { RolesModule } from './roles/roles.module';
 import { SurveysModule } from './surveys/surveys.module';
 import { FilesModule } from './files/files.module';
 import { GeoLocationsModule } from './geo-locations/geo-locations.module';
+import { UserDesignationsModule } from './user-designations/user-designations.module';
 import { RecycleBinModule } from './recycle-bin/recycle-bin.module';
 import { DataCollectionModule } from './data-collection/data-collection.module';
 import { SchoolMonitoringModule } from './school-monitoring/school-monitoring.module';
@@ -69,6 +70,7 @@ import { AuditModule } from './common/audit/audit.module';
     SurveysModule,
     FilesModule,
     GeoLocationsModule,
+    UserDesignationsModule,
     RecycleBinModule,
     DataCollectionModule,
     SchoolMonitoringModule,

@@ -293,13 +293,13 @@ export default function RolesPage() {
               <table className="min-w-full">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                    <th className="px-2 py-2 text-left text-xs font-medium uppercase text-gray-500 sm:px-4">
                       Module
                     </th>
                     {ACTIONS.map((action) => (
                       <th
                         key={action}
-                        className="px-4 py-2 text-center text-xs font-medium uppercase text-gray-500"
+                        className="w-10 px-2 py-2 text-center text-xs font-medium uppercase text-gray-500 sm:px-4"
                       >
                         {action}
                       </th>
@@ -312,23 +312,23 @@ export default function RolesPage() {
                       <tr className="bg-gray-50/70">
                         <td
                           colSpan={ACTIONS.length + 1}
-                          className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400"
+                          className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400 sm:px-4"
                         >
                           {group.label}
                         </td>
                       </tr>
                       {group.modules.map((module) => (
                         <tr key={module.key}>
-                          <td className="px-4 py-2 text-sm font-medium text-gray-700">
+                          <td className="px-2 py-2 text-sm font-medium text-gray-700 sm:px-4">
                             {module.label}
                             {module.description && (
-                              <p className="text-xs font-normal text-gray-400">
+                              <p className="hidden text-xs font-normal text-gray-400 sm:block">
                                 {module.description}
                               </p>
                             )}
                           </td>
                           {ACTIONS.map((action) => (
-                            <td key={action} className="px-4 py-2 text-center">
+                            <td key={action} className="px-2 py-2 text-center sm:px-4">
                               <input
                                 type="checkbox"
                                 checked={hasPermission(module.key, action)}

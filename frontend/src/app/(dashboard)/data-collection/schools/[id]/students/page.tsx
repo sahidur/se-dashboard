@@ -267,13 +267,13 @@ export default function StudentsSubPage() {
         {/* ── Responses Table ── */}
         {showResponses && (
           <Card className="overflow-hidden border-0 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
-            <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
-              <div className="flex items-center gap-2">
-                <TableProperties size={18} className="text-violet-600" />
+            <div className="flex flex-col gap-3 border-b border-gray-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <TableProperties size={18} className="shrink-0 text-violet-600" />
                 <h3 className="font-semibold text-gray-800">Submitted Responses</h3>
                 <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-700">{responses.length}</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {/* Academic year filter */}
                 <select
                   value={filterYear}
@@ -319,8 +319,9 @@ export default function StudentsSubPage() {
                 <p className="text-sm">No entries found{filterMonth ? ` for ${filterMonth}` : ''}.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50/70">
                       <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Year</th>
@@ -438,6 +439,7 @@ export default function StudentsSubPage() {
                     </tfoot>
                   )}
                 </table>
+                </div>
 
                 {/* Month chips legend when showing all */}
                 {!filterMonth && monthsPresent.length > 1 && (
@@ -458,7 +460,7 @@ export default function StudentsSubPage() {
                     })}
                   </div>
                 )}
-              </div>
+              </>
             )}
           </Card>
         )}

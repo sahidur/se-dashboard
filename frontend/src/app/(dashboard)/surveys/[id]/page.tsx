@@ -541,14 +541,14 @@ export default function SurveyDetailPage() {
                             .map((field, i) => (
                               <div
                                 key={field.id}
-                                className="flex items-start justify-between rounded-lg border border-gray-100 bg-gray-50 p-3"
+                                className="flex items-start justify-between gap-2 rounded-lg border border-gray-100 bg-gray-50 p-3"
                               >
-                                <div>
-                                  <div className="flex items-center gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                                     <span className="text-xs font-medium text-gray-400">
                                       {i + 1}.
                                     </span>
-                                    <span className="text-sm font-medium">
+                                    <span className="break-words text-sm font-medium">
                                       {field.label}
                                     </span>
                                     {field.isRequired && (
@@ -578,7 +578,7 @@ export default function SurveyDetailPage() {
                                       </div>
                                     )}
                                 </div>
-                                <Badge variant="info">
+                                <Badge variant="info" className="shrink-0">
                                   {FIELD_TYPE_LABELS[field.fieldType] ||
                                     field.fieldType}
                                 </Badge>
@@ -600,14 +600,14 @@ export default function SurveyDetailPage() {
                         .map((field, i) => (
                           <div
                             key={field.id}
-                            className="flex items-start justify-between rounded-lg border border-gray-100 bg-gray-50 p-3"
+                            className="flex items-start justify-between gap-2 rounded-lg border border-gray-100 bg-gray-50 p-3"
                           >
-                            <div>
-                              <div className="flex items-center gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                                 <span className="text-xs font-medium text-gray-400">
                                   {i + 1}.
                                 </span>
-                                <span className="text-sm font-medium">
+                                <span className="break-words text-sm font-medium">
                                   {field.label}
                                 </span>
                                 {field.isRequired && (
@@ -637,7 +637,7 @@ export default function SurveyDetailPage() {
                                   </div>
                                 )}
                             </div>
-                            <Badge variant="info">
+                            <Badge variant="info" className="shrink-0">
                               {FIELD_TYPE_LABELS[field.fieldType] ||
                                 field.fieldType}
                             </Badge>
@@ -654,7 +654,7 @@ export default function SurveyDetailPage() {
           {activeTab === 'assignments' && (
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <CardTitle className="flex items-center gap-2">
                     <Users size={18} className="text-brand-500" />
                     Survey Assignments
@@ -873,7 +873,7 @@ export default function SurveyDetailPage() {
           {activeTab === 'responses' && (
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <CardTitle className="flex items-center gap-2">
                     <BarChart3 size={18} className="text-brand-500" />
                     Survey Responses

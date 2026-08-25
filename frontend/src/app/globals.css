@@ -105,10 +105,26 @@ body {
   line-height: 1.4rem !important;
 }
 
-/* Slightly heavier weight on label-style small gray text so it reads  */
-/* as an intentional label rather than faded/disabled text.            */
+/* Slightly heavier weight on label-style small gray text so it reads    */
+/* as an intentional label rather than faded/disabled text.              */
 label,
 .form-label {
   color: #374151;
   font-weight: 500;
+}
+
+/* ------------------------------------------------------------------ */
+/* Mobile hardening                                                     */
+/* 1. iOS Safari auto-zooms the page whenever a form control with a     */
+/*    font-size below 16px receives focus, breaking layout on every     */
+/*    input focus. Force 16px controls on small screens.                */
+/* 2. Fixed-position toast notifications must never exceed the          */
+/*    viewport width on phones.                                         */
+/* ------------------------------------------------------------------ */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
 }

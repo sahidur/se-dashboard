@@ -34,12 +34,12 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
   };
 
   return (
-    <header className="sticky top-0 z-30 flex min-h-[64px] items-center justify-between border-b border-gray-200 bg-white px-4 py-3 sm:px-6 sm:py-0 sm:h-16">
+    <header className="sticky top-0 z-30 flex min-h-[64px] items-center justify-between border-b border-gray-200 bg-white py-3 pl-16 pr-4 sm:h-16 sm:py-0 sm:pl-6 sm:pr-6 lg:pl-6">
       <div className="min-w-0 mr-3">
         <h1 className="text-lg font-bold text-gray-900 sm:text-xl truncate">{title}</h1>
         {subtitle && <p className="text-xs text-gray-500 sm:text-sm truncate">{subtitle}</p>}
       </div>
-      <div className="flex shrink-0 items-center gap-2 sm:gap-4">
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-4">
         {actions}
         <button className="relative rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
           <Bell size={20} />

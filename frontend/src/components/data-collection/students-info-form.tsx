@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
+import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
 import api from '@/lib/api';
 import { buildYearOptions } from '@/lib/utils';
 import type { DcSchool, DcStudentsInfo } from '@/types';
@@ -266,7 +267,7 @@ export function StudentsInfoForm({ schoolId }: Props) {
         retentionRate: form.retentionRate,
         remedialSupport: form.remedialSupport,
       });
-      const gradeName = GRADES.find((g) => g.value === grade)?.label ?? grade;
+      const gradeName = getGradeDisplayName(GRADES.find((g) => g.value === grade)?.label ?? grade, school?.schoolCategory);
       const successText = `${month} — ${gradeName} saved successfully!`;
       setSuccessMsg(successText);
       showToast('success', successText);
@@ -292,7 +293,7 @@ export function StudentsInfoForm({ schoolId }: Props) {
 
   /* ─── Derived ─── */
   const fieldsDisabled = !academicYear || !month || !grade || loadingEntry;
-  const gradeLabel = GRADES.find((g) => g.value === grade)?.label ?? '';
+  const gradeLabel = getGradeDisplayName(GRADES.find((g) => g.value === grade)?.label ?? '', school?.schoolCategory);
 
   if (loading) {
     return (
@@ -307,7 +308,7 @@ export function StudentsInfoForm({ schoolId }: Props) {
 
       {/* ── Toast notification (fixed top-right) ── */}
       {toast && (
-        <div className={`fixed right-4 top-4 z-50 flex min-w-[280px] max-w-sm items-start gap-3 rounded-xl border px-4 py-3 shadow-xl animate-in slide-in-from-top-2 fade-in duration-300 ${
+        <div className={`fixed right-4 top-4 z-50 flex min-w-[280px] max-w-[min(24rem,calc(100vw-2rem))] items-start gap-3 rounded-xl border px-4 py-3 shadow-xl animate-in slide-in-from-top-2 fade-in duration-300 ${
           toast.type === 'success'
             ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
             : 'border-red-200 bg-red-50 text-red-800'
@@ -455,7 +456,7 @@ export function StudentsInfoForm({ schoolId }: Props) {
                 >
                   <option value="">-- Select Grade --</option>
                   {GRADES.map((g) => (
-                    <option key={g.value} value={g.value}>{g.label}</option>
+                    <option key={g.value} value={g.value}>{getGradeDisplayName(g.label, school?.schoolCategory)}</option>
                   ))}
                 </select>
                 <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -611,7 +612,7 @@ export function StudentsInfoForm({ schoolId }: Props) {
                   <tr key={r.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}>
                     <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{r.academicYear ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{r.month}</td>
-                    <td className="px-4 py-3 text-gray-700">{GRADES.find((g) => g.value === r.grade)?.label ?? r.grade}</td>
+                    <td className="px-4 py-3 text-gray-700">{getGradeDisplayName(GRADES.find((g) => g.value === r.grade)?.label ?? r.grade, school?.schoolCategory)}</td>
                     <td className="px-4 py-3 text-right text-gray-700">{r.boys}</td>
                     <td className="px-4 py-3 text-right text-gray-700">{r.girls}</td>
                     <td className="px-4 py-3 text-right font-semibold text-gray-900">{r.total}</td>

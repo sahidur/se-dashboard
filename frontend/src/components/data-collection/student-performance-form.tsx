@@ -14,9 +14,12 @@ import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import {
   EVALUATION_PERIODS,
+  SECTION_BY_SCHOOL_CATEGORY,
   getSection,
   getStudentPerformanceForm,
   getStudentPerformanceRows,
+  getGradeDisplayName,
+  getFormDisplayLabel,
   type StudentPerformanceFormKey,
 } from '@/components/data-collection/student-performance-catalog';
 import { useFormDraft } from '@/hooks/use-form-draft';
@@ -33,7 +36,7 @@ const SCHOOL_CATEGORY_LABELS: Record<string, string> = {
   brac_secondary: 'BRAC Secondary',
 };
 
-/** Scale label -> percentage, as typed (kept as strings so inputs can be blank). */
+/** Scale label -> number of students, as typed (kept as strings so inputs can be blank). */
 type RowValues = Record<string, Record<string, string>>;
 
 interface DraftShape {
@@ -186,6 +189,27 @@ export function StudentPerformanceForm({ schoolId, formKey }: Props) {
     if (!evaluationPeriod) { setError(`Please select a ${def.periodLabel.toLowerCase()}.`); return; }
     if (filledRows === 0) { setError(`Please enter performance figures for at least one ${def.rowHeader.toLowerCase().replace(/s$/, '')}.`); return; }
 
+    if (appearedPercent !== '' && Number(appearedPercent) > 0) {
+      const appearedNum = Number(appearedPercent);
+      for (const r of rowDefs) {
+        const total = rowTotal(r.code);
+        if (total > 0 && total !== appearedNum) {
+          setError(`Row "${r.label}" total (${total}) must equal Students appeared (${appearedNum}).`);
+          return;
+        }
+        if (numberOfStudents !== '' && Number(numberOfStudents) > 0) {
+          const maxStudents = Number(numberOfStudents);
+          for (const s of def.scale) {
+            const val = Number(cell(r.code, s.label)) || 0;
+            if (val > maxStudents) {
+              setError(`Value for "${s.label}" in row "${r.label}" (${val}) cannot exceed Number of Students (${maxStudents}).`);
+              return;
+            }
+          }
+        }
+      }
+    }
+
     setSaving(true);
     try {
       await api.post('/data-collection/student-performance', {
@@ -224,6 +248,34 @@ export function StudentPerformanceForm({ schoolId, formKey }: Props) {
       || a.evaluationPeriod.localeCompare(b.evaluationPeriod)),
     [records],
   );
+
+  // A BA/BPS/BSS form only applies to the school type it belongs to
+  // (BA -> BRAC Academy, BPS -> BRAC Primary, BSS -> BRAC Secondary).
+  const categoryAllowed = !school || SECTION_BY_SCHOOL_CATEGORY[school.schoolCategory ?? ''] === def.sectionKey;
+
+  if (!categoryAllowed) {
+    const categoryLabel = SCHOOL_CATEGORY_LABELS[school?.schoolCategory ?? ''] ?? school?.schoolCategory;
+    return (
+      <div className="space-y-6">
+        {toast && (
+          <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 rounded-xl px-4 py-3 shadow-lg text-sm font-medium bg-red-600 text-white`}>
+            <AlertCircle size={16} /> {toast.msg}
+          </div>
+        )}
+        <Card className="overflow-hidden">
+          <CardContent className="flex flex-col items-center justify-center py-14 text-gray-400">
+            <AlertCircle size={40} className="mb-3 opacity-20" />
+            <p className="text-sm font-medium text-gray-700">
+              This form is not applicable for this school.
+            </p>
+            <p className="mt-1 text-xs opacity-70">
+              {section.short} forms are not available for a {categoryLabel ?? 'school of this type'}.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -270,7 +322,7 @@ export function StudentPerformanceForm({ schoolId, formKey }: Props) {
             <CardHeader className="px-4 pb-2 pt-5 sm:px-6">
               <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-800">
                 <PlusCircle size={18} className={section.text} />
-                {editingId ? 'Edit' : 'Add'} — {def.label}
+                {editingId ? 'Edit' : 'Add'} — {getFormDisplayLabel(def, school?.schoolCategory)}
               </CardTitle>
               <p className="mt-0.5 text-sm text-gray-500">{def.description}</p>
             </CardHeader>
@@ -352,8 +404,6 @@ export function StudentPerformanceForm({ schoolId, formKey }: Props) {
                     <Input
                       type="number"
                       min={0}
-                      max={100}
-                      step={0.01}
                       disabled={gridDisabled}
                       value={appearedPercent}
                       onChange={(e) => setAppearedPercent(e.target.value)}
@@ -376,7 +426,7 @@ export function StudentPerformanceForm({ schoolId, formKey }: Props) {
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <p className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
                       <ListChecks size={15} className={section.text} />
-                      Student Performance (%) by {def.rowHeader}
+                      Student Performance (Number) by {def.rowHeader}
                     </p>
                     <span className="text-xs text-gray-400">{filledRows} of {rowDefs.length} filled</span>
                   </div>
@@ -420,8 +470,6 @@ export function StudentPerformanceForm({ schoolId, formKey }: Props) {
                                   <Input
                                     type="number"
                                     min={0}
-                                    max={100}
-                                    step={0.01}
                                     value={cell(r.code, s.label)}
                                     onChange={(e) => setCell(r.code, s.label, e.target.value)}
                                     placeholder="0"
@@ -431,9 +479,9 @@ export function StudentPerformanceForm({ schoolId, formKey }: Props) {
                                 </td>
                               ))}
                               <td className={`px-3 py-2 text-right align-middle text-xs font-semibold tabular-nums ${
-                                total === 0 ? 'text-gray-300' : Math.round(total) === 100 ? 'text-emerald-600' : 'text-amber-600'
+                                total === 0 ? 'text-gray-300' : appearedPercent && Number(appearedPercent) > 0 && total === Number(appearedPercent) ? 'text-emerald-600' : 'text-amber-600'
                               }`}>
-                                {total ? `${Math.round(total * 100) / 100}%` : '—'}
+                                {total || '—'}
                               </td>
                             </tr>
                           );
@@ -463,8 +511,6 @@ export function StudentPerformanceForm({ schoolId, formKey }: Props) {
                                 <Input
                                   type="number"
                                   min={0}
-                                  max={100}
-                                  step={0.01}
                                   value={cell(r.code, s.label)}
                                   onChange={(e) => setCell(r.code, s.label, e.target.value)}
                                   placeholder="0"
@@ -475,9 +521,9 @@ export function StudentPerformanceForm({ schoolId, formKey }: Props) {
                             ))}
                           </div>
                           <p className={`mt-2 text-right text-[11px] font-semibold tabular-nums ${
-                            total === 0 ? 'text-gray-300' : Math.round(total) === 100 ? 'text-emerald-600' : 'text-amber-600'
+                            total === 0 ? 'text-gray-300' : appearedPercent && Number(appearedPercent) > 0 && total === Number(appearedPercent) ? 'text-emerald-600' : 'text-amber-600'
                           }`}>
-                            Total: {total ? `${Math.round(total * 100) / 100}%` : '—'}
+                            Total: {total || '—'}
                           </p>
                         </div>
                       );
@@ -485,7 +531,7 @@ export function StudentPerformanceForm({ schoolId, formKey }: Props) {
                   </div>
 
                   <p className="mt-2 text-[11px] text-gray-400">
-                    Values are percentages of students; each row is expected to add up to 100%.
+                    Enter the number of students for each performance level. Each row total must match the &quot;Students appeared in the Evaluation (Number)&quot; value.
                   </p>
                 </div>
 
@@ -552,7 +598,7 @@ export function StudentPerformanceForm({ schoolId, formKey }: Props) {
                       <th className="py-2 pr-3 text-left font-semibold uppercase tracking-wider text-gray-500">Grade</th>
                       <th className="py-2 pr-3 text-left font-semibold uppercase tracking-wider text-gray-500">{def.periodLabel}</th>
                       <th className="py-2 pr-3 text-right font-semibold uppercase tracking-wider text-gray-500">Students</th>
-                      <th className="py-2 pr-3 text-right font-semibold uppercase tracking-wider text-gray-500">Appeared %</th>
+                      <th className="py-2 pr-3 text-right font-semibold uppercase tracking-wider text-gray-500">Appeared</th>
                       <th className="py-2 pr-4 text-right font-semibold uppercase tracking-wider text-gray-500">Actions</th>
                     </tr>
                   </thead>
@@ -571,7 +617,7 @@ export function StudentPerformanceForm({ schoolId, formKey }: Props) {
                             </button>
                           </td>
                           <td className="py-2.5 pr-3 font-medium text-gray-700">{rec.academicYear || '—'}</td>
-                          <td className="py-2.5 pr-3 text-gray-700">{rec.grade}</td>
+                          <td className="py-2.5 pr-3 text-gray-700">{getGradeDisplayName(rec.grade, school?.schoolCategory)}</td>
                           <td className="py-2.5 pr-3">
                             <Badge variant="default" className={`font-medium ${section.bg} ${section.text}`}>
                               {rec.evaluationPeriod}
@@ -579,7 +625,7 @@ export function StudentPerformanceForm({ schoolId, formKey }: Props) {
                           </td>
                           <td className="py-2.5 pr-3 text-right font-medium text-gray-700">{rec.numberOfStudents}</td>
                           <td className="py-2.5 pr-3 text-right font-medium text-gray-700">
-                            {rec.appearedPercent != null ? `${Number(rec.appearedPercent)}%` : '—'}
+                            {rec.appearedPercent != null ? Number(rec.appearedPercent) : '—'}
                           </td>
                           <td className="py-2.5 pr-4 text-right">
                             <div className="flex justify-end gap-1">

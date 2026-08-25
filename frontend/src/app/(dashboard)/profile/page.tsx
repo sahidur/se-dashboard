@@ -39,8 +39,7 @@ import {
 import { useAuthStore } from '@/store/auth-store';
 import { formatDate, getInitials, resolveAssetUrl } from '@/lib/utils';
 import api from '@/lib/api';
-import type { GeoLocation, PaginatedAuditLogs, User } from '@/types';
-import { USER_DESIGNATIONS } from '@/types';
+import type { GeoLocation, PaginatedAuditLogs, User, UserDesignation } from '@/types';
 
 type Tab = 'overview' | 'schools' | 'activity' | 'security' | 'passkeys';
 
@@ -75,6 +74,15 @@ export default function ProfilePage() {
   });
 
   const [editing, setEditing] = useState(false);
+
+  const { data: designations = [] } = useQuery<UserDesignation[]>({
+    queryKey: ['user-designations'],
+    queryFn: () =>
+      api
+        .get<UserDesignation[]>('/user-designations', { params: { activeOnly: true } })
+        .then((r) => r.data),
+    staleTime: 5 * 60 * 1000,
+  });
   const [profile, setProfile] = useState({
     firstName: '',
     lastName: '',
@@ -86,6 +94,15 @@ export default function ProfilePage() {
     geoLocationId: null as string | null,
   });
   const [saving, setSaving] = useState(false);
+
+  // Keep the current designation selectable even if it was deactivated.
+  const designationOptions = [
+    ...designations.map((d) => ({ value: d.name, label: d.name })),
+    ...(profile.designation &&
+    !designations.some((d) => d.name === profile.designation)
+      ? [{ value: profile.designation, label: `${profile.designation} (inactive)` }]
+      : []),
+  ];
 
   const startEditing = () => {
     setProfile({
@@ -274,12 +291,12 @@ export default function ProfilePage() {
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 rounded-t-xl border-b border-gray-200 bg-white px-2 shadow-sm">
+          <div className="flex gap-1 overflow-x-auto rounded-t-xl border-b border-gray-200 bg-white px-2 shadow-sm">
             {(['overview', 'schools', 'activity', 'security', 'passkeys'] as Tab[]).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
-                className={`flex items-center gap-1.5 rounded-t-lg px-4 py-3 text-sm font-medium capitalize transition-colors ${
+                className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-t-lg px-3 py-3 text-sm font-medium capitalize transition-colors sm:px-4 ${
                   tab === t
                     ? 'border-b-2 border-brand-600 text-brand-700'
                     : 'text-gray-500 hover:text-gray-700'
@@ -387,7 +404,7 @@ export default function ProfilePage() {
                       value={profile.designation}
                       onChange={(e) => setProfile({ ...profile, designation: e.target.value })}
                       placeholder="Select designation"
-                      options={USER_DESIGNATIONS.map((d) => ({ value: d, label: d }))}
+                      options={designationOptions}
                     />
                   </div>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -505,7 +522,7 @@ export default function ProfilePage() {
                 />
 
                 {totalPages > 1 && (
-                  <div className="mt-5 flex items-center justify-center gap-3 border-t border-gray-100 pt-4">
+                  <div className="mt-5 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 border-t border-gray-100 pt-4">
                     <Button
                       size="sm"
                       variant="outline"

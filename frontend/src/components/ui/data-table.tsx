@@ -190,7 +190,7 @@ export function DataTable<T extends Record<string, any>>({
           </div>
 
           {pagination && pagination.totalPages > 1 && (
-            <div className="flex items-center justify-between border-t border-gray-100 bg-gray-50/50 px-5 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-gray-100 bg-gray-50/50 px-5 py-3">
               <p className="text-xs text-gray-500">
                 Page <span className="font-semibold text-gray-700">{pagination.page}</span> of{' '}
                 <span className="font-semibold text-gray-700">{pagination.totalPages}</span>

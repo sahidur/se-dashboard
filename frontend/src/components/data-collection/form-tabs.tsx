@@ -31,26 +31,26 @@ export function FormTabs({
       <button
         type="button"
         onClick={() => onChange('entry')}
-        className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition-all ${
+        className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold transition-all sm:px-4 sm:text-sm ${
           active === 'entry'
             ? 'bg-white text-gray-900 shadow-sm'
             : 'text-gray-500 hover:text-gray-700'
         }`}
       >
-        <PencilLine size={15} />
-        {entryLabel}
+        <PencilLine size={15} className="shrink-0" />
+        <span className="whitespace-nowrap">{entryLabel}</span>
       </button>
       <button
         type="button"
         onClick={() => onChange('data')}
-        className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition-all ${
+        className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold transition-all sm:px-4 sm:text-sm ${
           active === 'data'
             ? 'bg-white text-gray-900 shadow-sm'
             : 'text-gray-500 hover:text-gray-700'
         }`}
       >
-        <TableProperties size={15} />
-        {dataLabel}
+        <TableProperties size={15} className="shrink-0" />
+        <span className="whitespace-nowrap">{dataLabel}</span>
         {dataCount !== undefined && dataCount > 0 && (
           <span className="ml-0.5 rounded-full bg-brand-100 px-1.5 py-0.5 text-[10px] font-bold text-brand-700">
             {dataCount}

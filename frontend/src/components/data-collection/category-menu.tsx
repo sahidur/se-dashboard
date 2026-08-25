@@ -4,12 +4,14 @@ import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { FORM_CATEGORIES, type FormCatalogItem } from './form-catalog';
+import { FORM_CATEGORIES, type FormCatalogItem, type FormCategory } from './form-catalog';
+import { SECTION_BY_SCHOOL_CATEGORY, getFormDisplayLabel, getStudentPerformanceForm } from './student-performance-catalog';
 
 interface CategoryMenuProps {
   schoolId: string;
   schoolName?: string;
   schoolCode?: string;
+  schoolCategory?: string;
 }
 
 /** Consecutive forms sharing a `group` are collapsed into one parent entry. */
@@ -23,8 +25,16 @@ function groupForms(forms: FormCatalogItem[]): { group?: string; forms: FormCata
   return entries;
 }
 
-function FormLink({ form, href, onNavigate }: { form: FormCatalogItem; href: string; onNavigate: () => void }) {
+function FormLink({ form, href, onNavigate, schoolCategory }: { form: FormCatalogItem; href: string; onNavigate: () => void; schoolCategory?: string }) {
   const FormIcon = form.icon;
+  // For student performance forms, use dynamic label based on school category
+  const displayLabel = form.key.startsWith('student-performance-')
+    ? (() => {
+        const perfKey = form.key.replace('student-performance-', '');
+        const perfDef = getStudentPerformanceForm(perfKey);
+        return perfDef ? getFormDisplayLabel(perfDef, schoolCategory) : form.label;
+      })()
+    : form.label;
   return (
     <Link
       href={href}
@@ -32,7 +42,7 @@ function FormLink({ form, href, onNavigate }: { form: FormCatalogItem; href: str
       onClick={onNavigate}
     >
       <FormIcon size={14} className="mt-0.5 shrink-0 text-gray-400 group-hover:text-indigo-500" />
-      <span className="flex-1 break-words font-medium leading-snug">{form.label}</span>
+      <span className="flex-1 break-words font-medium leading-snug">{displayLabel}</span>
       <ChevronRight size={13} className="mt-0.5 shrink-0 text-gray-300 opacity-0 transition-opacity group-hover:opacity-100 group-hover:text-indigo-500" />
     </Link>
   );
@@ -45,9 +55,24 @@ function FormLink({ form, href, onNavigate }: { form: FormCatalogItem; href: str
  * a pill drops its child forms down below; clicking a child form navigates
  * to its dedicated data-viewer page (search + CSV/Excel export).
  */
-export function CategoryMenu({ schoolId, schoolName, schoolCode }: CategoryMenuProps) {
+export function CategoryMenu({ schoolId, schoolName, schoolCode, schoolCategory }: CategoryMenuProps) {
   const [openKey, setOpenKey] = useState<string | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const categories: FormCategory[] = schoolCategory
+    ? FORM_CATEGORIES.map((cat) => {
+        if (cat.key !== 'performance') return cat;
+        const sectionKey = SECTION_BY_SCHOOL_CATEGORY[schoolCategory];
+        if (!sectionKey) return cat;
+        return {
+          ...cat,
+          forms: cat.forms.filter((f) => {
+            if (!f.group) return true;
+            return f.group === `Students' Performance (${sectionKey.toUpperCase()})`;
+          }),
+        };
+      })
+    : FORM_CATEGORIES;
 
   const cancelClose = () => {
     if (closeTimer.current) {
@@ -68,8 +93,8 @@ export function CategoryMenu({ schoolId, schoolName, schoolCode }: CategoryMenuP
   return (
     <Card className="border-0 shadow-sm">
       <CardContent className="px-3 pb-4 pt-4">
-        <div className="flex flex-wrap items-stretch divide-x divide-gray-100 rounded-xl border border-gray-100 bg-gray-50/60">
-          {FORM_CATEGORIES.map((cat) => {
+        <div className="flex flex-wrap items-stretch rounded-xl border border-gray-100 bg-gray-50/60 sm:divide-x sm:divide-gray-100">
+          {categories.map((cat) => {
             const CatIcon = cat.icon;
             const expanded = openKey === cat.key;
             return (
@@ -102,7 +127,7 @@ export function CategoryMenu({ schoolId, schoolName, schoolCode }: CategoryMenuP
                   <div
                     onMouseEnter={cancelClose}
                     onMouseLeave={scheduleClose}
-                    className={`absolute left-0 top-full z-20 mt-1.5 max-h-[70vh] w-80 overflow-y-auto rounded-xl border border-gray-100 bg-white shadow-lg ring-1 sm:w-96 ${cat.ring}`}
+                    className={`absolute left-0 top-full z-20 mt-1.5 max-h-[70vh] w-80 overflow-y-auto rounded-xl border border-gray-100 bg-white shadow-lg ring-1 sm:w-96 ${cat.ring} max-sm:static max-sm:mt-2 max-sm:w-full`}
                   >
                     <div className="flex flex-col divide-y divide-gray-50 py-1">
                       {groupForms(cat.forms).map((entry) =>
@@ -118,6 +143,7 @@ export function CategoryMenu({ schoolId, schoolName, schoolCode }: CategoryMenuP
                                   form={form}
                                   href={`/data-collection/school-information/${schoolId}/${form.key}${query}`}
                                   onNavigate={() => setOpenKey(null)}
+                                  schoolCategory={schoolCategory}
                                 />
                               ))}
                             </div>
@@ -128,6 +154,7 @@ export function CategoryMenu({ schoolId, schoolName, schoolCode }: CategoryMenuP
                             form={entry.forms[0]}
                             href={`/data-collection/school-information/${schoolId}/${entry.forms[0].key}${query}`}
                             onNavigate={() => setOpenKey(null)}
+                            schoolCategory={schoolCategory}
                           />
                         ),
                       )}

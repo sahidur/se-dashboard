@@ -111,17 +111,14 @@ export interface Passkey {
   lastUsedAt: string | null;
 }
 
-export const USER_DESIGNATIONS = [
-  'Field Officer',
-  'Program Officer',
-  'Coordinator',
-  'Manager',
-  'Regional Manager',
-  'Monitoring & Evaluation Officer',
-  'Data Entry Operator',
-  'Admin Staff',
-  'Other',
-] as const;
+export interface UserDesignation {
+  id: string;
+  name: string;
+  description?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface Role {
   id: string;
@@ -643,7 +640,7 @@ export interface DcStudentPerformanceRow {
   code: string;
   label: string;
   domain?: string;
-  /** Scale label -> percentage, e.g. { Excellent: 40, Good: 35 }. */
+  /** Scale label -> number of students, e.g. { Excellent: 10, Good: 15 }. */
   values: Record<string, number>;
 }
 

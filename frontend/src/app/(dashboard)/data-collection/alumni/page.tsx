@@ -91,7 +91,7 @@ export default function AlumniPage() {
             <CardHeader>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle className="flex items-center gap-2"><Award size={18} className="text-amber-500" />Alumni Records <Badge variant="info" className="ml-1">{alumni.length}</Badge></CardTitle>
-                <div className="flex gap-2">
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                   <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search alumni..." className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 w-full sm:w-48" />
                   <Button onClick={openCreate} className="shrink-0"><Plus size={16} className="mr-1.5" />Add Alumni</Button>
                 </div>

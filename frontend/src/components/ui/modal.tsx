@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { cn } from '@/lib/utils';
 
 interface ModalProps {
@@ -19,6 +20,17 @@ const sizeClasses = {
 };
 
 export function Modal({ isOpen, onClose, title, children, className, size = 'md' }: ModalProps) {
+  // Lock background scroll while the modal is open (prevents the page behind
+  // from scrolling on touch devices).
+  useEffect(() => {
+    if (!isOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return (

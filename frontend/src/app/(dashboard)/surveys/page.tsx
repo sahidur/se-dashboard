@@ -290,8 +290,8 @@ export default function SurveysPage() {
                     )}
                     <span>Created {formatDate(survey.createdAt)}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Link href={`/surveys/${survey.id}`} className="flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link href={`/surveys/${survey.id}`} className="min-w-[72px] flex-1">
                       <Button variant="outline" size="sm" className="w-full">
                         <Eye size={14} className="mr-1" /> View
                       </Button>
@@ -370,7 +370,7 @@ export default function SurveysPage() {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Link href={`/surveys/${survey.id}`}>
                       <Button variant="outline" size="sm">
                         <Eye size={14} className="mr-1" /> View
@@ -423,7 +423,7 @@ export default function SurveysPage() {
 
         {/* Pagination */}
         {meta.totalPages > 1 && (
-          <div className="mt-6 flex items-center justify-between">
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <p className="text-sm text-gray-500">
               Page {page} of {meta.totalPages}
             </p>

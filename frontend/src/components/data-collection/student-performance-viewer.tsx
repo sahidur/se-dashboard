@@ -14,6 +14,7 @@ import {
   getSection,
   getStudentPerformanceForm,
   getStudentPerformanceRows,
+  getGradeDisplayName,
   type StudentPerformanceFormKey,
 } from './student-performance-catalog';
 import type { DcStudentPerformance } from '@/types';
@@ -44,6 +45,8 @@ interface Props {
   formKey: StudentPerformanceFormKey;
   /** Filename stem for the CSV/Excel exports. */
   fileBase: string;
+  /** School category for dynamic label display (e.g., 'brac_academy' shows "Play World" instead of "Play & Learn"). */
+  schoolCategory?: string | null;
 }
 
 /**
@@ -55,7 +58,7 @@ interface Props {
  * scale columns), with academic year / grade / period filters and CSV/Excel
  * export of either the filtered set or every record.
  */
-export function StudentPerformanceViewer({ schoolId, formKey, fileBase }: Props) {
+export function StudentPerformanceViewer({ schoolId, formKey, fileBase, schoolCategory }: Props) {
   const def = getStudentPerformanceForm(formKey)!;
   const section = getSection(def.sectionKey)!;
   const rowDefs = useMemo(() => getStudentPerformanceRows(formKey), [formKey]);
@@ -142,8 +145,8 @@ export function StudentPerformanceViewer({ schoolId, formKey, fileBase }: Props)
     'Academic Year', 'Grade', def.periodLabel, 'Number of Students', def.appearedLabel,
     ...(def.grouped ? ['Domain'] : []),
     def.rowHeader,
-    ...def.scale.map((s) => `${s.label} (%)`),
-    'Total (%)',
+    ...def.scale.map((s) => s.label),
+    'Total',
   ];
 
   const exportRows = (): string[][] =>
@@ -246,7 +249,7 @@ export function StudentPerformanceViewer({ schoolId, formKey, fileBase }: Props)
               <label className="mb-1 block text-xs font-medium text-gray-500">Grade</label>
               <select value={grade} onChange={(e) => setGrade(e.target.value)} className={selectClass}>
                 <option value="">All grades</option>
-                {grades.map((g) => <option key={g} value={g}>{g}</option>)}
+                {grades.map((g) => <option key={g} value={g}>{getGradeDisplayName(g, schoolCategory)}</option>)}
               </select>
             </div>
 
@@ -333,7 +336,7 @@ export function StudentPerformanceViewer({ schoolId, formKey, fileBase }: Props)
                     <span className={`inline-flex h-6 items-center rounded-md bg-gradient-to-br ${section.color} px-2 text-[11px] font-bold text-white`}>
                       {rec.academicYear}
                     </span>
-                    {rec.grade}
+                    {getGradeDisplayName(rec.grade, schoolCategory)}
                     <span className="text-gray-300">•</span>
                     <span className="font-normal text-gray-500">{rec.evaluationPeriod}</span>
                   </CardTitle>
@@ -342,7 +345,7 @@ export function StudentPerformanceViewer({ schoolId, formKey, fileBase }: Props)
                       <Users size={12} /> {rec.numberOfStudents ?? 0} students
                     </Badge>
                     {rec.appearedPercent != null && (
-                      <Badge variant="default">{def.appearedLabel}: {round2(Number(rec.appearedPercent))}%</Badge>
+                      <Badge variant="default">{def.appearedLabel}: {round2(Number(rec.appearedPercent))}</Badge>
                     )}
                   </div>
                 </div>
@@ -384,14 +387,14 @@ export function StudentPerformanceViewer({ schoolId, formKey, fileBase }: Props)
                               const v = cellValue(r.code, s.label);
                               return (
                                 <td key={s.label} className="px-2 py-2.5 text-center align-top text-sm tabular-nums text-gray-700">
-                                  {v === null || v === 0 ? <span className="text-gray-300">—</span> : `${round2(v)}%`}
+                                  {v === null || v === 0 ? <span className="text-gray-300">—</span> : round2(v)}
                                 </td>
                               );
                             })}
                             <td className={`px-3 py-2.5 pr-5 text-right align-top text-xs font-semibold tabular-nums ${
-                              total === 0 ? 'text-gray-300' : Math.round(total) === 100 ? 'text-emerald-600' : 'text-amber-600'
+                              total === 0 ? 'text-gray-300' : rec.appearedPercent != null && total === Number(rec.appearedPercent) ? 'text-emerald-600' : 'text-amber-600'
                             }`}>
-                              {total ? `${round2(total)}%` : '—'}
+                              {total ? round2(total) : '—'}
                             </td>
                           </tr>
                         );
@@ -413,23 +416,23 @@ export function StudentPerformanceViewer({ schoolId, formKey, fileBase }: Props)
                           <span className="mr-1 text-gray-400">{i + 1}.</span>{r.label}
                         </p>
                         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                          {def.scale.map((s) => {
-                            const v = cellValue(r.code, s.label);
-                            return (
-                              <div key={s.label} className="rounded-lg border border-gray-100 p-2 text-center">
-                                <p className={`mb-1 rounded px-1.5 py-0.5 text-[11px] font-semibold ${s.tone}`}>{s.label}</p>
-                                <p className="text-sm font-semibold tabular-nums text-gray-700">
-                                  {v === null || v === 0 ? <span className="text-gray-300">—</span> : `${round2(v)}%`}
-                                </p>
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <p className={`mt-2 text-right text-xs font-semibold tabular-nums ${
-                          total === 0 ? 'text-gray-300' : Math.round(total) === 100 ? 'text-emerald-600' : 'text-amber-600'
-                        }`}>
-                          Total: {total ? `${round2(total)}%` : '—'}
-                        </p>
+                            {def.scale.map((s) => {
+                              const v = cellValue(r.code, s.label);
+                              return (
+                                <div key={s.label} className="rounded-lg border border-gray-100 p-2 text-center">
+                                  <p className={`mb-1 rounded px-1.5 py-0.5 text-[11px] font-semibold ${s.tone}`}>{s.label}</p>
+                                  <p className="text-sm font-semibold tabular-nums text-gray-700">
+                                    {v === null || v === 0 ? <span className="text-gray-300">—</span> : round2(v)}
+                                  </p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <p className={`mt-2 text-right text-xs font-semibold tabular-nums ${
+                            total === 0 ? 'text-gray-300' : rec.appearedPercent != null && total === Number(rec.appearedPercent) ? 'text-emerald-600' : 'text-amber-600'
+                          }`}>
+                            Total: {total ? round2(total) : '—'}
+                          </p>
                       </div>
                     );
                   })}

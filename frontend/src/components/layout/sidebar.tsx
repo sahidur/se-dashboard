@@ -19,6 +19,7 @@ import {
   Menu,
   Tag,
   Settings,
+  Briefcase,
   Trash2,
   X,
   Database,
@@ -145,6 +146,12 @@ const navigation: NavEntry[] = [
         href: '/geo-locations',
         icon: MapPin,
         module: 'geo-locations',
+      },
+      {
+        label: 'User Designations',
+        href: '/user-designations',
+        icon: Briefcase,
+        module: 'user-designations',
       },
       {
         label: 'Activity Logs',

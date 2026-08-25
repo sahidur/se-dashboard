@@ -149,14 +149,14 @@ export function PasskeyManager() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
             <Fingerprint size={20} />
           </div>
-          <div>
+          <div className="min-w-0">
             <h3 className="font-semibold text-gray-900">Passkeys</h3>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-gray-500 break-words">
               Sign in securely with your fingerprint, face or device PIN
             </p>
           </div>
@@ -210,7 +210,7 @@ export function PasskeyManager() {
                         if (e.key === 'Enter') saveRename(pk.id);
                         if (e.key === 'Escape') setEditingId(null);
                       }}
-                      className="h-8 w-full max-w-xs rounded-lg border border-gray-200 px-2 text-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                      className="h-8 w-full min-w-0 max-w-xs flex-1 rounded-lg border border-gray-200 px-2 text-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
                     />
                     <button
                       onClick={() => saveRename(pk.id)}

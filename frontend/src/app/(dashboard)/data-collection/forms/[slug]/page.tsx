@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -24,9 +24,12 @@ import { StudentPerformanceForm } from '@/components/data-collection/student-per
 import {
   STUDENT_PERFORMANCE_FORMS,
   STUDENT_PERFORMANCE_SECTIONS,
+  getFormDisplayLabel,
 } from '@/components/data-collection/student-performance-catalog';
 import { ActivityParticipationForm } from '@/components/data-collection/activity-participation-form';
 import { EventParticipationForm } from '@/components/data-collection/event-participation-form';
+import api from '@/lib/api';
+import type { DcSchool } from '@/types';
 
 /* ─────────────── Form Configurations (Demo) ─────────────── */
 
@@ -378,6 +381,15 @@ export default function DemoFormPage() {
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [school, setSchool] = useState<DcSchool | null>(null);
+
+  useEffect(() => {
+    if (schoolId) {
+      api.get(`/data-collection/schools/${schoolId}`)
+        .then(({ data }) => setSchool(data))
+        .catch(() => {});
+    }
+  }, [schoolId]);
 
   /* ── Custom real forms ── */
   if (slug === 'infrastructure-classroom-status') {
@@ -668,7 +680,7 @@ export default function DemoFormPage() {
       <>
         <Header
           title={`${section.label} — Form ${studentPerfDef.formNo}`}
-          subtitle={studentPerfDef.label}
+          subtitle={getFormDisplayLabel(studentPerfDef, school?.schoolCategory)}
           actions={
             <Button variant="outline" onClick={() => router.back()}>
               <ArrowLeft size={16} className="mr-1.5" />

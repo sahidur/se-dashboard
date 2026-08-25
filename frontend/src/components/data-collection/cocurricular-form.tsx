@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
+import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
 import { useAuthStore } from '@/store/auth-store';
 import api from '@/lib/api';
 import { buildYearOptions } from '@/lib/utils';
@@ -329,7 +330,7 @@ export function CocurricularForm({ schoolId }: Props) {
                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-purple-400 focus:border-purple-400 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <option value="">Select grade…</option>
-                    {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+                    {GRADES.map((g) => <option key={g} value={g}>{getGradeDisplayName(g, school?.schoolCategory)}</option>)}
                   </select>
                 </div>
               </div>
@@ -431,7 +432,7 @@ export function CocurricularForm({ schoolId }: Props) {
                       <td className="py-2.5 pr-3 text-gray-700 font-medium">{rec.academicYear ?? '—'}</td>
                       <td className="py-2.5 pr-3">
                         <Badge variant="default" className="text-purple-700 border-purple-200 bg-purple-50 font-medium">
-                          {rec.grade}
+                          {getGradeDisplayName(rec.grade, school?.schoolCategory)}
                         </Badge>
                       </td>
                       {ACTIVITY_FIELDS.map(({ key }) => (

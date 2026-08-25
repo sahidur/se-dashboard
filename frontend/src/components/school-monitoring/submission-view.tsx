@@ -75,7 +75,7 @@ function AttachmentTile({ attachment }: { attachment: MonitoringAttachment }) {
           <span className="mt-1 line-clamp-2 text-xs text-gray-600">{attachment.name}</span>
         </div>
       )}
-      <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
         <Download className="h-5 w-5 text-white" />
       </div>
     </a>
@@ -94,10 +94,10 @@ export function SubmissionView({ submission }: { submission: MonitoringSubmissio
   return (
     <div className="space-y-6">
       {/* Summary bar */}
-      <div className="grid grid-cols-3 gap-3">
-        <SummaryStat label="Yes / Satisfied" value={counts.yes} cls="text-emerald-600" />
-        <SummaryStat label="No / Not Satisfied" value={counts.no} cls="text-red-600" />
-        <SummaryStat label="Not Applicable" value={counts.na} cls="text-gray-500" />
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        <SummaryStat label="Yes / Satisfied" shortLabel="Yes" value={counts.yes} cls="text-emerald-600" />
+        <SummaryStat label="No / Not Satisfied" shortLabel="No" value={counts.no} cls="text-red-600" />
+        <SummaryStat label="Not Applicable" shortLabel="N/A" value={counts.na} cls="text-gray-500" />
       </div>
 
       {submission.generalRemarks && (
@@ -113,29 +113,31 @@ export function SubmissionView({ submission }: { submission: MonitoringSubmissio
           <div className="bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white">
             {sec.number}. {sec.title}
           </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-orange-50 text-left text-xs uppercase tracking-wide text-gray-600">
-                <th className="w-14 px-3 py-2">Sl.</th>
-                <th className="px-3 py-2">Indicator</th>
-                <th className="w-24 px-3 py-2">Result</th>
-                <th className="px-3 py-2">Comment</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {sec.indicators.map((ind) => {
-                const a = answerMap.get(ind.code);
-                return (
-                  <tr key={ind.code} className="hover:bg-indigo-50/30">
-                    <td className="px-3 py-2 font-medium text-brand-600">{ind.code}</td>
-                    <td className="px-3 py-2 text-gray-800">{ind.text}</td>
-                    <td className="px-3 py-2"><ResultPill result={a?.result ?? ''} /></td>
-                    <td className="px-3 py-2 text-gray-500">{a?.comment || <span className="text-gray-300">—</span>}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead>
+                <tr className="bg-orange-50 text-left text-xs uppercase tracking-wide text-gray-600">
+                  <th className="w-14 px-3 py-2">Sl.</th>
+                  <th className="px-3 py-2">Indicator</th>
+                  <th className="w-24 px-3 py-2">Result</th>
+                  <th className="px-3 py-2">Comment</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {sec.indicators.map((ind) => {
+                  const a = answerMap.get(ind.code);
+                  return (
+                    <tr key={ind.code} className="hover:bg-indigo-50/30">
+                      <td className="px-3 py-2 font-medium text-brand-600">{ind.code}</td>
+                      <td className="px-3 py-2 text-gray-800">{ind.text}</td>
+                      <td className="px-3 py-2"><ResultPill result={a?.result ?? ''} /></td>
+                      <td className="px-3 py-2 break-words text-gray-500">{a?.comment || <span className="text-gray-300">—</span>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       ))}
 
@@ -154,11 +156,14 @@ export function SubmissionView({ submission }: { submission: MonitoringSubmissio
   );
 }
 
-function SummaryStat({ label, value, cls }: { label: string; value: number; cls: string }) {
+function SummaryStat({ label, shortLabel, value, cls }: { label: string; shortLabel?: string; value: number; cls: string }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-3 text-center">
       <p className={cn('text-2xl font-bold', cls)}>{value}</p>
-      <p className="text-xs text-gray-500">{label}</p>
+      <p className="text-xs text-gray-500">
+        {shortLabel && <span className="sm:hidden">{shortLabel}</span>}
+        <span className={cn(shortLabel && 'hidden sm:inline')}>{label}</span>
+      </p>
     </div>
   );
 }

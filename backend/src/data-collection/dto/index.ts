@@ -533,7 +533,7 @@ export class StudentPerformanceRowDto {
 
   @IsOptional() @IsString() domain?: string;
 
-  /** Scale label -> percentage. Values are validated/normalised in the service. */
+  /** Scale label -> number of students. Values are validated/normalised in the service. */
   @IsObject() values: Record<string, number>;
 }
 
@@ -552,7 +552,7 @@ export class UpsertStudentPerformanceDto {
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) numberOfStudents?: number;
 
-  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(100) appearedPercent?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) appearedPercent?: number;
 
   @IsArray()
   @ArrayMaxSize(60)

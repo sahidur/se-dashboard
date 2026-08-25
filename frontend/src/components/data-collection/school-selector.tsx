@@ -50,10 +50,10 @@ export function SchoolSelector({ value, onChange, className = '' }: SchoolSelect
         onClick={() => setOpen(!open)}
         className="flex w-full items-center justify-between rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-left transition-all hover:border-brand-300 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
       >
-        <div className="flex items-center gap-2">
-          <School size={18} className="text-brand-500" />
+        <div className="flex min-w-0 items-center gap-2">
+          <School size={18} className="shrink-0 text-brand-500" />
           {selected ? (
-            <span className="font-medium text-gray-900">
+            <span className="min-w-0 truncate font-medium text-gray-900">
               {selected.name}{' '}
               <span className="text-xs text-gray-400">({selected.code})</span>
             </span>

@@ -197,9 +197,9 @@ export default function TeachersSubPage() {
 
           {showIndividual && (
             <Card className="overflow-hidden border-0 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
-              <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
-                <div className="flex items-center gap-2">
-                  <Users size={18} className="text-pink-600" />
+              <div className="flex flex-col gap-3 border-b border-gray-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <Users size={18} className="shrink-0 text-pink-600" />
                   <h3 className="font-semibold text-gray-800">Teacher Records</h3>
                   <span className="rounded-full bg-pink-100 px-2 py-0.5 text-xs font-bold text-pink-700">{individualRecords.length}</span>
                 </div>
@@ -312,9 +312,9 @@ export default function TeachersSubPage() {
 
           {showDev && (
             <Card className="overflow-hidden border-0 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
-              <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
-                <div className="flex items-center gap-2">
-                  <BookOpen size={18} className="text-rose-600" />
+              <div className="flex flex-col gap-3 border-b border-gray-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <BookOpen size={18} className="shrink-0 text-rose-600" />
                   <h3 className="font-semibold text-gray-800">Development Records</h3>
                   <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">{devRecords.length}</span>
                 </div>
@@ -391,13 +391,15 @@ export default function TeachersSubPage() {
                       </tfoot>
                     )}
                   </table>
-                  <div className="border-t border-gray-100 px-5 py-3 flex flex-wrap gap-2">
-                    {MONTHS.filter((m) => devRecords.some((r) => r.month === m)).map((m) => (
-                      <span key={m} className="inline-flex items-center gap-1 rounded-full bg-rose-50 border border-rose-200 px-3 py-1 text-xs font-medium text-rose-700">
-                        {m} <CheckCircle2 size={11} className="text-emerald-500" />
-                      </span>
-                    ))}
-                  </div>
+                </div>
+              )}
+              {devRecords.length > 0 && (
+                <div className="border-t border-gray-100 px-5 py-3 flex flex-wrap gap-2">
+                  {MONTHS.filter((m) => devRecords.some((r) => r.month === m)).map((m) => (
+                    <span key={m} className="inline-flex items-center gap-1 rounded-full bg-rose-50 border border-rose-200 px-3 py-1 text-xs font-medium text-rose-700">
+                      {m} <CheckCircle2 size={11} className="text-emerald-500" />
+                    </span>
+                  ))}
                 </div>
               )}
             </Card>

@@ -102,10 +102,16 @@ async function bootstrap() {
   // Global serialization (respects @Exclude() decorators)
   app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
 
-  // CORS — only allow the configured frontend origin
-  const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000';
+  // CORS — only allow the configured frontend origin(s).
+  // CORS_ORIGIN accepts a single URL or a comma-separated list, so local dev
+  // ports (e.g. 3000 and 3210) can be allow-listed together.
+  const corsOriginEnv = process.env.CORS_ORIGIN || 'http://localhost:3000';
+  const corsOrigins = corsOriginEnv
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
   app.enableCors({
-    origin: corsOrigin,
+    origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],

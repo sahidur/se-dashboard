@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
+import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
 import api from '@/lib/api';
 import { buildYearOptions } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth-store';
@@ -261,7 +262,7 @@ export function FeeStructureForm({ schoolId }: Props) {
 
       {/* ── Toast ── */}
       {toast && (
-        <div className={`fixed right-4 top-4 z-50 flex min-w-[280px] max-w-sm items-start gap-3 rounded-xl border px-4 py-3 shadow-xl animate-in slide-in-from-top-2 fade-in duration-300 ${
+        <div className={`fixed right-4 top-4 z-50 flex min-w-[280px] max-w-[min(24rem,calc(100vw-2rem))] items-start gap-3 rounded-xl border px-4 py-3 shadow-xl animate-in slide-in-from-top-2 fade-in duration-300 ${
           toast.type === 'success'
             ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
             : 'border-red-200 bg-red-50 text-red-800'
@@ -303,11 +304,11 @@ export function FeeStructureForm({ schoolId }: Props) {
           {/* Grade progress chips */}
           {Object.keys(monthsDone).length > 0 && (
             <div className="mt-4 flex flex-wrap gap-2">
-              {GRADES.map((g) => {
+               {GRADES.map((g) => {
                 const cnt = monthsDone[g]?.length ?? 0;
                 return cnt > 0 ? (
                   <span key={g} className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200 px-2.5 py-1 text-xs font-medium text-amber-700">
-                    {g} <span className="font-bold">{cnt}/12</span>
+                    {getGradeDisplayName(g, school?.schoolCategory)} <span className="font-bold">{cnt}/12</span>
                   </span>
                 ) : null;
               })}
@@ -404,13 +405,13 @@ export function FeeStructureForm({ schoolId }: Props) {
                   className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
                 >
                   <option value="">Choose a grade...</option>
-                  {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+                  {GRADES.map((g) => <option key={g} value={g}>{getGradeDisplayName(g, school?.schoolCategory)}</option>)}
                 </select>
                 <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-3 text-gray-400" />
               </div>
               {academicYear && selectedMonths.length === 1 && grade && yearRecords.some((r) => r.month === selectedMonths[0] && r.grade === grade) && (
                 <p className="mt-1.5 text-xs font-medium text-amber-600">
-                  Editing existing data for {selectedMonths[0]} {academicYear} — {grade}
+                  Editing existing data for {selectedMonths[0]} {academicYear} — {getGradeDisplayName(grade, school?.schoolCategory)}
                 </p>
               )}
             </div>
@@ -471,7 +472,7 @@ export function FeeStructureForm({ schoolId }: Props) {
                   onClick={() => setGrade(g)}
                   className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:border-amber-300 hover:text-amber-700"
                 >
-                  {g} {monthsDone[g]?.length ? `(${monthsDone[g].length})` : ''}
+                  {getGradeDisplayName(g, school?.schoolCategory)} {monthsDone[g]?.length ? `(${monthsDone[g].length})` : ''}
                 </button>
               ))}
             </div>
@@ -583,7 +584,7 @@ export function FeeStructureForm({ schoolId }: Props) {
                   <div key={log.id} className="px-5 py-4 hover:bg-gray-50/50">
                     <div className="flex flex-wrap items-center gap-3 mb-3">
                       <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">{log.month}</span>
-                      <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">{log.grade}</span>
+                      <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">{getGradeDisplayName(log.grade, school?.schoolCategory)}</span>
                       <span className="text-xs text-gray-500">
                         by <strong>{(log.editedBy as any)?.firstName ?? ''} {(log.editedBy as any)?.lastName ?? ''}</strong>
                       </span>

@@ -1008,13 +1008,14 @@ function RatingModal({
             const countedPoints = gradedRows.filter((r) => !r.excludeFromAvg).map((r) => rowPoint(r)!);
             return (
               <div key={title} className="overflow-hidden rounded-lg border border-gray-100">
-                <div className={`flex items-center justify-between px-3 py-2 text-sm font-bold ${GROUP_ACCENT[title] ?? 'bg-gray-100 text-gray-800'}`}>
-                  <span>{title}</span>
-                  <span className="flex items-center gap-2">
+                <div className={`flex items-center justify-between gap-2 px-3 py-2 text-sm font-bold ${GROUP_ACCENT[title] ?? 'bg-gray-100 text-gray-800'}`}>
+                  <span className="min-w-0 break-words">{title}</span>
+                  <span className="flex shrink-0 items-center gap-2">
                     {g?.point != null && <span className="text-xs font-semibold opacity-70">{g.point.toFixed(2)} pts</span>}
                     {g?.grade ? <GradePill grade={g.grade} /> : <span className="text-gray-400">—</span>}
                   </span>
                 </div>
+                <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <tbody className="divide-y divide-gray-50">
                     {gradedRows.map((r) => {
@@ -1062,6 +1063,7 @@ function RatingModal({
                     </tfoot>
                   )}
                 </table>
+                </div>
               </div>
             );
           })}
@@ -1589,7 +1591,7 @@ function ProfileDetail({ profile, onReload }: { profile: SchoolProfile; onReload
       </div>
 
       {/* Parent → child submitted-data navigation menu */}
-      <CategoryMenu schoolId={school.id} schoolName={school.name} schoolCode={school.code} />
+      <CategoryMenu schoolId={school.id} schoolName={school.name} schoolCode={school.code} schoolCategory={school.schoolCategory} />
 
       {/* Aggregated status breakdown tables */}
       <StatusTables profile={profile} />

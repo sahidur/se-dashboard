@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike, In } from 'typeorm';
 import { DcSchool } from './entities/dc-school.entity';
@@ -743,8 +743,26 @@ export class DataCollectionService {
 
   // ===================== Student Performance (BA / BPS / BSS) =====================
 
+  /** School category -> applicable formKey prefix (BA -> brac_academy, etc.). */
+  private static readonly PERF_FORM_KEY_BY_CATEGORY: Record<string, string> = {
+    brac_academy: 'ba-',
+    brac_primary: 'bps-',
+    brac_secondary: 'bss-',
+  };
+
+  /** A BA/BPS/BSS form only applies to the school type it belongs to. */
+  private assertFormKeyMatchesSchool(school: DcSchool, formKey: string): void {
+    const expectedPrefix = DataCollectionService.PERF_FORM_KEY_BY_CATEGORY[school.schoolCategory];
+    if (!expectedPrefix || !formKey.startsWith(expectedPrefix)) {
+      throw new BadRequestException(
+        `Form "${formKey}" is not applicable for this school type (${school.schoolCategory ?? 'unknown category'})`,
+      );
+    }
+  }
+
   async upsertStudentPerformance(dto: UpsertStudentPerformanceDto, userId: string, roles: string[]): Promise<DcStudentPerformance> {
-    await this.validateSchoolAccess(dto.schoolId, userId, roles);
+    const school = await this.validateSchoolAccess(dto.schoolId, userId, roles);
+    this.assertFormKeyMatchesSchool(school, dto.formKey);
     let record = await this.studentPerfRepo.findOne({
       where: {
         schoolId: dto.schoolId,
@@ -761,9 +779,27 @@ export class DataCollectionService {
       label: r.label,
       ...(r.domain ? { domain: r.domain } : {}),
       values: Object.fromEntries(
-        Object.entries(r.values ?? {}).map(([k, v]) => [k, Math.min(100, Math.max(0, Number(v) || 0))]),
+        Object.entries(r.values ?? {}).map(([k, v]) => [k, Math.max(0, Number(v) || 0)]),
       ),
     }));
+
+    if (dto.appearedPercent != null && dto.numberOfStudents) {
+      for (const row of rows) {
+        const rowTotal = Object.values(row.values).reduce((sum, v) => sum + v, 0);
+        if (rowTotal !== dto.appearedPercent) {
+          throw new BadRequestException(
+            `Row "${row.label}" total (${rowTotal}) must equal Students appeared in the Evaluation (${dto.appearedPercent}).`,
+          );
+        }
+        for (const [scale, value] of Object.entries(row.values)) {
+          if (value > dto.numberOfStudents) {
+            throw new BadRequestException(
+              `Value for "${scale}" in row "${row.label}" (${value}) cannot exceed Number of Students (${dto.numberOfStudents}).`,
+            );
+          }
+        }
+      }
+    }
 
     if (record) {
       Object.assign(record, dto, { rows });
@@ -779,7 +815,8 @@ export class DataCollectionService {
     roles: string[],
     formKey?: string,
   ): Promise<DcStudentPerformance[]> {
-    await this.validateSchoolAccess(schoolId, userId, roles);
+    const school = await this.validateSchoolAccess(schoolId, userId, roles);
+    if (formKey) this.assertFormKeyMatchesSchool(school, formKey);
     return this.studentPerfRepo.find({
       where: { schoolId, ...(formKey ? { formKey } : {}) },
       order: { academicYear: 'DESC', formKey: 'ASC', grade: 'ASC', evaluationPeriod: 'ASC' },

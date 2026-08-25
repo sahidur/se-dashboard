@@ -73,8 +73,8 @@ export default function SchoolMonitoringPage() {
         subtitle="Record your observation of an assigned school"
         actions={
           <Link href="/school-monitoring/feedback">
-            <Button variant="outline">
-              <History className="mr-1.5 h-4 w-4" /> Submitted Feedback
+            <Button variant="outline" size="sm" className="h-9">
+              <History className="mr-1.5 h-4 w-4 shrink-0" /> <span className="hidden sm:inline">Submitted Feedback</span><span className="sm:hidden">Feedback</span>
             </Button>
           </Link>
         }
@@ -201,16 +201,16 @@ export default function SchoolMonitoringPage() {
         </section>
 
         {/* Start */}
-        <div className="flex items-center justify-end gap-3">
+        <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-end">
           {selectedSchool && selectedForm && (
             <Link
               href={`/school-monitoring/feedback?schoolId=${selectedSchool.id}&formType=${selectedForm}`}
-              className="text-sm font-medium text-brand-600 hover:underline"
+              className="text-center text-sm font-medium text-brand-600 hover:underline"
             >
               View existing feedback for this school
             </Link>
           )}
-          <Button size="lg" disabled={!canStart} onClick={start}>
+          <Button size="lg" disabled={!canStart} onClick={start} className="w-full sm:w-auto">
             <ClipboardList className="mr-1.5 h-4 w-4" />
             Start observation
             <ArrowRight className="ml-1.5 h-4 w-4" />

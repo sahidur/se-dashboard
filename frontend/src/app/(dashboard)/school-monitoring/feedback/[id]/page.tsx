@@ -110,17 +110,17 @@ export default function MonitoringDetailPage() {
         title={form?.shortTitle || 'Monitoring Feedback'}
         subtitle={submission.school?.name}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <Link href="/school-monitoring/feedback">
-              <Button variant="outline"><ChevronLeft className="mr-1 h-4 w-4" /> Back</Button>
+              <Button variant="outline" size="sm" className="h-9"><ChevronLeft className="mr-1 h-4 w-4" /> Back</Button>
             </Link>
             {canEdit && (
-              <Button variant="outline" onClick={() => setEditing(true)}>
+              <Button variant="outline" size="sm" className="h-9" onClick={() => setEditing(true)}>
                 <Pencil className="mr-1.5 h-4 w-4" /> Edit
               </Button>
             )}
             {canDelete && (
-              <Button variant="destructive" onClick={() => setConfirmDelete(true)}>
+              <Button variant="destructive" size="sm" className="h-9" onClick={() => setConfirmDelete(true)}>
                 <Trash2 className="mr-1.5 h-4 w-4" /> Delete
               </Button>
             )}
