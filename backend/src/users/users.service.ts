@@ -1,12 +1,13 @@
+import { Repository, In, ILike } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+import * as bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
 import {
   Injectable,
   NotFoundException,
   ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, ILike } from 'typeorm';
-import * as bcrypt from 'bcryptjs';
-import { randomBytes } from 'crypto';
 import { User } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -26,6 +27,82 @@ export class UsersService {
     @InjectRepository(AuditLog)
     private auditLogRepository: Repository<AuditLog>,
   ) {}
+
+  // ===================== Privilege-hierarchy helpers =====================
+  // Role.hierarchy: lower number = more powerful ('Super Admin' = 0). These
+  // guards stop holders of `users:update` / `users:create` from escalating to
+  // (or tampering with) privileges at or above their own level.
+
+  /**
+   * The acting user's power: Super Admin flag + best (lowest) hierarchy.
+   * Returns null when there is no actor context (CLI seeding and other
+   * internal/system callers) — guards treat that as trusted system access,
+   * while every HTTP controller passes the real authenticated actor.
+   */
+  private async actorPower(
+    actorId?: string,
+  ): Promise<{ isSuperAdmin: boolean; best: number } | null> {
+    if (!actorId) return null;
+    const actor = await this.usersRepository.findOne({
+      where: { id: actorId },
+      relations: ['roles'],
+    });
+    if (!actor) return null;
+    return this.userPower(actor);
+  }
+
+  private userPower(user: Pick<User, 'roles'>): {
+    isSuperAdmin: boolean;
+    best: number;
+  } {
+    const isSuperAdmin = (user.roles || []).some((r) => r.name === 'Super Admin');
+    const best = Math.min(
+      ...(user.roles || []).map((r) => r.hierarchy ?? Number.POSITIVE_INFINITY),
+      Number.POSITIVE_INFINITY,
+    );
+    return { isSuperAdmin, best };
+  }
+
+  private targetBestHierarchy(roles?: Role[] | null): number {
+    if (!roles?.length) return Number.POSITIVE_INFINITY;
+    return Math.min(
+      ...roles.map((r) => r.hierarchy ?? Number.POSITIVE_INFINITY),
+    );
+  }
+
+  /**
+   * A non-Super-Admin actor may not manage (edit/deactivate/reset/delete)
+   * users whose strongest role is more powerful than the actor's own.
+   */
+  private assertCanManageTarget(
+    actor: { isSuperAdmin: boolean; best: number } | null,
+    targetRoles?: Role[] | null,
+  ): void {
+    if (!actor || actor.isSuperAdmin) return;
+    const targetBest = this.targetBestHierarchy(targetRoles);
+    if (targetBest < actor.best) {
+      throw new ForbiddenException(
+        'You cannot manage users who have more privileges than you',
+      );
+    }
+  }
+
+  /**
+   * A non-Super-Admin actor may not grant roles that are more powerful than
+   * the actor's own strongest role.
+   */
+  private assertCanAssignRoles(
+    actor: { isSuperAdmin: boolean; best: number } | null,
+    rolesToAssign: Role[],
+  ): void {
+    if (!actor || actor.isSuperAdmin || !rolesToAssign.length) return;
+    const assignedBest = this.targetBestHierarchy(rolesToAssign);
+    if (assignedBest < actor.best) {
+      throw new ForbiddenException(
+        'You cannot assign roles with more privileges than your own',
+      );
+    }
+  }
 
   async logActivity(params: {
     action: string;
@@ -66,7 +143,10 @@ export class UsersService {
     });
 
     if (createUserDto.roleIds?.length) {
-      user.roles = await this.rolesRepository.findBy({ id: In(createUserDto.roleIds) });
+      const roles = await this.rolesRepository.findBy({ id: In(createUserDto.roleIds) });
+      // Prevent non-Super-Admins from creating users more powerful than themselves.
+      this.assertCanAssignRoles(await this.actorPower(actorId), roles);
+      user.roles = roles;
     }
 
     if (createUserDto.schoolIds?.length) {
@@ -100,7 +180,8 @@ export class UsersService {
         'user.email',
         'user.phone',
         'user.profilePicture',
-        'user.pin',
+        // NOTE: user.pin is deliberately NOT selected here — personal
+        // identifiers are not part of admin listing output.
         'user.designation',
         'user.base',
         'user.isActive',
@@ -181,6 +262,28 @@ export class UsersService {
   }
 
   /**
+   * GET /users/:id — detail view with PIN minimisation: the personal PIN is
+   * only returned to the user themself or to a Super Admin. Other viewers
+   * holding users:read (e.g. plain Admins) get the record without it.
+   */
+  async findOneForViewer(id: string, viewerId: string): Promise<User | null> {
+    const user = await this.findOneById(id);
+    if (!user) return null;
+    if (user.id === viewerId) return user;
+    const viewer = await this.usersRepository.findOne({
+      where: { id: viewerId },
+      relations: ['roles'],
+    });
+    const isSuperAdmin = viewer?.roles?.some((r) => r.name === 'Super Admin');
+    if (!isSuperAdmin) {
+      const { pin, ...withoutPin } = user;
+      void pin;
+      return withoutPin as User;
+    }
+    return user;
+  }
+
+  /**
    * Lightweight lookup used by JwtStrategy on every request.
    * Only fetches id and isActive to minimise the query cost.
    * Returns null if the user does not exist or is deactivated.
@@ -208,6 +311,16 @@ export class UsersService {
     });
     if (!user) {
       throw new NotFoundException('User not found');
+    }
+
+    // Privilege guard: non-Super-Admins cannot edit more powerful users, nor
+    // grant them stronger roles.
+    const actor = await this.actorPower(actorId);
+    this.assertCanManageTarget(actor, user.roles);
+    let newRoles: Role[] | undefined;
+    if (updateUserDto.roleIds) {
+      newRoles = await this.rolesRepository.findBy({ id: In(updateUserDto.roleIds) });
+      this.assertCanAssignRoles(actor, newRoles);
     }
 
     if (updateUserDto.email && updateUserDto.email !== user.email) {
@@ -241,7 +354,7 @@ export class UsersService {
     });
 
     if (updateUserDto.roleIds) {
-      user.roles = await this.rolesRepository.findBy({ id: In(updateUserDto.roleIds) });
+      user.roles = newRoles!;
     }
 
     if (updateUserDto.schoolIds) {
@@ -254,10 +367,15 @@ export class UsersService {
   }
 
   async setStatus(id: string, isActive: boolean, actorId?: string): Promise<User> {
-    const user = await this.usersRepository.findOne({ where: { id } });
+    const user = await this.usersRepository.findOne({
+      where: { id },
+      relations: ['roles'],
+    });
     if (!user) {
       throw new NotFoundException('User not found');
     }
+    // Non-Super-Admins cannot deactivate/activate more powerful users.
+    this.assertCanManageTarget(await this.actorPower(actorId), user.roles);
     user.isActive = isActive;
     const saved = await this.usersRepository.save(user);
     // Status change is recorded automatically by the global audit subscriber.
@@ -366,11 +484,17 @@ export class UsersService {
       .getMany();
   }
 
-  async resetPassword(id: string): Promise<{ newPassword: string }> {
-    const user = await this.usersRepository.findOne({ where: { id } });
+  async resetPassword(id: string, actorId?: string): Promise<{ newPassword: string }> {
+    const user = await this.usersRepository.findOne({
+      where: { id },
+      relations: ['roles'],
+    });
     if (!user) {
       throw new NotFoundException('User not found');
     }
+    // Privilege escalation guard: resetting a more powerful user's password
+    // would hand their account to the caller.
+    this.assertCanManageTarget(await this.actorPower(actorId), user.roles);
     // Use cryptographically secure random bytes
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
     const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -389,7 +513,12 @@ export class UsersService {
     pwArr[spIdx] = specials[randomBytes(1)[0] % specials.length];
     newPassword = pwArr.join('');
     const hashedPassword = await bcrypt.hash(newPassword, 12);
-    await this.usersRepository.update(id, { password: hashedPassword });
+    // Also revoke the refresh token: any session obtained before the reset
+    // must not survive it.
+    await this.usersRepository.update(id, {
+      password: hashedPassword,
+      refreshToken: null as any,
+    });
     await this.logActivity({
       action: 'RESET_PASSWORD',
       module: 'users',
@@ -399,11 +528,16 @@ export class UsersService {
     return { newPassword };
   }
 
-  async remove(id: string): Promise<void> {
-    const user = await this.usersRepository.findOne({ where: { id } });
+  async remove(id: string, actorId?: string): Promise<void> {
+    const user = await this.usersRepository.findOne({
+      where: { id },
+      relations: ['roles'],
+    });
     if (!user) {
       throw new NotFoundException('User not found');
     }
+    // Non-Super-Admins cannot delete more powerful users.
+    this.assertCanManageTarget(await this.actorPower(actorId), user.roles);
     await this.usersRepository.softRemove(user);
     // Deletion is recorded automatically by the global audit subscriber.
   }
@@ -433,7 +567,7 @@ export class UsersService {
     await this.usersRepository.update(userId, { profilePicture });
   }
 
-  async assignRoles(userId: string, roleIds: string[]): Promise<User> {
+  async assignRoles(userId: string, roleIds: string[], actorId?: string): Promise<User> {
     const user = await this.usersRepository.findOne({
       where: { id: userId },
       relations: ['roles'],
@@ -441,7 +575,13 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    user.roles = await this.rolesRepository.findBy({ id: In(roleIds) });
+    const roles = await this.rolesRepository.findBy({ id: In(roleIds) });
+    // Privilege escalation guard: non-Super-Admins cannot grant roles stronger
+    // than their own, nor change the roles of more powerful users.
+    const actor = await this.actorPower(actorId);
+    this.assertCanManageTarget(actor, user.roles);
+    this.assertCanAssignRoles(actor, roles);
+    user.roles = roles;
     return this.usersRepository.save(user);
   }
 }

@@ -18,6 +18,7 @@ import { SurveyCategory } from './entities/survey-category.entity';
 import { CreateSurveyDto } from './dto/create-survey.dto';
 import { UpdateSurveyDto } from './dto/update-survey.dto';
 import { SubmitSurveyResponseDto } from './dto/submit-response.dto';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class SurveysService {
@@ -40,7 +41,109 @@ export class SurveysService {
     private schoolRecordRepository: Repository<SchoolRecord>,
     @InjectRepository(SurveyCategory)
     private categoryRepository: Repository<SurveyCategory>,
+    private usersService: UsersService,
   ) {}
+
+  // ===================== Access control helpers =====================
+
+  private isAdminRole(roles: string[]): boolean {
+    return roles.includes('Super Admin') || roles.includes('Admin');
+  }
+
+  /**
+   * Whether the user may read non-public survey data (drafts, other people's
+   * responses, school records). True for admins and any role granted the
+   * `surveys:read` / `school-records:read` permission in Role Management.
+   */
+  private async hasPermission(
+    userId: string,
+    module: string,
+    action: string,
+  ): Promise<boolean> {
+    const fullUser = await this.usersService.findOneById(userId);
+    if (!fullUser) return false;
+    if (fullUser.roles?.some((r) => r.name === 'Super Admin')) return true;
+    const permissions = fullUser.roles?.flatMap((r) => r.permissions || []) ?? [];
+    return permissions.some((p) => p.module === module && p.action === action);
+  }
+
+  /**
+   * Object-level guard for GET /surveys/:id. Published surveys are readable by
+   * any authenticated user (respondents need them for the fill flow); draft /
+   * closed / archived surveys are only visible to their creator or to users
+   * with survey-management rights.
+   */
+  private async assertSurveyReadAccess(
+    survey: Survey,
+    userId: string,
+    roles: string[],
+  ): Promise<void> {
+    if (survey.status === SurveyStatus.PUBLISHED) return;
+    if (this.isAdminRole(roles)) return;
+    if (survey.createdById === userId) return;
+    if (await this.hasPermission(userId, 'surveys', 'read')) return;
+    // Same "not found" as a missing survey so existence is not disclosed.
+    throw new NotFoundException('Survey not found');
+  }
+
+  /**
+   * Object-level guard for a single survey response: the respondent can always
+   * read their own response; everyone else needs survey-management rights.
+   * Without this, any authenticated user could enumerate other users' answers
+   * (and respondent PII) by iterating UUIDs (IDOR/BOLA).
+   */
+  private async assertResponseReadAccess(
+    response: SurveyResponse,
+    userId: string,
+  ): Promise<void> {
+    if (response.respondentId === userId) return;
+    if (await this.hasPermission(userId, 'surveys', 'read')) return;
+    throw new NotFoundException('Response not found');
+  }
+
+  /**
+   * Object-level guard for school records: creators see their own records;
+   * everything else requires the same permission as the admin-wide listing.
+   */
+  private async assertSchoolRecordReadAccess(
+    record: SchoolRecord,
+    userId: string,
+  ): Promise<void> {
+    if (record.createdById === userId) return;
+    if (await this.hasPermission(userId, 'school-records', 'read')) return;
+    throw new NotFoundException('School record not found');
+  }
+
+  /**
+   * Whether the user may respond to the given survey. Mirrors
+   * findAssignedSurveys(): an assignment matches when it targets the user
+   * directly, one of their roles, or one of their assigned schools — minus
+   * per-assignment exclusions. Managers (surveys:update) bypass the check so
+   * they can preview/test their own forms.
+   */
+  private async assertCanRespond(surveyId: string, userId: string): Promise<void> {
+    if (await this.hasPermission(userId, 'surveys', 'update')) return;
+
+    const fullUser = await this.usersService.findOneById(userId);
+    if (!fullUser) throw new ForbiddenException('You are not assigned to this survey');
+
+    const roleIds = new Set((fullUser.roles || []).map((r) => r.id));
+    const schoolIds = new Set((fullUser.schools || []).map((s) => s.id));
+
+    const assignments = await this.assignmentsRepository.find({
+      where: { surveyId },
+    });
+
+    for (const a of assignments) {
+      if (a.userId && a.userId === userId) return;
+      const excluded = Array.isArray(a.excludeUserIds) && a.excludeUserIds.includes(userId);
+      if (excluded) continue;
+      if (a.roleId && roleIds.has(a.roleId)) return;
+      if (a.schoolId && schoolIds.has(a.schoolId)) return;
+    }
+
+    throw new ForbiddenException('You are not assigned to this survey');
+  }
 
   // ===================== Survey CRUD =====================
 
@@ -220,6 +323,17 @@ export class SurveysService {
     if (!survey) {
       throw new NotFoundException('Survey not found');
     }
+    return survey;
+  }
+
+  /** GET /surveys/:id — findOne() with object-level read enforcement. */
+  async findOneForUser(
+    id: string,
+    userId: string,
+    roles: string[],
+  ): Promise<Survey> {
+    const survey = await this.findOne(id);
+    await this.assertSurveyReadAccess(survey, userId, roles);
     return survey;
   }
 
@@ -605,6 +719,10 @@ export class SurveysService {
       throw new ForbiddenException('Survey is not accepting responses');
     }
 
+    // Business rule: only assigned users may respond (direct, role or school
+    // assignment; managers with surveys:update are allowed through to preview).
+    await this.assertCanRespond(submitDto.surveyId, userId);
+
     // If school record linkage required, validate
     if (
       survey.linkedEntityType === LinkedEntityType.SCHOOL_RECORD &&
@@ -854,6 +972,16 @@ export class SurveysService {
     return response;
   }
 
+  /** GET /surveys/responses/:responseId — getResponse() with IDOR protection. */
+  async getResponseForUser(
+    id: string,
+    userId: string,
+  ): Promise<SurveyResponse> {
+    const response = await this.getResponse(id);
+    await this.assertResponseReadAccess(response, userId);
+    return response;
+  }
+
   // Export responses as CSV
   async exportResponsesCsv(surveyId: string): Promise<string> {
     const survey = await this.findOne(surveyId);
@@ -1018,7 +1146,10 @@ export class SurveysService {
     });
   }
 
-  async getSchoolRecord(id: string): Promise<SchoolRecord> {
+  async getSchoolRecord(
+    id: string,
+    requesterId?: string,
+  ): Promise<SchoolRecord> {
     const record = await this.schoolRecordRepository.findOne({
       where: { id },
       relations: ['school', 'createdBy'],
@@ -1026,10 +1157,24 @@ export class SurveysService {
     if (!record) {
       throw new NotFoundException('School record not found');
     }
+    // Object-level check: creators see their own records; everyone else needs
+    // the admin-wide school-records:read permission (or Super Admin).
+    if (requesterId) {
+      await this.assertSchoolRecordReadAccess(record, requesterId);
+    }
     return record;
   }
 
-  async getSchoolRecordResponses(schoolRecordId: string) {
+  async getSchoolRecordResponses(schoolRecordId: string, requesterId?: string) {
+    if (requesterId) {
+      const record = await this.schoolRecordRepository.findOne({
+        where: { id: schoolRecordId },
+      });
+      if (!record) {
+        throw new NotFoundException('School record not found');
+      }
+      await this.assertSchoolRecordReadAccess(record, requesterId);
+    }
     return this.responsesRepository.find({
       where: { schoolRecordId, isComplete: true },
       relations: ['survey', 'answers', 'answers.field', 'respondent'],

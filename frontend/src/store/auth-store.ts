@@ -88,6 +88,26 @@ export const useAuthStore = create<AuthState>()(
         })),
 
       logout: () => {
+        // Best-effort server-side revocation FIRST: POST /auth/logout clears
+        // the stored refresh token and expires the httpOnly session cookies.
+        // Without this, "logging out" only wiped client state while the
+        // refresh credential stayed usable until its 7-day expiry.
+        // Raw fetch (not the api client) to avoid an import cycle; keepalive
+        // lets the request survive the page teardown of the redirect below;
+        // the bep_at cookie authenticates it. Failures are non-blocking.
+        if (typeof window !== 'undefined') {
+          try {
+            const base =
+              process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+            void fetch(`${base}/auth/logout`, {
+              method: 'POST',
+              credentials: 'include',
+              keepalive: true,
+            }).catch(() => {});
+          } catch {
+            // Network unavailable — local cleanup still proceeds.
+          }
+        }
         clearSessionCookie();
         set({
           user: null,
@@ -139,12 +159,16 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'bep-auth',
       partialize: (state) => ({
-        // Persist tokens too so browser reload keeps the session alive.
-        // Without this, first API calls after a hard refresh run unauthenticated
-        // and force-logout the user.
+        // SECURITY: access/refresh tokens are deliberately NOT persisted.
+        // They live in httpOnly cookies set by the API (`bep_at` / `bep_rt`)
+        // and are sent automatically with every request, so a successful XSS
+        // can no longer steal them from localStorage. The tokens held on the
+        // store object itself are transient, in-memory values only (kept so
+        // login flows can hand them around); they die with the tab.
+        //
+        // The user object is persisted so the UI can render immediately after
+        // a hard reload while the cookie authenticates the actual API calls.
         user: state.user,
-        accessToken: state.accessToken,
-        refreshToken: state.refreshToken,
         isAuthenticated: state.isAuthenticated,
       }),
     },

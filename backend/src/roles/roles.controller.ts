@@ -16,6 +16,7 @@ import { UpdateRoleDto } from './dto/update-role.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AccessGuard } from '../auth/guards/access.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 @ApiTags('Roles')
 @ApiBearerAuth()
@@ -27,8 +28,12 @@ export class RolesController {
   @Post()
   @Permissions({ module: 'roles', action: 'create' })
   @ApiOperation({ summary: 'Create a new role' })
-  async create(@Body() createRoleDto: CreateRoleDto) {
-    return this.rolesService.create(createRoleDto);
+  async create(
+    @Body() createRoleDto: CreateRoleDto,
+    @CurrentUser('id') actorId: string,
+  ) {
+    // actorId enables the privilege-hierarchy guard in the service.
+    return this.rolesService.create(createRoleDto, actorId);
   }
 
   @Get()
@@ -51,15 +56,19 @@ export class RolesController {
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateRoleDto: UpdateRoleDto,
+    @CurrentUser('id') actorId: string,
   ) {
-    return this.rolesService.update(id, updateRoleDto);
+    return this.rolesService.update(id, updateRoleDto, actorId);
   }
 
   @Delete(':id')
   @Permissions({ module: 'roles', action: 'delete' })
   @ApiOperation({ summary: 'Delete a role' })
-  async remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.rolesService.remove(id);
+  async remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') actorId: string,
+  ) {
+    return this.rolesService.remove(id, actorId);
   }
 
   @Post('seed')

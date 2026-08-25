@@ -149,16 +149,20 @@ export class SurveysController {
   @ApiOperation({ summary: 'Get a school record' })
   async getSchoolRecord(
     @Param('recordId', ParseUUIDPipe) recordId: string,
+    @CurrentUser('id') userId: string,
   ) {
-    return this.surveysService.getSchoolRecord(recordId);
+    // Object-level check inside the service: own records always, others need
+    // school-records:read (IDOR protection).
+    return this.surveysService.getSchoolRecord(recordId, userId);
   }
 
   @Get('school-records/:recordId/responses')
   @ApiOperation({ summary: 'Get all responses linked to a school record' })
   async getSchoolRecordResponses(
     @Param('recordId', ParseUUIDPipe) recordId: string,
+    @CurrentUser('id') userId: string,
   ) {
-    return this.surveysService.getSchoolRecordResponses(recordId);
+    return this.surveysService.getSchoolRecordResponses(recordId, userId);
   }
 
   @Patch('school-records/:recordId/transfer')
@@ -198,8 +202,14 @@ export class SurveysController {
   // =========== Survey Detail ===========
   @Get(':id')
   @ApiOperation({ summary: 'Get a survey by ID' })
-  async findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.surveysService.findOne(id);
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    // Published surveys are readable by all authenticated users (fill flow);
+    // drafts/closed/archived only by their creator or survey managers.
+    return this.surveysService.findOneForUser(id, userId, roles);
   }
 
   @Get(':id/stats')
@@ -210,6 +220,7 @@ export class SurveysController {
   }
 
   @Get(':id/status-logs')
+  @Permissions({ module: 'surveys', action: 'read' })
   @ApiOperation({ summary: 'Get status change history for a survey' })
   async getStatusLogs(@Param('id', ParseUUIDPipe) id: string) {
     return this.surveysService.getStatusLogs(id);
@@ -353,7 +364,10 @@ export class SurveysController {
   @ApiOperation({ summary: 'Get a specific survey response' })
   async getResponse(
     @Param('responseId', ParseUUIDPipe) responseId: string,
+    @CurrentUser('id') userId: string,
   ) {
-    return this.surveysService.getResponse(responseId);
+    // IDOR protection: respondents read their own responses; everyone else
+    // needs surveys:read (checked in the service).
+    return this.surveysService.getResponseForUser(responseId, userId);
   }
 }

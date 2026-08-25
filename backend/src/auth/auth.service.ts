@@ -138,6 +138,12 @@ export class AuthService {
         throw new UnauthorizedException('Invalid refresh token');
       }
 
+      // Deactivated or deleted accounts must not be able to mint new access
+      // tokens, even with a still-valid refresh token.
+      if (!user.isActive) {
+        throw new UnauthorizedException('Account is deactivated');
+      }
+
       const isTokenValid = await bcrypt.compare(
         refreshToken,
         user.refreshToken,
@@ -189,6 +195,16 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(newPassword, 12);
     await this.usersService.updatePassword(userId, hashedPassword);
+
+    // Rotate the refresh token so any OTHER session (other devices/browsers
+    // holding the old refresh token) is invalidated. The current device stays
+    // logged in via the fresh pair returned below.
+    const tokens = await this.generateTokens({
+      ...user,
+      password: hashedPassword,
+    });
+    await this.usersService.updateRefreshToken(user.id, tokens.refreshToken);
+
     const ctx = getAuditContext();
     await this.usersService.logActivity({
       action: 'CHANGE_PASSWORD',
@@ -199,7 +215,10 @@ export class AuthService {
       userAgent: ctx.userAgent,
     });
 
-    return { message: 'Password changed successfully' };
+    return {
+      message: 'Password changed successfully',
+      ...tokens,
+    };
   }
 
   private async generateTokens(user: any) {

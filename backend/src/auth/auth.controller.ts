@@ -10,7 +10,11 @@ import {
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
+  Req,
+  Res,
+  BadRequestException,
 } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
@@ -28,6 +32,11 @@ import {
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import {
+  REFRESH_TOKEN_COOKIE,
+  clearAuthCookies,
+  setAuthCookies,
+} from './cookies';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -43,8 +52,15 @@ export class AuthController {
   @ApiOperation({ summary: 'User login' })
   // Strict brute-force protection: 10 attempts per 60 s per IP
   @Throttle({ default: { ttl: 60000, limit: 10 } })
-  async login(@Body() loginDto: LoginDto) {
-    return this.authService.login(loginDto);
+  async login(
+    @Body() loginDto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.login(loginDto);
+    // httpOnly cookie session for the browser; tokens remain in the body for
+    // non-browser clients (Swagger / scripts).
+    setAuthCookies(res, result.accessToken, result.refreshToken);
+    return result;
   }
 
   // Public registration disabled – users can only be created from the admin panel
@@ -61,8 +77,22 @@ export class AuthController {
   @ApiOperation({ summary: 'Refresh access token' })
   // Token refresh: allow enough for normal use but block flooding
   @Throttle({ default: { ttl: 60000, limit: 20 } })
-  async refreshTokens(@Body() refreshTokenDto: RefreshTokenDto) {
-    return this.authService.refreshTokens(refreshTokenDto.refreshToken);
+  async refreshTokens(
+    @Body() refreshTokenDto: RefreshTokenDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    // Browser sessions present the refresh token via the httpOnly cookie;
+    // API clients may still send it in the body.
+    const refreshToken =
+      (req.cookies?.[REFRESH_TOKEN_COOKIE] as string | undefined) ||
+      refreshTokenDto.refreshToken;
+    if (!refreshToken) {
+      throw new BadRequestException('Refresh token is required');
+    }
+    const tokens = await this.authService.refreshTokens(refreshToken);
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
+    return tokens;
   }
 
   @UseGuards(JwtAuthGuard)
@@ -70,7 +100,11 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'User logout' })
-  async logout(@CurrentUser('id') userId: string) {
+  async logout(
+    @CurrentUser('id') userId: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    clearAuthCookies(res);
     return this.authService.logout(userId);
   }
 
@@ -82,12 +116,19 @@ export class AuthController {
   async changePassword(
     @CurrentUser('id') userId: string,
     @Body() body: ChangePasswordDto,
+    @Res({ passthrough: true }) res: Response,
   ) {
-    return this.authService.changePassword(
+    const result = await this.authService.changePassword(
       userId,
       body.currentPassword,
       body.newPassword,
     );
+    // The service rotates the refresh token (invalidating other devices);
+    // keep this device's cookies in sync with the new pair.
+    if ('accessToken' in result && 'refreshToken' in result) {
+      setAuthCookies(res, result.accessToken, result.refreshToken);
+    }
+    return result;
   }
 
   // ── Passkey (WebAuthn) enrolment — requires an authenticated user ──────
@@ -162,7 +203,15 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Complete passkey login (verify + issue tokens)' })
   @Throttle({ default: { ttl: 60000, limit: 20 } })
-  async passkeyLoginVerify(@Body() body: VerifyAuthenticationDto) {
-    return this.webAuthnService.verifyAuthentication(body.flowId, body.response);
+  async passkeyLoginVerify(
+    @Body() body: VerifyAuthenticationDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.webAuthnService.verifyAuthentication(
+      body.flowId,
+      body.response,
+    );
+    setAuthCookies(res, result.accessToken, result.refreshToken);
+    return result;
   }
 }

@@ -6,12 +6,19 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  // Auth rides in httpOnly cookies (`bep_at` / `bep_rt`) set by the API at
+  // login; the browser attaches them automatically. withCredentials is what
+  // makes that work for the cross-origin dev setup (localhost:3000 -> :4000);
+  // production is same-origin via the nginx /api proxy.
+  withCredentials: true,
 });
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
 
-// Request interceptor - add auth token
+// Request interceptor - add auth token (legacy: only present while an
+// in-memory token from this tab's login is still around; cookie sessions
+// need no header).
 api.interceptors.request.use(
   (config) => {
     const token = useAuthStore.getState().accessToken;
@@ -32,23 +39,29 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
+      // Cookie-first refresh: the httpOnly `bep_rt` cookie authenticates the
+      // call when present. A body token is only included for transitional
+      // sessions that still hold a persisted legacy refresh token.
       const refreshToken = useAuthStore.getState().refreshToken;
+      const hadLegacyTokens = !!refreshToken;
 
-      if (refreshToken) {
-        try {
-          const response = await axios.post(
-            `${API_BASE_URL}/auth/refresh`,
-            { refreshToken },
-          );
+      try {
+        const response = await axios.post(
+          `${API_BASE_URL}/auth/refresh`,
+          refreshToken ? { refreshToken } : {},
+          { withCredentials: true },
+        );
 
-          const { accessToken, refreshToken: newRefreshToken } = response.data;
+        const { accessToken, refreshToken: newRefreshToken } = response.data;
+        // Only keep tokens on the store for legacy tabs; cookie-only sessions
+        // rely entirely on the rotated cookies the server just set.
+        if (hadLegacyTokens && accessToken && newRefreshToken) {
           useAuthStore.getState().setTokens(accessToken, newRefreshToken);
-
-          originalRequest.headers.Authorization = `Bearer ${accessToken}`;
-          return api(originalRequest);
-        } catch {
-          // Refresh token is invalid/expired — fall through to forced logout below.
         }
+
+        return api(originalRequest);
+      } catch {
+        // Refresh token is invalid/expired — fall through to forced logout below.
       }
 
       // Either there was no refresh token (session lost, e.g. after a hard

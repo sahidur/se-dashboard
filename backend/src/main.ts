@@ -3,11 +3,53 @@ import { ClassSerializerInterceptor, Logger, ValidationPipe } from '@nestjs/comm
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { join } from 'path';
+import type { Request, Response, NextFunction } from 'express';
+import * as jwt from 'jsonwebtoken';
+import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import helmet from 'helmet';
+import { FilesService } from './files/files.service';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
+
+  /**
+   * Cheap session check for the uploads middleware: verifies the bep_at
+   * cookie JWT (signature + expiry) without a DB round-trip. Deactivated
+   * accounts are cut off within the access token's 15-minute TTL by the
+   * regular guard pipeline on API calls.
+   */
+  const hasSessionJwt = (req: Request): boolean => {
+    try {
+      jwt.verify(req.cookies?.bep_at ?? '', process.env.JWT_SECRET || '');
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  // Fail fast on weak/placeholder JWT signing secrets. Deploying with a
+  // guessable secret lets anyone forge admin tokens, so refuse to start
+  // rather than boot an exploitable app (redeploy.sh enforces the same rule).
+  const jwtSecret = process.env.JWT_SECRET || '';
+  const refreshSecret = process.env.JWT_REFRESH_SECRET || '';
+  for (const [name, value] of [
+    ['JWT_SECRET', jwtSecret],
+    ['JWT_REFRESH_SECRET', refreshSecret],
+  ] as const) {
+    if (
+      !value ||
+      value.length < 32 ||
+      /CHANGE_ME|change-in-production|placeholder/i.test(value)
+    ) {
+      logger.error(
+        `${name} is missing, shorter than 32 chars, or a placeholder. ` +
+          `Generate one with: openssl rand -hex 64`,
+      );
+      process.exit(1);
+    }
+  }
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     // Suppress the default NestJS startup logs that mention port/host info
     logger: process.env.APP_ENV === 'production'
@@ -39,6 +81,11 @@ async function bootstrap() {
       crossOriginEmbedderPolicy: false, // needed for Swagger UI assets
     }),
   );
+
+  // Required so the JWT strategy and auth controller can read the httpOnly
+  // session cookies (bep_at / bep_rt). No signing key: cookies are verified
+  // as JWTs, not as opaque signed values.
+  app.use(cookieParser());
 
   // Global validation pipe
   app.useGlobalPipes(
@@ -73,6 +120,28 @@ async function bootstrap() {
   // with `ENOENT: no such file or directory, stat '<abs path>/uploads/index.html'`
   // — a confusing 404 that also disclosed the server's filesystem layout.
   // A plain static mount simply falls through to Nest's own 404 handler.
+  //
+  // Every request must carry a valid HMAC signature (see FilesService) OR an
+  // authenticated session: upload URLs are rendered by the browser without
+  // auth headers, so anonymous access requires a fresh signature, while
+  // logged-in users (whose <img> requests carry the session cookie) can keep
+  // using older stored URLs even after their signature expires. Unsigned
+  // requests without a session are only accepted while
+  // UPLOADS_ALLOW_UNSIGNED=true (legacy migration grace).
+  const filesService = app.get(FilesService);
+  app.use('/api/uploads', (req: Request, res: Response, next: NextFunction) => {
+    // req.path inside a mounted router excludes the mount prefix.
+    const key = decodeURIComponent(req.path.replace(/^\/+/, ''));
+    const signatureValid = filesService.verifyLocalRequest(
+      key,
+      req.query['x-exp'],
+      req.query['x-sig'],
+    );
+    if (!signatureValid && !hasSessionJwt(req)) {
+      return res.status(403).json({ message: 'Invalid or expired file URL' });
+    }
+    next();
+  });
   app.useStaticAssets(join(process.cwd(), 'uploads'), {
     prefix: '/api/uploads',
     index: false,

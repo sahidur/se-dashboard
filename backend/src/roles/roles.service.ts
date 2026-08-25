@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -9,6 +10,7 @@ import { Role } from './entities/role.entity';
 import { Permission } from './entities/permission.entity';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class RolesService {
@@ -17,9 +19,70 @@ export class RolesService {
     private rolesRepository: Repository<Role>,
     @InjectRepository(Permission)
     private permissionsRepository: Repository<Permission>,
+    private usersService: UsersService,
   ) {}
 
-  async create(createRoleDto: CreateRoleDto): Promise<Role> {
+  /**
+   * The acting user's power. Returns null when there is no actor context
+   * (internal/system callers such as seeding) — guards treat that as trusted
+   * system access; every HTTP controller passes the real authenticated actor.
+   */
+  private async actorPower(actorId?: string): Promise<{
+    isSuperAdmin: boolean;
+    best: number;
+    heldRoleIds: Set<string>;
+  } | null> {
+    if (!actorId) return null;
+    const actor = await this.usersService.findOneById(actorId);
+    if (!actor) return null;
+    const isSuperAdmin = (actor.roles || []).some((r) => r.name === 'Super Admin');
+    const best = Math.min(
+      ...(actor.roles || []).map((r) => r.hierarchy ?? Number.POSITIVE_INFINITY),
+      Number.POSITIVE_INFINITY,
+    );
+    return {
+      isSuperAdmin,
+      best,
+      heldRoleIds: new Set((actor.roles || []).map((r) => r.id)),
+    };
+  }
+
+  /** Non-Super-Admins may not create roles stronger than their own level. */
+  private assertCanCreateRole(
+    actor: Awaited<ReturnType<RolesService['actorPower']>>,
+    hierarchy: number,
+  ): void {
+    if (!actor || actor.isSuperAdmin) return;
+    if (hierarchy < actor.best) {
+      throw new ForbiddenException(
+        'You cannot create roles with more privileges than your own',
+      );
+    }
+  }
+
+  /**
+   * Non-Super-Admins may not modify/delete roles stronger than their own
+   * level, nor any role they currently hold (editing your own role is a
+   * direct permission-escalation path).
+   */
+  private assertCanModifyRole(
+    actor: Awaited<ReturnType<RolesService['actorPower']>>,
+    role: Role,
+  ): void {
+    if (!actor || actor.isSuperAdmin) return;
+    if ((role.hierarchy ?? Number.POSITIVE_INFINITY) < actor.best) {
+      throw new ForbiddenException(
+        'You cannot modify roles with more privileges than your own',
+      );
+    }
+    if (actor.heldRoleIds.has(role.id)) {
+      throw new ForbiddenException(
+        'You cannot modify a role that is assigned to you — ask a higher-privileged administrator',
+      );
+    }
+  }
+
+  async create(createRoleDto: CreateRoleDto, actorId?: string): Promise<Role> {
     const existing = await this.rolesRepository.findOne({
       where: { name: createRoleDto.name },
     });
@@ -27,10 +90,13 @@ export class RolesService {
       throw new ConflictException('Role name already exists');
     }
 
+    const hierarchy = createRoleDto.hierarchy || 0;
+    this.assertCanCreateRole(await this.actorPower(actorId), hierarchy);
+
     const role = this.rolesRepository.create({
       name: createRoleDto.name,
       description: createRoleDto.description,
-      hierarchy: createRoleDto.hierarchy || 0,
+      hierarchy,
     });
 
     const savedRole = await this.rolesRepository.save(role);
@@ -67,13 +133,33 @@ export class RolesService {
     return role;
   }
 
-  async update(id: string, updateRoleDto: UpdateRoleDto): Promise<Role> {
+  async update(
+    id: string,
+    updateRoleDto: UpdateRoleDto,
+    actorId?: string,
+  ): Promise<Role> {
     const role = await this.rolesRepository.findOne({
       where: { id },
       relations: ['permissions'],
     });
     if (!role) {
       throw new NotFoundException('Role not found');
+    }
+    // Privilege guard: no self-service edits to your own role, and no edits
+    // to roles above your level.
+    const actor = await this.actorPower(actorId);
+    this.assertCanModifyRole(actor, role);
+
+    if (
+      updateRoleDto.hierarchy !== undefined &&
+      updateRoleDto.hierarchy !== role.hierarchy &&
+      actor &&
+      !actor.isSuperAdmin &&
+      updateRoleDto.hierarchy < actor.best
+    ) {
+      throw new ForbiddenException(
+        'You cannot raise a role above your own privilege level',
+      );
     }
 
     if (updateRoleDto.name && updateRoleDto.name !== role.name) {
@@ -113,11 +199,13 @@ export class RolesService {
     return this.rolesRepository.save(role);
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string, actorId?: string): Promise<void> {
     const role = await this.rolesRepository.findOne({ where: { id } });
     if (!role) {
       throw new NotFoundException('Role not found');
     }
+    // Privilege guard: cannot delete roles at/above your own level.
+    this.assertCanModifyRole(await this.actorPower(actorId), role);
     await this.rolesRepository.remove(role);
   }
 

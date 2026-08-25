@@ -24,6 +24,8 @@ const SENSITIVE_FIELDS = [
   'accessToken',
   'refreshtoken',
   'hashedPassword',
+  // Personal identifier — masked in snapshots like credentials are.
+  'pin',
 ];
 
 /**

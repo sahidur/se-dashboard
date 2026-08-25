@@ -112,6 +112,15 @@ if [[ -z "${SEED_ADMIN_PASSWORD:-}" ]]; then
   warn "  (used only by 'npm run seed' when admin@bep.org does not exist yet)"
 fi
 
+# Secret used to HMAC-sign locally-stored upload URLs (/api/uploads/...).
+# Deliberately independent of JWT_SECRET so rotating one never invalidates the
+# other's artifacts. Only relevant while S3 credentials are unset (local mode).
+if [[ -z "${UPLOAD_URL_SECRET:-}" ]]; then
+  UPLOAD_URL_SECRET=$(openssl rand -hex 64)
+  warn "Auto-generated UPLOAD_URL_SECRET – save this in a password manager!"
+  warn "  UPLOAD_URL_SECRET=${UPLOAD_URL_SECRET}"
+fi
+
 # If no repo URL and code is not present, ask
 if [[ -z "$REPO_URL" && ! -d "$APP_DIR/backend" ]]; then
   ask "Git repository URL (leave empty if you will upload files via rsync/scp)" REPO_URL
@@ -233,6 +242,14 @@ S3_SECRET_KEY=${S3_SECRET_KEY}
 
 # ── CORS ─────────────────────────────────────────────────────────────────────
 CORS_ORIGIN=https://${DOMAIN}
+# ── Signed upload URLs (/api/uploads) ────────────────────────────────────────
+# Locally stored files are served via HMAC-signed, expiring URLs. A fresh
+# install has no pre-signing uploads, so strict mode is on from day one:
+# anonymous access requires a valid signature; logged-in users are unaffected.
+# Set UPLOADS_ALLOW_UNSIGNED=true here only if migrating an existing dataset.
+UPLOAD_URL_SECRET=${UPLOAD_URL_SECRET}
+UPLOAD_URL_TTL_SECONDS=2592000
+UPLOADS_ALLOW_UNSIGNED=${UPLOADS_ALLOW_UNSIGNED:-false}
 # ── Seeding ───────────────────────────────────────────────────────
 # Only read by 'npm run seed' when admin@bep.org does not already exist.
 SEED_ADMIN_PASSWORD=${SEED_ADMIN_PASSWORD}
@@ -886,7 +903,10 @@ echo -e "  ${BOLD}Security notes${NC}:"
 echo -e "    · TRUST_PROXY=${TRUST_PROXY} — required so login rate limiting and audit"
 echo -e "      logs see the real client IP instead of nginx's 127.0.0.1."
 echo -e "    · nginx throttles /api/auth/ to 10 req/min per IP (burst 20)."
-echo -e "    · Uploads under /api/uploads/ are served with nosniff + a"
+echo -e "    * Sessions use httpOnly cookies (bep_at/bep_rt); tokens are never"
+echo -e "      stored in browser localStorage."
+echo -e "    * Uploads under /api/uploads/ require HMAC-signed URLs (30-day TTL)"
+echo -e "      or an authenticated session, and are served with nosniff + a"
 echo -e "      'default-src none; sandbox' CSP so they cannot execute."
 echo -e "    · backend/.env is chmod 600 and owned by ${APP_USER}."
 echo ""

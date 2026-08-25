@@ -115,6 +115,15 @@ export class FilesController {
     if (!SAFE_EXTENSIONS.has(ext)) {
       throw new BadRequestException('File type not allowed for serving');
     }
+    // Same locked-down header set as the static mount in main.ts / nginx:
+    // nothing served here may execute or be framed in the API origin.
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'none'; img-src 'self'; sandbox",
+    );
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
     res.sendFile(resolved);
   }
 }

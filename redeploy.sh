@@ -4,8 +4,11 @@
 #  Fixes: missing swap (OOM kills), broken nginx config (default page),
 #         missing systemd units, missing/placeholder env keys.
 #  Also reconciles the security settings the app now expects (TRUST_PROXY,
-#  nginx rate limits, locked-down /api/uploads/) on already-deployed boxes.
+#  signed upload URLs, cookie sessions, nginx rate limits, locked-down
+#  /api/uploads/) on already-deployed boxes.
+#
 #  Usage: sudo bash redeploy.sh
+#         sudo STRICT_UPLOADS=true bash redeploy.sh   # enforce signed-only upload URLs
 # =============================================================================
 set -euo pipefail
 IFS=$'\n\t'
@@ -28,6 +31,14 @@ NODE_MAJOR="${NODE_MAJOR:-24}"
 BACKEND_PORT="${BACKEND_PORT:-4000}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 DOMAIN="${DOMAIN:-se.somadhanhobe.com}"
+
+# Upload URL enforcement (see the "Reconciling backend environment file" step):
+#   false (default) -> first reconciliation adds UPLOADS_ALLOW_UNSIGNED=true so
+#                      pre-signing upload URLs stored in DB rows keep working.
+#   true            -> flips UPLOADS_ALLOW_UNSIGNED to false: anonymous access
+#                      then requires a valid signature; logged-in users are
+#                      unaffected. Safe to run any time, idempotent.
+STRICT_UPLOADS="${STRICT_UPLOADS:-false}"
 
 [[ -d "$APP_DIR/backend" ]] || die "App directory not found: ${APP_DIR}"
 
@@ -459,6 +470,36 @@ if ! grep -q '^SEED_ADMIN_PASSWORD=' "$BACKEND_ENV_FILE"; then
   ensure_env SEED_ADMIN_PASSWORD "$(openssl rand -base64 12 | tr -d '/+=')Aa1"
 fi
 
+# ── Signed upload URLs (/api/uploads) ────────────────────────────────────────
+# Newer backends serve locally-stored uploads through HMAC-signed, expiring
+# URLs. UPLOAD_URL_SECRET is deliberately independent of JWT_SECRET so rotating
+# one never invalidates the other's artifacts.
+ensure_env UPLOAD_URL_SECRET "$(openssl rand -hex 64)"
+ensure_env UPLOAD_URL_TTL_SECONDS "2592000"   # 30 days
+
+# UPLOADS_ALLOW_UNSIGNED controls the legacy grace window:
+#   true  -> unsigned URLs (uploaded before signing existed) are still served,
+#            so existing DB rows keep rendering. Safe upgrade default.
+#   false -> anonymous access requires a valid signature. Logged-in users are
+#            unaffected either way (their requests carry the session cookie),
+#            so flipping to false never breaks the admin UI.
+if grep -q '^UPLOADS_ALLOW_UNSIGNED=' "$BACKEND_ENV_FILE"; then
+  if [[ "$STRICT_UPLOADS" == "true" ]]; then
+    sed -i 's|^UPLOADS_ALLOW_UNSIGNED=.*|UPLOADS_ALLOW_UNSIGNED=false|' "$BACKEND_ENV_FILE"
+    ok "Strict uploads enabled: anonymous access now requires signed URLs"
+    ok "  (logged-in users unaffected; re-run without STRICT_UPLOADS=true to keep this setting)"
+  else
+    info "UPLOADS_ALLOW_UNSIGNED=$(grep -E '^UPLOADS_ALLOW_UNSIGNED=' "$BACKEND_ENV_FILE" | tail -n 1 | cut -d'=' -f2) (enforce signed-only later with: sudo STRICT_UPLOADS=true bash redeploy.sh)"
+  fi
+elif [[ "$STRICT_UPLOADS" == "true" ]]; then
+  ensure_env UPLOADS_ALLOW_UNSIGNED "false"
+  ok "Strict uploads enabled from the start"
+else
+  ensure_env UPLOADS_ALLOW_UNSIGNED "true"
+  warn "Upload signing added in permissive mode (legacy unsigned URLs still work)."
+  warn "Once comfortable, enforce signed-only access: sudo STRICT_UPLOADS=true bash redeploy.sh"
+fi
+
 chmod 600 "$BACKEND_ENV_FILE"
 chown "$APP_USER":"$APP_USER" "$BACKEND_ENV_FILE"
 
@@ -590,6 +631,14 @@ echo -e "    · TRUST_PROXY set — login throttling and audit logs now see the 
 echo -e "    · nginx: server_tokens off, /api/auth/ 10 req/min per IP, dotfiles denied"
 echo -e "    · nginx: /api/uploads/ served with nosniff + 'default-src none; sandbox' CSP"
 echo -e "    · JWT secrets validated (>= 32 chars, no placeholders)"
+echo -e "    · Cookie sessions (httpOnly bep_at/bep_rt) — no tokens in localStorage"
+UPLOAD_MODE="$(grep -E '^UPLOADS_ALLOW_UNSIGNED=' "$BACKEND_ENV_FILE" | tail -n 1 | cut -d'=' -f2 || true)"
+if [[ "$UPLOAD_MODE" == "false" ]]; then
+  echo -e "    · Uploads: signed, expiring URLs; anonymous access requires a signature"
+else
+  echo -e "    · Uploads: signing active in permissive mode — enforce with:"
+  echo -e "        sudo STRICT_UPLOADS=true bash redeploy.sh"
+fi
 echo ""
 echo -e "  ${BOLD}Database${NC}: additive schema changes applied and roles/permissions re-seeded."
 echo -e "    Re-run manually with:"

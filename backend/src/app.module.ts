@@ -51,7 +51,14 @@ import { AuditModule } from './common/audit/audit.module';
             : false,
           schema: configService.get<string>('DB_SCHEMA', 'bep'),
           autoLoadEntities: true,
-          synchronize: configService.get<string>('APP_ENV') === 'development',
+          // Auto-DDL only for local development databases. A dev machine with
+          // APP_ENV=development pointed at a shared/managed database must
+          // never alter its schema implicitly — use `npm run schema:sync`.
+          synchronize:
+            configService.get<string>('APP_ENV') === 'development' &&
+            ['localhost', '127.0.0.1', '::1', 'postgres', 'db'].includes(
+              configService.get<string>('DB_HOST', 'localhost'),
+            ),
           logging: configService.get<string>('APP_ENV') === 'development',
         };
       },

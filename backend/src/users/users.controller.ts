@@ -9,12 +9,18 @@ import {
   Query,
   UseGuards,
   ParseUUIDPipe,
+  NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import {
+  AddSchoolsDto,
+  AssignRolesDto,
+  SetUserStatusDto,
+} from './dto/user-actions.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AccessGuard } from '../auth/guards/access.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
@@ -68,7 +74,8 @@ export class UsersController {
   ) {
     // UpdateProfileDto is an explicit allowlist — role, active-status and
     // school-access fields are not accepted here (see the DTO for why).
-    return this.usersService.update(userId, updateProfileDto);
+    // userId doubles as actorId: self-edits always pass the hierarchy guard.
+    return this.usersService.update(userId, updateProfileDto, userId);
   }
 
   @Get('schools/available')
@@ -90,8 +97,16 @@ export class UsersController {
   @Get(':id')
   @Permissions({ module: 'users', action: 'read' })
   @ApiOperation({ summary: 'Get a user by ID' })
-  async findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.usersService.findOneById(id);
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') viewerId: string,
+  ) {
+    // PIN is only included for the account owner or a Super Admin.
+    const user = await this.usersService.findOneForViewer(id, viewerId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    return user;
   }
 
   @Patch(':id')
@@ -108,8 +123,13 @@ export class UsersController {
   @Post(':id/reset-password')
   @Permissions({ module: 'users', action: 'update' })
   @ApiOperation({ summary: 'Reset password for a user' })
-  async resetPassword(@Param('id', ParseUUIDPipe) id: string) {
-    return this.usersService.resetPassword(id);
+  async resetPassword(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') actorId: string,
+  ) {
+    // actorId enables the privilege-hierarchy guard in the service (a plain
+    // Admin must not be able to reset a Super Admin's password).
+    return this.usersService.resetPassword(id, actorId);
   }
 
   @Patch(':id/status')
@@ -117,7 +137,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Activate or deactivate a user' })
   async setStatus(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { isActive: boolean },
+    @Body() body: SetUserStatusDto,
     @CurrentUser('id') actorId: string,
   ) {
     return this.usersService.setStatus(id, body.isActive, actorId);
@@ -142,7 +162,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Grant a user access to additional schools' })
   async addSchools(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { schoolIds: string[] },
+    @Body() body: AddSchoolsDto,
   ) {
     return this.usersService.addSchools(id, body.schoolIds || []);
   }
@@ -160,8 +180,11 @@ export class UsersController {
   @Delete(':id')
   @Permissions({ module: 'users', action: 'delete' })
   @ApiOperation({ summary: 'Delete a user' })
-  async remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.usersService.remove(id);
+  async remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') actorId: string,
+  ) {
+    return this.usersService.remove(id, actorId);
   }
 
   @Post(':id/roles')
@@ -169,8 +192,11 @@ export class UsersController {
   @ApiOperation({ summary: 'Assign roles to a user' })
   async assignRoles(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { roleIds: string[] },
+    @Body() body: AssignRolesDto,
+    @CurrentUser('id') actorId: string,
   ) {
-    return this.usersService.assignRoles(id, body.roleIds);
+    // actorId enables the privilege-hierarchy guard (a plain Admin must not be
+    // able to grant themselves or others the Super Admin role).
+    return this.usersService.assignRoles(id, body.roleIds, actorId);
   }
 }

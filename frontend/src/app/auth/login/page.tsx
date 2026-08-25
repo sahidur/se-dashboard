@@ -93,7 +93,9 @@ export default function LoginPage() {
         sessionStorage.getItem(REDIRECT_ATTEMPT_KEY) === '1';
     }
 
-    const authed = isAuthenticated && !!accessToken;
+    // Cookie sessions keep no persisted access token, so an in-memory token
+    // OR the `bep-session` middleware cookie counts as "probably logged in".
+    const authed = isAuthenticated && (!!accessToken || hasSessionCookie());
 
     if (!authed) {
       // Nothing stale left to redirect with; allow a future successful login

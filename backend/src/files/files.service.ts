@@ -10,6 +10,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { v4 as uuid } from 'uuid';
 import * as path from 'path';
 import * as fs from 'fs';
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
 
 /**
  * Allowed upload MIME types mapped to the extension the file is stored with.
@@ -39,6 +40,9 @@ export class FilesService {
   private folder: string;
   private useLocal: boolean;
   private localUploadDir: string;
+
+  /** Default validity of signed local upload URLs: 30 days. */
+  private static readonly DEFAULT_URL_TTL_S = 30 * 24 * 60 * 60;
 
   constructor(private configService: ConfigService) {
     const accessKey = this.configService.get('S3_ACCESS_KEY', '');
@@ -92,6 +96,65 @@ export class FilesService {
     return ALLOWED_MIME_EXTENSIONS[file.mimetype];
   }
 
+  // ===================== Signed local upload URLs =====================
+  // Locally stored uploads are rendered by the browser via <img>/<a> tags,
+  // which cannot send Authorization headers, so the static mount cannot rely
+  // on JWT auth. Instead every URL is HMAC-signed and expires: the serving
+  // middleware (main.ts) rejects missing, tampered or stale signatures once
+  // UPLOADS_ALLOW_UNSIGNED is disabled.
+
+  /** Secret used to sign upload URLs. Derived from JWT_SECRET unless overridden. */
+  private uploadUrlSecret(): string {
+    const explicit = this.configService.get<string>('UPLOAD_URL_SECRET');
+    if (explicit) return explicit;
+    const jwtSecret = this.configService.get<string>('JWT_SECRET') || '';
+    return createHash('sha256').update(`upload-url:${jwtSecret}`).digest('hex');
+  }
+
+  private urlTtlSeconds(): number {
+    const raw = Number(this.configService.get('UPLOAD_URL_TTL_SECONDS'));
+    return Number.isFinite(raw) && raw > 0
+      ? raw
+      : FilesService.DEFAULT_URL_TTL_S;
+  }
+
+  /** Whether unsigned legacy URLs are still accepted (migration grace). */
+  allowsUnsignedUrls(): boolean {
+    return this.configService.get('UPLOADS_ALLOW_UNSIGNED', 'true') === 'true';
+  }
+
+  /** Signed, relative URL for a locally stored upload key. */
+  signUploadPath(key: string): string {
+    const exp = Math.floor(Date.now() / 1000) + this.urlTtlSeconds();
+    const sig = createHmac('sha256', this.uploadUrlSecret())
+      .update(`${key}|${exp}`)
+      .digest('base64url');
+    return `/api/uploads/${key}?x-exp=${exp}&x-sig=${sig}`;
+  }
+  /**
+   * Verify an incoming request for a locally stored upload. Returns false for
+   * expired/tampered signatures; unsigned URLs are only permitted while the
+   * legacy grace flag is enabled.
+   */
+  verifyLocalRequest(
+    key: string,
+    exp?: string | string[] | unknown,
+    sig?: string | string[] | unknown,
+  ): boolean {
+    if (!key || key.includes('..')) return false;
+    const expStr = Array.isArray(exp) ? String(exp[0]) : (exp as string);
+    const sigStr = Array.isArray(sig) ? String(sig[0]) : (sig as string);
+    if (!expStr || !sigStr) return this.allowsUnsignedUrls();
+    const expNum = Number(expStr);
+    if (!Number.isFinite(expNum) || expNum * 1000 < Date.now()) return false;
+    const expected = createHmac('sha256', this.uploadUrlSecret())
+      .update(`${key}|${expNum}`)
+      .digest('base64url');
+    const a = Buffer.from(sigStr);
+    const b = Buffer.from(expected);
+    return a.length === b.length && timingSafeEqual(a, b);
+  }
+
   private async uploadFileLocal(
     file: Express.Multer.File,
     subfolder: string,
@@ -108,9 +171,9 @@ export class FilesService {
     fs.writeFileSync(filePath, file.buffer);
 
     const key = `${subfolder}/${fileName}`;
-    // Return a domain-agnostic relative URL served through the API prefix so
+    // Signed, domain-agnostic relative URL served through the API prefix so
     // it works behind any reverse proxy / domain (not hardcoded to localhost).
-    const url = `/api/uploads/${key}`;
+    const url = this.signUploadPath(key);
 
     this.logger.log(`File saved locally: ${filePath}`);
     return { url, key };
@@ -172,7 +235,8 @@ export class FilesService {
 
   async getSignedUrl(key: string, expiresIn = 3600): Promise<string> {
     if (this.useLocal) {
-      return `/api/uploads/${key}`;
+      void expiresIn; // TTL is governed by the shared signing policy
+      return this.signUploadPath(key);
     }
     const command = new GetObjectCommand({
       Bucket: this.bucket,
