@@ -12,7 +12,7 @@ import {
   History, AlertTriangle, GraduationCap,
 } from 'lucide-react';
 import api from '@/lib/api';
-import { formatDateTime, formatDate, formatRelativeTime, cn, getInitials } from '@/lib/utils';
+import { formatDateTimeBd, formatDate, formatRelativeTime, cn, getInitials } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth-store';
 import { SubmissionView, fullName } from '@/components/school-monitoring/submission-view';
 import { MonitoringWizard } from '@/components/school-monitoring/monitoring-wizard';
@@ -138,7 +138,7 @@ export default function MonitoringDetailPage() {
               {submission.teacherName && <Meta icon={UserIcon} label="Teacher" value={submission.teacherName} />}
               <Meta icon={Calendar} label="Observed on" value={submission.observationDate ? formatDate(submission.observationDate) : '—'} />
               {submission.className && <Meta icon={GraduationCap} label="Grade(s)" value={submission.className} />}
-              <Meta icon={Clock} label="Submitted" value={formatDateTime(submission.createdAt)} />
+              <Meta icon={Clock} label="Submitted" value={formatDateTimeBd(submission.createdAt)} />
             </div>
             <div className="mt-4 flex items-center gap-2 border-t border-gray-100 pt-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700">
@@ -180,6 +180,7 @@ export default function MonitoringDetailPage() {
                       {idx === 0 && <span className="rounded-full bg-brand-600 px-2 py-0.5 text-[10px] font-semibold text-white">Latest</span>}
                     </div>
                     <p className="text-xs text-gray-400">{formatRelativeTime(h.createdAt)}</p>
+                    <p className="text-[11px] text-gray-400">{formatDateTimeBd(h.createdAt)}</p>
                   </Link>
                 );
               })}

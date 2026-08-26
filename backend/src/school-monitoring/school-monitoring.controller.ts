@@ -67,6 +67,31 @@ export class SchoolMonitoringController {
     return this.service.findForSchool(schoolId, userId, roles, formType);
   }
 
+  /**
+   * Flattened per-indicator feedback history (who answered what/commented and
+   * when), newest submission first. Powers the per-question timeline in the
+   * one-question-at-a-time form. `codes` is a comma-separated indicator list.
+   */
+  @Get('school/:schoolId/question-feedback')
+  @Permissions({ module: 'school-monitoring', action: 'read' })
+  findQuestionFeedback(
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+    @Query('formType') formType?: string,
+    @Query('codes') codes?: string,
+  ) {
+    const list = (codes ?? '')
+      .split(',')
+      .map((c) => c.trim())
+      .filter((c) => c.length > 0 && c.length <= 50)
+      .slice(0, 150);
+    return this.service.findQuestionFeedback(schoolId, userId, roles, {
+      formType,
+      codes: list.length ? list : undefined,
+    });
+  }
+
   @Get(':id')
   @Permissions({ module: 'school-monitoring', action: 'read' })
   findOne(

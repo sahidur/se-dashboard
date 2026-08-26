@@ -15,10 +15,27 @@ import {
 } from './dto';
 import { UsersService } from '../users/users.service';
 
+/** A single historical answer for one indicator, used by the per-question timeline. */
+export interface QuestionFeedbackEntry {
+  code: string;
+  section: string;
+  result: string;
+  comment: string | null;
+  submissionId: string;
+  observerName: string | null;
+  submittedById: string | null;
+  /** Display name of the submitting user (falls back to nothing if unknown). */
+  submittedByName: string | null;
+  submittedAt: Date;
+}
+
 @Injectable()
 export class SchoolMonitoringService {
   /** Every "No / Not Satisfied" answer must be justified with at least this many characters. */
   private static readonly MIN_NEGATIVE_COMMENT_LENGTH = 50;
+
+  /** How many recent submissions are unfolded into per-question history entries. */
+  private static readonly QUESTION_FEEDBACK_HISTORY_LIMIT = 100;
 
   constructor(
     @InjectRepository(MonitoringSubmission)
@@ -145,6 +162,60 @@ export class SchoolMonitoringService {
       where,
       order: { createdAt: 'DESC' },
     });
+  }
+
+  /**
+   * Per-indicator feedback history for the one-question-at-a-time form view.
+   *
+   * Unfolds the most recent submissions for a school (+ form category) into
+   * individual answer entries, newest submission first, so the UI can render
+   * for any indicator code a timeline of who answered what, with which
+   * comment and when. `codes` optionally restricts the result to specific
+   * indicator codes.
+   */
+  async findQuestionFeedback(
+    schoolId: string,
+    userId: string,
+    roles: string[],
+    options: { formType?: string; codes?: string[] },
+  ): Promise<QuestionFeedbackEntry[]> {
+    await this.validateSchoolAccess(schoolId, userId, roles);
+
+    const qb = this.submissionRepo
+      .createQueryBuilder('s')
+      .leftJoin('s.submittedBy', 'u')
+      .addSelect(['u.id', 'u.firstName', 'u.lastName'])
+      .where('s.schoolId = :schoolId', { schoolId })
+      .orderBy('s.createdAt', 'DESC')
+      .take(SchoolMonitoringService.QUESTION_FEEDBACK_HISTORY_LIMIT);
+    if (options.formType) {
+      qb.andWhere('s.formType = :formType', { formType: options.formType });
+    }
+    const submissions = await qb.getMany();
+
+    const wanted = options.codes?.length ? new Set(options.codes) : null;
+    const entries: QuestionFeedbackEntry[] = [];
+    for (const s of submissions) {
+      const submittedByName = s.submittedBy
+        ? `${s.submittedBy.firstName} ${s.submittedBy.lastName}`.trim() ||
+          s.submittedBy.email
+        : null;
+      for (const a of s.answers ?? []) {
+        if (wanted && !wanted.has(a.code)) continue;
+        entries.push({
+          code: a.code,
+          section: a.section,
+          result: a.result,
+          comment: a.comment ?? null,
+          submissionId: s.id,
+          observerName: s.observerName ?? null,
+          submittedById: s.submittedBy?.id ?? null,
+          submittedByName,
+          submittedAt: s.createdAt,
+        });
+      }
+    }
+    return entries;
   }
 
   /** Paginated browse across all schools the user may access. */

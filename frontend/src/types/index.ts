@@ -51,6 +51,19 @@ export interface PaginatedMonitoring {
   totalPages: number;
 }
 
+/** One historical answer for a specific indicator (per-question timeline). */
+export interface MonitoringQuestionFeedback {
+  code: string;
+  section: string;
+  result: MonitoringResult;
+  comment?: string | null;
+  submissionId: string;
+  observerName?: string | null;
+  submittedById?: string | null;
+  submittedByName?: string | null;
+  submittedAt: string;
+}
+
 export interface User {
   id: string;
   firstName: string;

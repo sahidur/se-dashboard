@@ -34,6 +34,22 @@ export function formatDateTime(date: string | Date) {
   });
 }
 
+/**
+ * Exact timestamp rendered in Bangladesh Standard Time (UTC/GMT+6) with a
+ * 12-hour AM/PM clock, e.g. "Aug 26, 2026, 9:45 AM".
+ */
+export function formatDateTimeBd(date: string | Date): string {
+  return new Date(date).toLocaleString('en-US', {
+    timeZone: 'Asia/Dhaka',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
 export function getInitials(firstName: string, lastName: string) {
   return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
 }

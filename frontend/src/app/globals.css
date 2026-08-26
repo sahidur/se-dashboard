@@ -31,6 +31,41 @@
   75% { transform: translateX(4px); }
 }
 
+/* Direction-aware wizard transitions (one question at a time) */
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(36px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-36px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* Timeline tree entries slide in from the line, staggered inline */
+@keyframes timelineIn {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* Small bounce used when a result option is selected */
+@keyframes popIn {
+  0% { opacity: 0; transform: scale(0.6); }
+  65% { transform: scale(1.12); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* Progress bar shimmer sweep */
+@keyframes progressShimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+
+/* Success overlay check-mark draw-on */
+@keyframes drawStroke {
+  to { stroke-dashoffset: 0; }
+}
+
 .animate-fadeIn {
   animation: fadeIn 0.4s ease-out both;
 }
@@ -41,6 +76,64 @@
 
 .animate-shake {
   animation: shake 0.3s ease-out;
+}
+
+.animate-slideInRight {
+  animation: slideInRight 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-slideInLeft {
+  animation: slideInLeft 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-timelineIn {
+  animation: timelineIn 0.3s ease-out both;
+}
+
+.animate-popIn {
+  animation: popIn 0.25s ease-out both;
+}
+
+.progress-bar-shimmer {
+  background-image: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0) 30%,
+    rgba(255, 255, 255, 0.45) 50%,
+    rgba(255, 255, 255, 0) 70%
+  );
+  background-size: 200% 100%;
+  animation: progressShimmer 1.8s linear infinite;
+}
+
+.success-check-circle {
+  stroke: #10b981;
+  stroke-width: 2.5;
+  stroke-dasharray: 166;
+  stroke-dashoffset: 166;
+  animation: drawStroke 0.55s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+}
+
+.success-check-mark {
+  stroke: #10b981;
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 48;
+  stroke-dashoffset: 48;
+  animation: drawStroke 0.35s 0.5s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fadeIn,
+  .animate-slideUp,
+  .animate-slideInRight,
+  .animate-slideInLeft,
+  .animate-timelineIn,
+  .animate-popIn,
+  .progress-bar-shimmer {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
 
 /* ------------------------------------------------------------------ */
