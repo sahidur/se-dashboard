@@ -46,10 +46,20 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
       >
         <Menu size={20} />
       </button>
-      {/* Titles wrap (no truncate) so long school names stay fully readable. */}
+      {/* Titles clamp to a single line so long school/form names keep the
+          header compact — hover shows the full text as a native tooltip. */}
       <div className="min-w-0 mr-3">
-        <h1 className="break-words text-lg font-bold leading-snug text-gray-900 sm:text-xl">{title}</h1>
-        {subtitle && <p className="break-words text-xs text-gray-500 sm:text-sm">{subtitle}</p>}
+        <h1
+          className="truncate text-lg font-bold leading-snug text-gray-900 sm:text-xl"
+          title={title}
+        >
+          {title}
+        </h1>
+        {subtitle && (
+          <p className="truncate text-xs text-gray-500 sm:text-sm" title={subtitle}>
+            {subtitle}
+          </p>
+        )}
       </div>
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-4">
         {actions}

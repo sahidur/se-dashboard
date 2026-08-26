@@ -5,11 +5,13 @@ import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/header';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ShieldOff } from 'lucide-react';
 import { findFormByKey } from '@/components/data-collection/form-catalog';
 import { FormDataViewer } from '@/components/data-collection/form-data-viewer';
 import { StudentPerformanceViewer } from '@/components/data-collection/student-performance-viewer';
 import { getStudentPerformanceForm, getFormDisplayLabel, type StudentPerformanceFormKey } from '@/components/data-collection/student-performance-catalog';
+import { useAuthStore } from '@/store/auth-store';
+import { endpointToResource } from '@/lib/data-collection-forms';
 import api from '@/lib/api';
 import type { DcSchool } from '@/types';
 
@@ -39,6 +41,9 @@ export default function FormDataViewerPage() {
   // must be memoized on the primitive `formKey` — otherwise `found` gets a new
   // reference every render, which would make it an unstable dependency below.
   const found = useMemo(() => findFormByKey(formKey), [formKey]);
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canRead =
+    !found || hasPermission('data-collection', 'read', endpointToResource(found.form.endpoint));
 
   // Student Performance (BA/BPS/BSS) stores its indicator grid as jsonb, which
   // the generic flat table renders as one unreadable ultra-wide row per record.
@@ -66,6 +71,29 @@ export default function FormDataViewerPage() {
   }
 
   const { category, form } = found;
+
+  // Direct-URL access to a form this role cannot read (form-scoped grant check).
+  if (!canRead) {
+    return (
+      <>
+        <Header title={form.label} />
+        <div className="p-6">
+          <Card className="border-0 shadow-sm">
+            <CardContent className="py-16 text-center">
+              <ShieldOff size={28} className="mx-auto mb-3 text-gray-300" />
+              <p className="text-gray-500">
+                You do not have permission to view “{form.label}”.
+              </p>
+              <Button variant="outline" size="sm" className="mt-4" onClick={() => router.push(`/data-collection/school-information?school=${schoolId}`)}>
+                Back to School Profile
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </>
+    );
+  }
+
   const fileBase = `${schoolCode || schoolId}-${form.key}`;
   const CategoryIcon = category.icon;
   const FormIcon = form.icon;

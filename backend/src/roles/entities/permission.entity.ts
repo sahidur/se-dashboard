@@ -23,6 +23,14 @@ export class Permission {
   @Column({ length: 100 })
   module: string; // e.g., 'dashboard', 'users', 'roles', 'surveys', 'schools'
 
+  /**
+   * Optional sub-resource within the module (e.g. a data-collection form key
+   * like 'alumni' or 'revenue/budget/total'). NULL acts as a wildcard and
+   * covers every resource in the module.
+   */
+  @Column({ length: 100, nullable: true })
+  resource: string | null;
+
   @Column({
     type: 'enum',
     enum: ActionType,

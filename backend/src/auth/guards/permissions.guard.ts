@@ -46,10 +46,21 @@ export class PermissionsGuard implements CanActivate {
     );
 
     return requiredPermissions.every((required) =>
-      userPermissions.some(
-        (perm) =>
-          perm.module === required.module && perm.action === required.action,
-      ),
+      userPermissions.some((perm) => {
+        if (perm.module !== required.module || perm.action !== required.action) {
+          return false;
+        }
+        // Requirement without a specific resource (e.g. umbrella "list" or
+        // navigation endpoints) is satisfied by ANY grant on module+action,
+        // wildcard or form-scoped — per-form restriction applies at the
+        // form endpoints themselves.
+        if (!required.resource) {
+          return true;
+        }
+        // Requirement for a specific resource needs an exact match or a
+        // wildcard (resource-less) grant.
+        return !perm.resource || perm.resource === required.resource;
+      }),
     );
   }
 }

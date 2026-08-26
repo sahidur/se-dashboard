@@ -106,6 +106,7 @@ export class RolesService {
         this.permissionsRepository.create({
           module: p.module,
           action: p.action,
+          resource: p.resource ?? null,
           roleId: savedRole.id,
         }),
       );
@@ -190,6 +191,7 @@ export class RolesService {
         this.permissionsRepository.create({
           module: p.module,
           action: p.action,
+          resource: p.resource ?? null,
           roleId: id,
         }),
       );

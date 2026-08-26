@@ -18,9 +18,21 @@ export class CreatePermissionDto {
   @IsNotEmpty()
   module: string;
 
-  @ApiProperty({ enum: ActionType, example: 'read' })
+  @ApiProperty({
+    enum: ActionType,
+    example: 'read',
+  })
   @IsEnum(ActionType)
   action: ActionType;
+
+  @ApiPropertyOptional({
+    example: 'alumni',
+    description:
+      'Optional sub-resource within the module (e.g. a data-collection form key). Omit for a wildcard covering all resources in the module.',
+  })
+  @IsString()
+  @IsOptional()
+  resource?: string | null;
 }
 
 export class CreateRoleDto {

@@ -113,7 +113,7 @@ export class DataCollectionController {
   // ===================== Basic Information =====================
 
   @Post('basic-info')
-  @Permissions({ module: 'data-collection', action: 'create' })
+  @Permissions({ module: 'data-collection', action: 'create', resource: 'basic-info' })
   upsertBasicInfo(
     @Body() dto: UpsertBasicInfoDto,
     @CurrentUser('id') userId: string,
@@ -123,7 +123,7 @@ export class DataCollectionController {
   }
 
   @Get('basic-info/school/:schoolId')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions({ module: 'data-collection', action: 'read', resource: 'basic-info' })
   getBasicInfo(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
@@ -136,7 +136,7 @@ export class DataCollectionController {
   // ===================== Infrastructure =====================
 
   @Post('infrastructure')
-  @Permissions({ module: 'data-collection', action: 'create' })
+  @Permissions({ module: 'data-collection', action: 'create', resource: 'infrastructure' })
   upsertInfrastructure(
     @Body() dto: UpsertInfrastructureDto,
     @CurrentUser('id') userId: string,
@@ -146,7 +146,7 @@ export class DataCollectionController {
   }
 
   @Get('infrastructure/school/:schoolId')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions({ module: 'data-collection', action: 'read', resource: 'infrastructure' })
   getInfrastructure(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
@@ -159,7 +159,7 @@ export class DataCollectionController {
   // ===================== Students Info =====================
 
   @Post('students')
-  @Permissions({ module: 'data-collection', action: 'create' })
+  @Permissions({ module: 'data-collection', action: 'create', resource: 'students' })
   upsertStudentsInfo(
     @Body() dto: UpsertStudentsInfoDto,
     @CurrentUser('id') userId: string,
@@ -169,7 +169,7 @@ export class DataCollectionController {
   }
 
   @Get('students/school/:schoolId')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions({ module: 'data-collection', action: 'read', resource: 'students' })
   getStudentsInfo(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
@@ -181,7 +181,7 @@ export class DataCollectionController {
   // ===================== Teachers Info (legacy aggregate) =====================
 
   @Post('teachers')
-  @Permissions({ module: 'data-collection', action: 'create' })
+  @Permissions({ module: 'data-collection', action: 'create', resource: 'teachers' })
   upsertTeachersInfo(
     @Body() dto: UpsertTeachersInfoDto,
     @CurrentUser('id') userId: string,
@@ -191,7 +191,7 @@ export class DataCollectionController {
   }
 
   @Get('teachers/school/:schoolId')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions({ module: 'data-collection', action: 'read', resource: 'teachers' })
   getTeachersInfo(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
@@ -203,7 +203,7 @@ export class DataCollectionController {
   // ===================== Teacher Individual (multi-entry) =====================
 
   @Post('teachers/individual')
-  @Permissions({ module: 'data-collection', action: 'create' })
+  @Permissions({ module: 'data-collection', action: 'create', resource: 'teachers-individual' })
   createTeacherIndividual(
     @Body() dto: CreateTeacherIndividualDto,
     @CurrentUser('id') userId: string,
@@ -213,7 +213,7 @@ export class DataCollectionController {
   }
 
   @Get('teachers/individual/school/:schoolId')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions({ module: 'data-collection', action: 'read', resource: 'teachers-individual' })
   getTeacherIndividuals(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
@@ -223,7 +223,7 @@ export class DataCollectionController {
   }
 
   @Delete('teachers/individual/:id')
-  @Permissions({ module: 'data-collection', action: 'delete' })
+  @Permissions({ module: 'data-collection', action: 'delete', resource: 'teachers-individual' })
   deleteTeacherIndividual(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser('id') userId: string,
@@ -235,7 +235,7 @@ export class DataCollectionController {
   // ===================== Teachers Development (per month) =====================
 
   @Post('teachers/development')
-  @Permissions({ module: 'data-collection', action: 'create' })
+  @Permissions({ module: 'data-collection', action: 'create', resource: 'teachers-development' })
   upsertTeachersDevelopment(
     @Body() dto: UpsertTeachersDevelopmentDto,
     @CurrentUser('id') userId: string,
@@ -245,7 +245,7 @@ export class DataCollectionController {
   }
 
   @Get('teachers/development/school/:schoolId')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions({ module: 'data-collection', action: 'read', resource: 'teachers-development' })
   getTeachersDevelopment(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
@@ -257,7 +257,7 @@ export class DataCollectionController {
   // ===================== Revenue =====================
 
   @Post('revenue')
-  @Permissions({ module: 'data-collection', action: 'create' })
+  @Permissions({ module: 'data-collection', action: 'create', resource: 'revenue' })
   upsertRevenue(
     @Body() dto: UpsertRevenueDto,
     @CurrentUser('id') userId: string,
@@ -267,7 +267,7 @@ export class DataCollectionController {
   }
 
   @Get('revenue/school/:schoolId')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions({ module: 'data-collection', action: 'read', resource: 'revenue' })
   getRevenue(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
@@ -280,7 +280,7 @@ export class DataCollectionController {
   // ===================== Performance =====================
 
   @Post('performance')
-  @Permissions({ module: 'data-collection', action: 'create' })
+  @Permissions({ module: 'data-collection', action: 'create', resource: 'performance' })
   upsertPerformance(
     @Body() dto: UpsertPerformanceDto,
     @CurrentUser('id') userId: string,
@@ -290,7 +290,7 @@ export class DataCollectionController {
   }
 
   @Get('performance/school/:schoolId')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions({ module: 'data-collection', action: 'read', resource: 'performance' })
   getPerformance(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
@@ -303,7 +303,7 @@ export class DataCollectionController {
   // ===================== Alumni =====================
 
   @Post('alumni')
-  @Permissions({ module: 'data-collection', action: 'create' })
+  @Permissions({ module: 'data-collection', action: 'create', resource: 'alumni' })
   createAlumni(
     @Body() dto: CreateAlumniDto,
     @CurrentUser('id') userId: string,
@@ -313,7 +313,7 @@ export class DataCollectionController {
   }
 
   @Get('alumni/school/:schoolId')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions({ module: 'data-collection', action: 'read', resource: 'alumni' })
   getAlumniBySchool(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
@@ -323,7 +323,7 @@ export class DataCollectionController {
   }
 
   @Patch('alumni/:id')
-  @Permissions({ module: 'data-collection', action: 'update' })
+  @Permissions({ module: 'data-collection', action: 'update', resource: 'alumni' })
   updateAlumni(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateAlumniDto,
@@ -334,7 +334,7 @@ export class DataCollectionController {
   }
 
   @Delete('alumni/:id')
-  @Permissions({ module: 'data-collection', action: 'delete' })
+  @Permissions({ module: 'data-collection', action: 'delete', resource: 'alumni' })
   deleteAlumni(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser('id') userId: string,
@@ -346,7 +346,7 @@ export class DataCollectionController {
   // ===================== Fee Structure =====================
 
   @Post('fee-structure')
-  @Permissions({ module: 'data-collection', action: 'create' })
+  @Permissions({ module: 'data-collection', action: 'create', resource: 'fee-structure' })
   upsertFeeStructure(
     @Body() dto: UpsertFeeStructureDto,
     @CurrentUser('id') userId: string,
@@ -356,7 +356,7 @@ export class DataCollectionController {
   }
 
   @Get('fee-structure/school/:schoolId')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions({ module: 'data-collection', action: 'read', resource: 'fee-structure' })
   getFeeStructures(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
@@ -366,7 +366,7 @@ export class DataCollectionController {
   }
 
   @Get('fee-structure/logs/school/:schoolId')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions({ module: 'data-collection', action: 'read', resource: 'fee-structure' })
   getFeeStructureLogs(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
@@ -378,7 +378,7 @@ export class DataCollectionController {
   // ===================== Revenue Budget Total =====================
 
   @Post('revenue/budget/total')
-  @Permissions({ module: 'data-collection', action: 'create' })
+  @Permissions({ module: 'data-collection', action: 'create', resource: 'revenue-budget-total' })
   upsertRevenueBudgetTotal(
     @Body() dto: UpsertRevenueBudgetTotalDto,
     @CurrentUser('id') userId: string,
@@ -388,7 +388,7 @@ export class DataCollectionController {
   }
 
   @Get('revenue/budget/total/school/:schoolId')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions({ module: 'data-collection', action: 'read', resource: 'revenue-budget-total' })
   getRevenueBudgetTotal(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
@@ -401,7 +401,7 @@ export class DataCollectionController {
   // ===================== Revenue Budget Monthly =====================
 
   @Post('revenue/budget/monthly')
-  @Permissions({ module: 'data-collection', action: 'create' })
+  @Permissions({ module: 'data-collection', action: 'create', resource: 'revenue-budget-monthly' })
   upsertRevenueBudgetMonthly(
     @Body() dto: UpsertRevenueBudgetMonthlyDto,
     @CurrentUser('id') userId: string,
@@ -411,7 +411,7 @@ export class DataCollectionController {
   }
 
   @Get('revenue/budget/monthly/school/:schoolId')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions({ module: 'data-collection', action: 'read', resource: 'revenue-budget-monthly' })
   getRevenueBudgetMonthly(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
@@ -423,7 +423,7 @@ export class DataCollectionController {
   // ===================== Revenue Actual Total =====================
 
   @Post('revenue/actual/total')
-  @Permissions({ module: 'data-collection', action: 'create' })
+  @Permissions({ module: 'data-collection', action: 'create', resource: 'revenue-actual-total' })
   upsertRevenueActualTotal(
     @Body() dto: UpsertRevenueActualTotalDto,
     @CurrentUser('id') userId: string,
@@ -433,7 +433,7 @@ export class DataCollectionController {
   }
 
   @Get('revenue/actual/total/school/:schoolId')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions({ module: 'data-collection', action: 'read', resource: 'revenue-actual-total' })
   getRevenueActualTotal(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
@@ -446,7 +446,7 @@ export class DataCollectionController {
   // ===================== Revenue Actual Monthly =====================
 
   @Post('revenue/actual/monthly')
-  @Permissions({ module: 'data-collection', action: 'create' })
+  @Permissions({ module: 'data-collection', action: 'create', resource: 'revenue-actual-monthly' })
   upsertRevenueActualMonthly(
     @Body() dto: UpsertRevenueActualMonthlyDto,
     @CurrentUser('id') userId: string,
@@ -456,7 +456,7 @@ export class DataCollectionController {
   }
 
   @Get('revenue/actual/monthly/school/:schoolId')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions({ module: 'data-collection', action: 'read', resource: 'revenue-actual-monthly' })
   getRevenueActualMonthly(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
@@ -468,7 +468,7 @@ export class DataCollectionController {
   // ===================== Pedagogical Achievements =====================
 
   @Post('pedagogical-achievements')
-  @Permissions({ module: 'data-collection', action: 'create' })
+  @Permissions({ module: 'data-collection', action: 'create', resource: 'pedagogical-achievements' })
   upsertPedagogicalAchievement(
     @Body() dto: UpsertPedagogicalAchievementDto,
     @CurrentUser('id') userId: string,
@@ -478,7 +478,7 @@ export class DataCollectionController {
   }
 
   @Get('pedagogical-achievements/school/:schoolId')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions({ module: 'data-collection', action: 'read', resource: 'pedagogical-achievements' })
   getPedagogicalAchievements(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
@@ -488,7 +488,7 @@ export class DataCollectionController {
   }
 
   @Delete('pedagogical-achievements/:id')
-  @Permissions({ module: 'data-collection', action: 'delete' })
+  @Permissions({ module: 'data-collection', action: 'delete', resource: 'pedagogical-achievements' })
   deletePedagogicalAchievement(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser('id') userId: string,
@@ -500,7 +500,7 @@ export class DataCollectionController {
   // ===================== Co-curricular =====================
 
   @Post('cocurricular')
-  @Permissions({ module: 'data-collection', action: 'create' })
+  @Permissions({ module: 'data-collection', action: 'create', resource: 'cocurricular' })
   upsertCocurricular(
     @Body() dto: UpsertCocurricularDto,
     @CurrentUser('id') userId: string,
@@ -510,7 +510,7 @@ export class DataCollectionController {
   }
 
   @Get('cocurricular/school/:schoolId')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions({ module: 'data-collection', action: 'read', resource: 'cocurricular' })
   getCocurricular(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
@@ -520,7 +520,7 @@ export class DataCollectionController {
   }
 
   @Delete('cocurricular/:id')
-  @Permissions({ module: 'data-collection', action: 'delete' })
+  @Permissions({ module: 'data-collection', action: 'delete', resource: 'cocurricular' })
   deleteCocurricular(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser('id') userId: string,
@@ -532,7 +532,7 @@ export class DataCollectionController {
   // ===================== Students' Performance =====================
 
   @Post('students-performance')
-  @Permissions({ module: 'data-collection', action: 'create' })
+  @Permissions({ module: 'data-collection', action: 'create', resource: 'students-performance' })
   upsertStudentsPerformance(
     @Body() dto: UpsertStudentsPerformanceDto,
     @CurrentUser('id') userId: string,
@@ -542,7 +542,7 @@ export class DataCollectionController {
   }
 
   @Get('students-performance/school/:schoolId')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions({ module: 'data-collection', action: 'read', resource: 'students-performance' })
   getStudentsPerformance(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
@@ -552,7 +552,7 @@ export class DataCollectionController {
   }
 
   @Delete('students-performance/:id')
-  @Permissions({ module: 'data-collection', action: 'delete' })
+  @Permissions({ module: 'data-collection', action: 'delete', resource: 'students-performance' })
   deleteStudentsPerformance(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser('id') userId: string,
@@ -564,7 +564,7 @@ export class DataCollectionController {
   // ===================== Student Performance (BA / BPS / BSS) =====================
 
   @Post('student-performance')
-  @Permissions({ module: 'data-collection', action: 'create' })
+  @Permissions({ module: 'data-collection', action: 'create', resource: 'student-performance' })
   upsertStudentPerformance(
     @Body() dto: UpsertStudentPerformanceDto,
     @CurrentUser('id') userId: string,
@@ -574,7 +574,7 @@ export class DataCollectionController {
   }
 
   @Get('student-performance/school/:schoolId')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions({ module: 'data-collection', action: 'read', resource: 'student-performance' })
   getStudentPerformance(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
@@ -586,7 +586,7 @@ export class DataCollectionController {
 
   /** Flattened variant used by the generic School Information form-data viewer. */
   @Get('student-performance/:formKey/school/:schoolId')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions({ module: 'data-collection', action: 'read', resource: 'student-performance' })
   getStudentPerformanceFlat(
     @Param('formKey') formKey: string,
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
@@ -597,7 +597,7 @@ export class DataCollectionController {
   }
 
   @Delete('student-performance/:id')
-  @Permissions({ module: 'data-collection', action: 'delete' })
+  @Permissions({ module: 'data-collection', action: 'delete', resource: 'student-performance' })
   deleteStudentPerformance(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser('id') userId: string,
@@ -609,7 +609,7 @@ export class DataCollectionController {
   // ===================== Activity Participation (Corner/Club/Library/Lab) =====================
 
   @Post('activity-participation')
-  @Permissions({ module: 'data-collection', action: 'create' })
+  @Permissions({ module: 'data-collection', action: 'create', resource: 'activity-participation' })
   upsertActivityParticipation(
     @Body() dto: UpsertActivityParticipationDto,
     @CurrentUser('id') userId: string,
@@ -619,7 +619,7 @@ export class DataCollectionController {
   }
 
   @Get('activity-participation/school/:schoolId')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions({ module: 'data-collection', action: 'read', resource: 'activity-participation' })
   getActivityParticipation(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
@@ -629,7 +629,7 @@ export class DataCollectionController {
   }
 
   @Delete('activity-participation/:id')
-  @Permissions({ module: 'data-collection', action: 'delete' })
+  @Permissions({ module: 'data-collection', action: 'delete', resource: 'activity-participation' })
   deleteActivityParticipation(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser('id') userId: string,
@@ -641,7 +641,7 @@ export class DataCollectionController {
   // ===================== Event Participation =====================
 
   @Post('event-participation')
-  @Permissions({ module: 'data-collection', action: 'create' })
+  @Permissions({ module: 'data-collection', action: 'create', resource: 'event-participation' })
   createEventParticipation(
     @Body() dto: CreateEventParticipationDto,
     @CurrentUser('id') userId: string,
@@ -651,7 +651,7 @@ export class DataCollectionController {
   }
 
   @Get('event-participation/school/:schoolId')
-  @Permissions({ module: 'data-collection', action: 'read' })
+  @Permissions({ module: 'data-collection', action: 'read', resource: 'event-participation' })
   getEventParticipation(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @CurrentUser('id') userId: string,
@@ -661,7 +661,7 @@ export class DataCollectionController {
   }
 
   @Patch('event-participation/:id')
-  @Permissions({ module: 'data-collection', action: 'update' })
+  @Permissions({ module: 'data-collection', action: 'update', resource: 'event-participation' })
   updateEventParticipation(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateEventParticipationDto,
@@ -672,7 +672,7 @@ export class DataCollectionController {
   }
 
   @Delete('event-participation/:id')
-  @Permissions({ module: 'data-collection', action: 'delete' })
+  @Permissions({ module: 'data-collection', action: 'delete', resource: 'event-participation' })
   deleteEventParticipation(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser('id') userId: string,

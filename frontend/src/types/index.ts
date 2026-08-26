@@ -147,6 +147,11 @@ export interface Role {
 export interface Permission {
   id: string;
   module: string;
+  /**
+   * Optional sub-resource within the module (e.g. a data-collection form key).
+   * Null/undefined acts as a wildcard covering all resources in the module.
+   */
+  resource?: string | null;
   action: 'create' | 'read' | 'update' | 'delete';
 }
 

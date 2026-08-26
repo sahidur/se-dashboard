@@ -6,6 +6,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { FORM_CATEGORIES, type FormCatalogItem, type FormCategory } from './form-catalog';
 import { SECTION_BY_SCHOOL_CATEGORY, getFormDisplayLabel, getStudentPerformanceForm } from './student-performance-catalog';
+import { useAuthStore } from '@/store/auth-store';
+import { endpointToResource } from '@/lib/data-collection-forms';
 
 interface CategoryMenuProps {
   schoolId: string;
@@ -58,6 +60,11 @@ function FormLink({ form, href, onNavigate, schoolCategory }: { form: FormCatalo
 export function CategoryMenu({ schoolId, schoolName, schoolCode, schoolCategory }: CategoryMenuProps) {
   const [openKey, setOpenKey] = useState<string | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+
+  // Hide forms this role cannot read (form-scoped grants; wildcard passes all).
+  const canReadForm = (form: FormCatalogItem) =>
+    hasPermission('data-collection', 'read', endpointToResource(form.endpoint));
 
   const categories: FormCategory[] = schoolCategory
     ? FORM_CATEGORIES.map((cat) => {
@@ -73,6 +80,11 @@ export function CategoryMenu({ schoolId, schoolName, schoolCode, schoolCategory 
         };
       })
     : FORM_CATEGORIES;
+
+  // Drop categories whose every form is hidden for this role.
+  const visibleCategories = categories
+    .map((cat) => ({ ...cat, forms: cat.forms.filter(canReadForm) }))
+    .filter((cat) => cat.forms.length > 0);
 
   const cancelClose = () => {
     if (closeTimer.current) {
@@ -94,7 +106,7 @@ export function CategoryMenu({ schoolId, schoolName, schoolCode, schoolCategory 
     <Card className="border-0 shadow-sm">
       <CardContent className="px-3 pb-4 pt-4">
         <div className="flex flex-wrap items-stretch rounded-xl border border-gray-100 bg-gray-50/60 sm:divide-x sm:divide-gray-100">
-          {categories.map((cat) => {
+          {visibleCategories.map((cat) => {
             const CatIcon = cat.icon;
             const expanded = openKey === cat.key;
             return (

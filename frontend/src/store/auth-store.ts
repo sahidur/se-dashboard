@@ -57,7 +57,7 @@ interface AuthState {
   updateUser: (user: Partial<User>) => void;
   logout: () => void;
   hasRole: (roleName: string) => boolean;
-  hasPermission: (module: string, action: string) => boolean;
+  hasPermission: (module: string, action: string, resource?: string) => boolean;
   hasAnyRole: (...roleNames: string[]) => boolean;
 }
 
@@ -142,7 +142,11 @@ export const useAuthStore = create<AuthState>()(
         );
       },
 
-      hasPermission: (module, action) => {
+      // When `resource` is omitted, ANY grant on module+action matches
+      // (wildcard or form-scoped). When a resource is given, only an exact
+      // grant or a wildcard (resource-less) grant satisfies the check —
+      // mirroring the backend PermissionsGuard semantics.
+      hasPermission: (module, action, resource) => {
         const { user } = get();
         if (!user) return false;
         if (user.roles?.some((r) => r.name === 'Super Admin')) return true;
@@ -150,7 +154,11 @@ export const useAuthStore = create<AuthState>()(
         return (
           user.roles?.some((r) =>
             r.permissions?.some(
-              (p: Permission) => p.module === module && p.action === action,
+              (p: Permission) => {
+                if (p.module !== module || p.action !== action) return false;
+                if (!resource) return true;
+                return !p.resource || p.resource === resource;
+              },
             ),
           ) || false
         );

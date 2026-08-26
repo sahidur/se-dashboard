@@ -7,9 +7,13 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Modal } from '@/components/ui/modal';
-import { Plus, Edit, Trash2, Shield } from 'lucide-react';
+import { Plus, Edit, Trash2, Shield, ChevronDown, ChevronRight } from 'lucide-react';
 import api from '@/lib/api';
 import type { Role } from '@/types';
+import {
+  ALL_DC_FORM_RESOURCES,
+  groupDcFormResources,
+} from '@/lib/data-collection-forms';
 
 const MODULE_GROUPS: { label: string; modules: { key: string; label: string; description?: string }[] }[] = [
   {
@@ -21,7 +25,7 @@ const MODULE_GROUPS: { label: string; modules: { key: string; label: string; des
     modules: [
       { key: 'programme-overview', label: 'Programme Overview', description: 'Aggregated programme-wide stats page' },
       { key: 'school-information', label: 'School Information', description: 'Browse all schools + school profile view' },
-      { key: 'data-collection', label: 'Data Collection (forms)', description: 'My Schools + all sub-forms: basic info, infrastructure, students, teachers, revenue, performance, alumni, activity/event participation, etc.' },
+      { key: 'data-collection', label: 'Data Collection (all forms)', description: 'Wildcard switch covering every form. Tick specific forms below instead to grant access per form.' },
       { key: 'data-collection-edit', label: 'Edit Submitted Data', description: 'Only the "Update" checkbox matters here. Without it, this role can still create new data-collection records but cannot modify one that has already been submitted.' },
     ],
   },
@@ -37,14 +41,15 @@ const MODULE_GROUPS: { label: string; modules: { key: string; label: string; des
     modules: [
       { key: 'users', label: 'Users' },
       { key: 'roles', label: 'Roles' },
+      { key: 'user-designations', label: 'User Designations', description: 'Designation labels assignable to users, managed under Admin Tools' },
     ],
   },
   {
     label: 'Surveys',
     modules: [
       { key: 'surveys', label: 'Surveys' },
-      { key: 'assigned-surveys', label: 'Assigned Surveys' },
-      { key: 'school-records', label: 'School Records', description: 'Survey targeting/response records for schools' },
+      { key: 'assigned-surveys', label: 'Assigned Surveys', description: 'Only "Read" is used — assigned surveys are visible or hidden' },
+      { key: 'school-records', label: 'School Records', description: 'Survey targeting/response records for schools (Read/Update only)' },
     ],
   },
   {
@@ -54,13 +59,20 @@ const MODULE_GROUPS: { label: string; modules: { key: string; label: string; des
       { key: 'categories', label: 'Categories', description: 'Survey category tags, managed under Admin Tools' },
       { key: 'geo-locations', label: 'Geo Locations' },
       { key: 'activity-logs', label: 'Activity Logs', description: 'System-wide audit/activity log viewer' },
-      { key: 'recycle-bin', label: 'Recycle Bin' },
+      { key: 'recycle-bin', label: 'Recycle Bin', description: 'Restore/delete purged records (Read/Update/Delete only)' },
     ],
   },
 ];
 
-const MODULES = MODULE_GROUPS.flatMap((g) => g.modules.map((m) => m.key));
 const ACTIONS = ['create', 'read', 'update', 'delete'] as const;
+
+interface PermissionEntry {
+  module: string;
+  action: string;
+  resource?: string | null;
+}
+
+const DC_FORM_GROUPS = groupDcFormResources();
 
 
 export default function RolesPage() {
@@ -69,11 +81,12 @@ export default function RolesPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [saving, setSaving] = useState(false);
+  const [dcFormsExpanded, setDcFormsExpanded] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     hierarchy: 0,
-    permissions: [] as { module: string; action: string }[],
+    permissions: [] as PermissionEntry[],
   });
 
   const fetchRoles = useCallback(async () => {
@@ -113,31 +126,47 @@ export default function RolesPage() {
         role.permissions?.map((p) => ({
           module: p.module,
           action: p.action,
+          resource: (p as any).resource ?? null,
         })) || [],
     });
     setShowModal(true);
   };
 
-  const togglePermission = (module: string, action: string) => {
+  // Resource-scoped key so form-level grants don't collide with the wildcard
+  // row of the same module.
+  const permKey = (module: string, action: string, resource?: string | null) =>
+    `${module}::${resource ?? ''}::${action}`;
+
+  const togglePermission = (
+    module: string,
+    action: string,
+    resource?: string | null,
+  ) => {
     setFormData((prev) => {
-      const exists = prev.permissions.some(
-        (p) => p.module === module && p.action === action,
-      );
+      const key = permKey(module, action, resource);
       return {
         ...prev,
-        permissions: exists
+        permissions: prev.permissions.some(
+          (p) => permKey(p.module, p.action, p.resource) === key,
+        )
           ? prev.permissions.filter(
-              (p) => !(p.module === module && p.action === action),
+              (p) => permKey(p.module, p.action, p.resource) !== key,
             )
-          : [...prev.permissions, { module, action }],
+          : [...prev.permissions, { module, action, resource: resource ?? null }],
       };
     });
   };
 
-  const hasPermission = (module: string, action: string) =>
-    formData.permissions.some(
-      (p) => p.module === module && p.action === action,
+  const hasPermission = (
+    module: string,
+    action: string,
+    resource?: string | null,
+  ) => {
+    const key = permKey(module, action, resource);
+    return formData.permissions.some(
+      (p) => permKey(p.module, p.action, p.resource) === key,
     );
+  };
 
   const handleSave = async () => {
     try {
@@ -222,14 +251,18 @@ export default function RolesPage() {
                     </p>
                   )}
                   <div className="mt-3 flex flex-wrap gap-1">
-                    {role.permissions?.slice(0, 6).map((perm) => (
-                      <span
-                        key={perm.id}
-                        className="rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600"
-                      >
-                        {perm.module}:{perm.action}
-                      </span>
-                    ))}
+                    {role.permissions?.slice(0, 6).map((perm) => {
+                      const resource = (perm as any).resource;
+                      return (
+                        <span
+                          key={perm.id}
+                          className="rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600"
+                        >
+                          {perm.module}
+                          {resource ? `·${resource}` : ''}:{perm.action}
+                        </span>
+                      );
+                    })}
                     {(role.permissions?.length || 0) > 6 && (
                       <span className="rounded-md bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-600">
                         +{(role.permissions?.length || 0) - 6} more
@@ -318,26 +351,81 @@ export default function RolesPage() {
                         </td>
                       </tr>
                       {group.modules.map((module) => (
-                        <tr key={module.key}>
-                          <td className="px-2 py-2 text-sm font-medium text-gray-700 sm:px-4">
-                            {module.label}
-                            {module.description && (
-                              <p className="hidden text-xs font-normal text-gray-400 sm:block">
-                                {module.description}
-                              </p>
-                            )}
-                          </td>
-                          {ACTIONS.map((action) => (
-                            <td key={action} className="px-2 py-2 text-center sm:px-4">
-                              <input
-                                type="checkbox"
-                                checked={hasPermission(module.key, action)}
-                                onChange={() => togglePermission(module.key, action)}
-                                className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                              />
+                        <Fragment key={module.key}>
+                          <tr>
+                            <td className="px-2 py-2 text-sm font-medium text-gray-700 sm:px-4">
+                              {module.key === 'data-collection' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setDcFormsExpanded((v) => !v)}
+                                  className="flex items-center gap-1 text-left font-medium text-gray-700 hover:text-brand-700"
+                                >
+                                  {dcFormsExpanded ? (
+                                    <ChevronDown size={14} className="shrink-0 text-gray-400" />
+                                  ) : (
+                                    <ChevronRight size={14} className="shrink-0 text-gray-400" />
+                                  )}
+                                  {module.label}
+                                </button>
+                              ) : (
+                                module.label
+                              )}
+                              {module.description && (
+                                <p className="hidden text-xs font-normal text-gray-400 sm:block">
+                                  {module.description}
+                                </p>
+                              )}
                             </td>
-                          ))}
-                        </tr>
+                            {ACTIONS.map((action) => (
+                              <td key={action} className="px-2 py-2 text-center sm:px-4">
+                                <input
+                                  type="checkbox"
+                                  checked={hasPermission(module.key, action)}
+                                  onChange={() => togglePermission(module.key, action)}
+                                  className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                                />
+                              </td>
+                            ))}
+                          </tr>
+                          {module.key === 'data-collection' && dcFormsExpanded && (
+                            Object.entries(DC_FORM_GROUPS).map(([groupName, forms]) => (
+                              <Fragment key={groupName}>
+                                <tr className="bg-indigo-50/40">
+                                  <td
+                                    colSpan={ACTIONS.length + 1}
+                                    className="px-6 py-1 text-[11px] font-semibold uppercase tracking-wide text-indigo-400 sm:px-8"
+                                  >
+                                    {groupName}
+                                  </td>
+                                </tr>
+                                {forms.map((form) => (
+                                  <tr key={form.resource} className="bg-white">
+                                    <td className="px-6 py-1.5 pl-10 text-xs font-medium text-gray-600 sm:px-8 sm:pl-12">
+                                      {form.label}
+                                      {form.description && (
+                                        <p className="hidden text-[11px] font-normal text-gray-400 sm:block">
+                                          {form.description}
+                                        </p>
+                                      )}
+                                    </td>
+                                    {ACTIONS.map((action) => (
+                                      <td key={action} className="px-2 py-1.5 text-center sm:px-4">
+                                        <input
+                                          type="checkbox"
+                                          checked={hasPermission('data-collection', action, form.resource)}
+                                          onChange={() =>
+                                            togglePermission('data-collection', action, form.resource)
+                                          }
+                                          className="h-3.5 w-3.5 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                                        />
+                                      </td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </Fragment>
+                            ))
+                          )}
+                        </Fragment>
                       ))}
                     </Fragment>
                   ))}
