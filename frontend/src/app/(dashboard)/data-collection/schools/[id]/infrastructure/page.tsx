@@ -39,7 +39,7 @@ const SUB_FORMS = [
     color: 'from-cyan-500 to-cyan-600',
     bg: 'bg-cyan-50',
     text: 'text-cyan-600',
-    trackKey: null, // new form, no backend tracking yet
+    trackKey: 'classroomStatus', // maps to dashboard API form key
   },
 ];
 

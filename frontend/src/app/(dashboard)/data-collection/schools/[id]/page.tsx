@@ -30,7 +30,10 @@ import {
 import api from '@/lib/api';
 import type { DcDashboard } from '@/types';
 
-// Each card is now a group that links to a sub-page with its own form-cards
+// Each card is a group that links to a sub-page with its own form-cards.
+// `trackKeys` lists EVERY child form inside the group (matching the sub-page
+// form lists); all totals and submitted counts are derived from these keys so
+// the numbers can never drift from what users see inside each section.
 const CARD_CONFIG = [
   {
     key: 'infrastructure',
@@ -40,10 +43,7 @@ const CARD_CONFIG = [
     color: 'from-emerald-500 to-emerald-600',
     bg: 'bg-emerald-50',
     text: 'text-emerald-600',
-    totalSubForms: 2,
     trackKeys: ['infrastructure', 'classroomStatus'],
-    countBased: false,
-    totalEntries: 0,
   },
   {
     key: 'studentsInfo',
@@ -53,10 +53,7 @@ const CARD_CONFIG = [
     color: 'from-purple-500 to-purple-600',
     bg: 'bg-purple-50',
     text: 'text-purple-600',
-    totalSubForms: 1,
     trackKeys: ['studentsInfo'],
-    countBased: true,
-    totalEntries: 84,
   },
   {
     key: 'teachersInfo',
@@ -66,10 +63,7 @@ const CARD_CONFIG = [
     color: 'from-orange-500 to-orange-600',
     bg: 'bg-orange-50',
     text: 'text-orange-600',
-    totalSubForms: 2,
     trackKeys: ['teachersInfo', 'teachersDev'],
-    countBased: false,
-    totalEntries: 0,
   },
   {
     key: 'revenue',
@@ -79,10 +73,7 @@ const CARD_CONFIG = [
     color: 'from-teal-500 to-teal-600',
     bg: 'bg-teal-50',
     text: 'text-teal-600',
-    totalSubForms: 5,
     trackKeys: ['feeStructure', 'revenueBudgetTotal', 'revenueBudgetMonthly', 'revenueActualTotal', 'revenueActualMonthly'],
-    countBased: false,
-    totalEntries: 0,
   },
   {
     key: 'performance',
@@ -92,10 +83,14 @@ const CARD_CONFIG = [
     color: 'from-rose-500 to-rose-600',
     bg: 'bg-rose-50',
     text: 'text-rose-600',
-    totalSubForms: 5,
-    trackKeys: ['pedagogicalAchievements', 'cocurricular'],
-    countBased: false,
-    totalEntries: 0,
+    trackKeys: [
+      'pedagogicalAchievements',
+      'cocurricular',
+      'studentsPerformance',
+      'studentPerformance',
+      'activityParticipation',
+      'eventParticipation',
+    ],
   },
   {
     key: 'alumni',
@@ -105,12 +100,13 @@ const CARD_CONFIG = [
     color: 'from-amber-500 to-amber-600',
     bg: 'bg-amber-50',
     text: 'text-amber-600',
-    totalSubForms: 1,
     trackKeys: ['alumni'],
-    countBased: false,
-    totalEntries: 0,
   },
 ];
+
+// Total = every tracked child form across all groups (17 today), NOT the
+// number of group cards.
+const TOTAL_FORMS = CARD_CONFIG.reduce((sum, cfg) => sum + cfg.trackKeys.length, 0);
 
 export default function SchoolDashboardPage() {
   const { id } = useParams();
@@ -140,8 +136,14 @@ export default function SchoolDashboardPage() {
 
   const school = dashboard.school;
   const forms = dashboard.forms;
-  const totalForms = CARD_CONFIG.length;
-  const totalSubmitted = Object.values(forms).filter((f) => f.submitted).length;
+  // Count submissions over the same tracked child-form keys that define the
+  // total, so the fraction always stays within 0..TOTAL_FORMS.
+  const isSubmitted = (key: string) => !!forms[key as keyof typeof forms]?.submitted;
+  const totalForms = TOTAL_FORMS;
+  const totalSubmitted = CARD_CONFIG.reduce(
+    (sum, cfg) => sum + cfg.trackKeys.filter(isSubmitted).length,
+    0,
+  );
 
   const SCHOOL_CATEGORY_LABELS: Record<string, string> = {
     brac_academy: 'BRAC Academy',
@@ -301,20 +303,11 @@ export default function SchoolDashboardPage() {
             const Icon = cfg.icon;
             const schoolId = id as string;
 
-            // Count-based progress (e.g. students: count/84 entries)
-            const entryCount = cfg.countBased
-              ? (forms[cfg.trackKeys[0] as keyof typeof forms] as { count?: number })?.count ?? 0
-              : 0;
-            const totalEntries = cfg.totalEntries;
-
-            // Form-based progress (standard: how many trackKeys are submitted)
-            const doneCount = cfg.countBased
-              ? entryCount
-              : cfg.trackKeys.filter(
-                  (k) => forms[k as keyof typeof forms]?.submitted,
-                ).length;
-            const totalCount = cfg.countBased ? totalEntries : cfg.totalSubForms;
-            const allDone = doneCount >= totalCount && totalCount > 0;
+            // Progress = how many of this group's child forms are submitted
+            const doneCount = cfg.trackKeys.filter(isSubmitted).length;
+            const totalCount = cfg.trackKeys.length;
+            const allDone = totalCount > 0 && doneCount === totalCount;
+            const remaining = totalCount - doneCount;
 
             return (
               <Link key={cfg.key} href={cfg.href(schoolId)} className="group block">
@@ -328,11 +321,11 @@ export default function SchoolDashboardPage() {
                       </div>
                       {allDone ? (
                         <Badge variant="success" className="gap-1">
-                          <CheckCircle2 size={12} /> {cfg.countBased ? 'All Entries Done' : 'All Completed'}
+                          <CheckCircle2 size={12} /> All Completed
                         </Badge>
                       ) : doneCount > 0 ? (
                         <Badge variant="warning" className="gap-1">
-                          <AlertCircle size={12} /> {cfg.countBased ? `${doneCount}/${totalCount}` : `${doneCount}/${totalCount} Done`}
+                          <AlertCircle size={12} /> {doneCount}/{totalCount} Done
                         </Badge>
                       ) : (
                         <Badge variant="default" className="gap-1">
@@ -344,13 +337,9 @@ export default function SchoolDashboardPage() {
                       {cfg.label}
                     </h3>
                     <p className="text-xs text-gray-400">
-                      {cfg.countBased
-                        ? allDone
-                          ? `All ${totalCount} entries submitted`
-                          : `${doneCount} of ${totalCount} entries submitted`
-                        : allDone
-                          ? `All ${totalCount} form${totalCount > 1 ? 's' : ''} submitted`
-                          : `${doneCount} of ${totalCount} form${totalCount > 1 ? 's' : ''} completed`}
+                      {allDone
+                        ? `All ${totalCount} form${totalCount > 1 ? 's' : ''} submitted`
+                        : `${doneCount} of ${totalCount} form${totalCount > 1 ? 's' : ''} completed · ${remaining} remaining`}
                     </p>
                     {/* Progress bar */}
                     <div className="mt-3 h-1.5 rounded-full bg-gray-100 overflow-hidden">
