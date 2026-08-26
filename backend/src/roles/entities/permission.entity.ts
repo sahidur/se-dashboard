@@ -28,7 +28,10 @@ export class Permission {
    * like 'alumni' or 'revenue/budget/total'). NULL acts as a wildcard and
    * covers every resource in the module.
    */
-  @Column({ length: 100, nullable: true })
+  // NOTE: `type: 'varchar'` must stay explicit — the TS declaration is a
+  // union (`string | null`) whose reflected design:type is Object, which
+  // TypeORM cannot map to a Postgres type on its own.
+  @Column({ type: 'varchar', length: 100, nullable: true })
   resource: string | null;
 
   @Column({
