@@ -113,7 +113,27 @@ export function SubmissionView({ submission }: { submission: MonitoringSubmissio
           <div className="bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white">
             {sec.number}. {sec.title}
           </div>
-          <div className="overflow-x-auto">
+          {/* Mobile: stacked cards so every answer is visible without
+              horizontal scrolling. */}
+          <ul className="divide-y divide-gray-100 sm:hidden">
+            {sec.indicators.map((ind) => {
+              const a = answerMap.get(ind.code);
+              return (
+                <li key={ind.code} className="space-y-1.5 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-brand-600">{ind.code}</span>
+                    <ResultPill result={a?.result ?? ''} />
+                  </div>
+                  <p className="text-sm text-gray-800">{ind.text}</p>
+                  {a?.comment && (
+                    <p className="whitespace-pre-wrap break-words text-xs text-gray-500">{a.comment}</p>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          {/* sm and up: full table (scrolls inside the card if needed). */}
+          <div className="hidden overflow-x-auto sm:block">
             <table className="w-full min-w-[560px] text-sm">
               <thead>
                 <tr className="bg-orange-50 text-left text-xs uppercase tracking-wide text-gray-600">

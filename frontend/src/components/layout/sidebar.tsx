@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuthStore, logoutAndRedirect } from '@/store/auth-store';
+import { useUiStore } from '@/store/ui-store';
 import {
   Users,
   Shield,
@@ -178,7 +179,11 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const { user, hasAnyRole, hasPermission } = useAuthStore();
-  const [mobileOpen, setMobileOpen] = useState(false);
+  // Drawer open state lives in the shared UI store: the trigger button is
+  // rendered by the page Header (aligned with the profile icon), while the
+  // drawer/overlay are rendered here.
+  const mobileOpen = useUiStore((s) => s.mobileNavOpen);
+  const setMobileOpen = useUiStore((s) => s.setMobileNavOpen);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
     'Admin Tools': true,
     'Data Collection': true,
@@ -191,7 +196,7 @@ export function Sidebar({
   const [lastPathname, setLastPathname] = useState(pathname);
   if (pathname !== lastPathname) {
     setLastPathname(pathname);
-    setMobileOpen(false);
+    if (mobileOpen) setMobileOpen(false);
   }
 
   // Close mobile sidebar on resize to desktop
@@ -201,7 +206,7 @@ export function Sidebar({
     };
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
-  }, []);
+  }, [setMobileOpen]);
 
   const toggleGroup = (label: string) => {
     setExpandedGroups((prev) => ({ ...prev, [label]: !prev[label] }));
@@ -356,15 +361,6 @@ export function Sidebar({
 
   return (
     <>
-      {/* Mobile hamburger button - fixed at top-left, always visible on scroll */}
-      <button
-        onClick={() => setMobileOpen(true)}
-        className="fixed left-3 top-3 z-50 flex h-10 w-10 items-center justify-center rounded-xl bg-white text-gray-600 shadow-lg border border-gray-200 lg:hidden"
-        aria-label="Open menu"
-      >
-        <Menu size={20} />
-      </button>
-
       {/* Mobile overlay */}
       {mobileOpen && (
         <div

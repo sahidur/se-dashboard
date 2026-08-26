@@ -96,7 +96,7 @@ export default function DashboardLayout({
     <div className="flex min-h-screen">
       <Sidebar collapsed={sidebarCollapsed} onToggleCollapsed={toggleSidebar} />
       <main
-        className={`min-w-0 flex-1 overflow-x-hidden pt-14 transition-[margin] duration-300 lg:pt-0 ${
+        className={`min-w-0 flex-1 overflow-x-hidden transition-[margin] duration-300 ${
           sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'
         }`}
       >

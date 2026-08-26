@@ -4,7 +4,8 @@ import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useAuthStore, logoutAndRedirect } from '@/store/auth-store';
-import { Bell, User, LogOut } from 'lucide-react';
+import { useUiStore } from '@/store/ui-store';
+import { Bell, User, LogOut, Menu } from 'lucide-react';
 import { getInitials, resolveAssetUrl } from '@/lib/utils';
 
 interface HeaderProps {
@@ -15,6 +16,7 @@ interface HeaderProps {
 
 export function Header({ title, subtitle, actions }: HeaderProps) {
   const { user } = useAuthStore();
+  const setMobileNavOpen = useUiStore((s) => s.setMobileNavOpen);
   const [profileOpen, setProfileOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -34,10 +36,20 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
   };
 
   return (
-    <header className="sticky top-0 z-30 flex min-h-[64px] items-center justify-between border-b border-gray-200 bg-white py-3 pl-16 pr-4 sm:h-16 sm:py-0 sm:pl-6 sm:pr-6 lg:pl-6">
+    <header className="sticky top-0 z-30 flex min-h-[64px] items-center justify-between border-b border-gray-200 bg-white py-3 pl-4 pr-4 sm:h-16 sm:py-0 sm:pl-6 sm:pr-6">
+      {/* Mobile menu toggle — left edge of the header row, vertically centered
+          with the profile icon, so no blank strip is reserved beside content. */}
+      <button
+        onClick={() => setMobileNavOpen(true)}
+        className="-ml-2 mr-1 shrink-0 rounded-lg p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 focus-visible:bg-gray-100 lg:hidden"
+        aria-label="Open menu"
+      >
+        <Menu size={20} />
+      </button>
+      {/* Titles wrap (no truncate) so long school names stay fully readable. */}
       <div className="min-w-0 mr-3">
-        <h1 className="text-lg font-bold text-gray-900 sm:text-xl truncate">{title}</h1>
-        {subtitle && <p className="text-xs text-gray-500 sm:text-sm truncate">{subtitle}</p>}
+        <h1 className="break-words text-lg font-bold leading-snug text-gray-900 sm:text-xl">{title}</h1>
+        {subtitle && <p className="break-words text-xs text-gray-500 sm:text-sm">{subtitle}</p>}
       </div>
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-4">
         {actions}

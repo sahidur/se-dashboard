@@ -128,8 +128,10 @@ export default function MonitoringDetailPage() {
         }
       />
 
+      {/* min-w-0 on both grid tracks lets wide tables scroll inside their
+          card instead of blowing the grid past the mobile viewport. */}
       <div className="grid gap-6 p-4 lg:grid-cols-[1fr_300px] sm:p-6">
-        <div className="space-y-5">
+        <div className="min-w-0 space-y-5">
           {/* Meta card */}
           <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
@@ -156,7 +158,7 @@ export default function MonitoringDetailPage() {
         </div>
 
         {/* History timeline */}
-        <aside className="lg:sticky lg:top-20 lg:self-start">
+        <aside className="min-w-0 lg:sticky lg:top-20 lg:self-start">
           <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center gap-2">
               <History className="h-4 w-4 text-brand-600" />
@@ -207,11 +209,11 @@ export default function MonitoringDetailPage() {
 
 function Meta({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
   return (
-    <div className="flex items-center gap-2">
-      <div className="rounded-lg bg-gray-100 p-2 text-gray-500"><Icon className="h-4 w-4" /></div>
-      <div>
+    <div className="flex min-w-0 items-center gap-2">
+      <div className="shrink-0 rounded-lg bg-gray-100 p-2 text-gray-500"><Icon className="h-4 w-4" /></div>
+      <div className="min-w-0">
         <p className="text-[11px] uppercase tracking-wide text-gray-400">{label}</p>
-        <p className="text-sm font-medium text-gray-800">{value}</p>
+        <p className="break-words text-sm font-medium text-gray-800">{value}</p>
       </div>
     </div>
   );
