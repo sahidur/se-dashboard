@@ -62,8 +62,19 @@ export class DcStudentPerformance {
   @Column({ name: 'number_of_students', type: 'int', default: 0 })
   numberOfStudents: number;
 
-  /** Number of students who appeared in the evaluation/exam */
-  @Column({ name: 'appeared_percent', type: 'int', nullable: true })
+  /** Percentage of students who appeared in the evaluation/exam (0–100, two decimals). */
+  @Column({
+    name: 'appeared_percent',
+    type: 'numeric',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+    // Postgres hands NUMERIC columns back as strings — convert to JS numbers.
+    transformer: {
+      to: (v) => (v === undefined || v === null ? null : v),
+      from: (v) => (v === undefined || v === null ? null : parseFloat(v)),
+    },
+  })
   appearedPercent: number;
 
   @Column({ type: 'jsonb' })
