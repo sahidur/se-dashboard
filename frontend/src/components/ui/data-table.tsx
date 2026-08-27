@@ -80,14 +80,15 @@ export function DataTable<T extends Record<string, any>>({
   const filteredData = useMemo(() => {
     if (!search.trim()) return data;
     const q = search.toLowerCase();
+    // Search across ALL columns (including hidden ones) — restricting the
+    // match to visible columns made records appear "missing" from search.
     return data.filter((item) =>
-      visibleColumns.some((col) => {
-        const val = item[col.key];
+      Object.entries(item).some(([, val]) => {
         if (val == null) return false;
         return String(val).toLowerCase().includes(q);
       }),
     );
-  }, [data, search, visibleColumns]);
+  }, [data, search]);
 
   const sortedData = useMemo(() => {
     if (!sortKey) return filteredData;

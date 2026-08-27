@@ -15,7 +15,8 @@ import {
   IsIn,
 } from 'class-validator';
 import { PartialType } from '@nestjs/mapped-types';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import { normalizeGradeValue } from '../../common/utils/grade.utils';
 
 // ===================== School DTOs =====================
 
@@ -167,7 +168,12 @@ export class UpsertStudentsInfoDto {
   /** Full month name: 'January' … 'December' */
   @IsString() @IsNotEmpty() month: string;
 
-  /** Grade key: 'play_learn' | 'nursery' | 'g1' … 'g10' */
+  /**
+   * Grade key: 'play_learn' | 'nursery' | 'g1' … 'g10'.
+   * Historical spellings ("1", "Grade 1", "G1") are normalized so legacy
+   * clients/drafts cannot fork records under a different vocabulary.
+   */
+  @Transform(({ value }) => normalizeGradeValue(value, 'slug'))
   @IsString() @IsNotEmpty() grade: string;
 
   @IsOptional() @Type(() => Number) @IsNumber() boys?: number;
@@ -336,8 +342,9 @@ export class UpsertFeeStructureDto {
 
   @IsString() @IsNotEmpty() month: string;
 
+  @Transform(({ value }) => normalizeGradeValue(value, 'label'))
   @IsString()
-  @IsIn(['Play & Learn', 'Nursery', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5'])
+  @IsIn(['Play & Learn', 'Nursery', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10'])
   grade: string;
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) admissionFee?: number;
@@ -474,6 +481,7 @@ export class UpsertCocurricularDto {
 
   @IsString() @IsNotEmpty() month: string;
 
+  @Transform(({ value }) => normalizeGradeValue(value, 'label'))
   @IsString()
   @IsIn(['Play & Learn', 'Nursery', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10'])
   grade: string;
@@ -497,8 +505,9 @@ export class UpsertStudentsPerformanceDto {
 
   @Type(() => Number) @IsNumber() @Min(1990) academicYear: number;
 
+  @Transform(({ value }) => normalizeGradeValue(value, 'short'))
   @IsString()
-  @IsIn(['Play & Learn', 'Nursery', 'G1', 'G2', 'G3', 'G4', 'G5'])
+  @IsIn(['Play & Learn', 'Nursery', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10'])
   grade: string;
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) numberOfStudents?: number;
@@ -585,6 +594,7 @@ export class UpsertActivityParticipationDto {
 
   @IsString() @IsNotEmpty() month: string;
 
+  @Transform(({ value }) => normalizeGradeValue(value, 'short'))
   @IsString()
   @IsIn(['Play & Learn', 'Nursery', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10'])
   grade: string;
@@ -606,7 +616,7 @@ export class CreateEventParticipationDto {
   @IsString() @IsNotEmpty() eventName: string;
 
   @IsString()
-  @IsIn(['Upazila', 'Zila', 'National'])
+  @IsIn(['School', 'Upazila', 'Zila', 'Divisional', 'National'])
   awardLevel: string;
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) maleAwarded?: number;

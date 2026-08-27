@@ -74,6 +74,57 @@ export function isValidAcademicYear(year: string): boolean {
   return true;
 }
 
+/* ─── Grade normalization ──────────────────────────────────────
+ * Stored grades use several vocabularies across the module:
+ *   slug   : play_learn | nursery | g1..g12   (students info + generic viewer)
+ *   label  : Play & Learn | Nursery | Grade N (fee structure, co-curricular)
+ *   short  : Play & Learn | Nursery | GN      (students performance, activities)
+ * Compare grades via gradeKey/gradeEquals so mixed spellings still match;
+ * render with displayGradeLabel for consistent output.
+ */
+
+/** Equivalence-class key ("1", "g1", "Grade 1", "G1" → "g01"). */
+export function gradeKey(raw?: string | null): string {
+  const s = String(raw ?? '').trim();
+  if (!s) return '';
+  if (/^nursery$/i.test(s)) return 'nur';
+  if (/^play[\s_&-]*(learn|world)?$/i.test(s)) return 'play';
+  const m = s.match(/^(?:g|grade)?[\s_.-]*(\d{1,2})$/i);
+  if (m) return `g${String(Number(m[1])).padStart(2, '0')}`;
+  return s.toLowerCase();
+}
+
+export function gradeEquals(a?: string | null, b?: string | null): boolean {
+  if (!a || !b) return false;
+  return gradeKey(a) === gradeKey(b);
+}
+
+/** Numeric grade index for sorting (Play/Nursery first); NaN when unknown. */
+export function gradeSortIndex(raw?: string | null): number {
+  const k = gradeKey(raw);
+  if (k === 'play') return -2;
+  if (k === 'nur') return -1;
+  const m = k.match(/^g(\d{2})$/);
+  return m ? Number(m[1]) : Number.NaN;
+}
+
+/** Human label from any stored spelling; BRAC Academy renames "Play & Learn". */
+export function displayGradeLabel(
+  raw?: string | null,
+  schoolCategory?: string | null,
+): string {
+  const s = String(raw ?? '').trim();
+  if (!s) return '—';
+  const k = gradeKey(s);
+  const base =
+    k === 'play' ? 'Play & Learn'
+    : k === 'nur' ? 'Nursery'
+    : /^g\d{2}$/.test(k) ? `Grade ${Number(k.slice(1))}`
+    : s;
+  if (schoolCategory === 'brac_academy' && base === 'Play & Learn') return 'Play World';
+  return base;
+}
+
 /**
  * Resolve a stored file/image URL into one the browser can actually load.
  *

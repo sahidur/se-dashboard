@@ -11,7 +11,7 @@ import {
   LayoutGrid, ListChecks, Rows3, RotateCcw, Search, XCircle,
 } from 'lucide-react';
 import api from '@/lib/api';
-import { resolveAssetUrl } from '@/lib/utils';
+import { displayGradeLabel, gradeSortIndex, resolveAssetUrl } from '@/lib/utils';
 import type { FormCatalogItem, FormCategory } from './form-catalog';
 
 /* ─── Column handling ───────────────────────────────────── */
@@ -60,13 +60,7 @@ const MONTH_ORDER = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-/** Grades are stored as slugs — mirror the labels used by the entry forms. */
-const GRADE_LABELS: Record<string, string> = {
-  play_learn: 'Play & Learn', nursery: 'Nursery',
-  g1: 'Grade 1', g2: 'Grade 2', g3: 'Grade 3', g4: 'Grade 4', g5: 'Grade 5',
-  g6: 'Grade 6', g7: 'Grade 7', g8: 'Grade 8', g9: 'Grade 9', g10: 'Grade 10',
-};
-const GRADE_ORDER = Object.keys(GRADE_LABELS);
+/** Grades may be stored as slugs ("g1"), "GN", or "Grade N" — one display fn. */
 
 type FieldKind = 'boolean' | 'date' | 'percent' | 'currency' | 'year' | 'number' | 'image' | 'list' | 'text';
 
@@ -131,7 +125,7 @@ function parseList(v: unknown): string[] | null {
 /** Plain-text rendering used by search matching and the CSV/Excel exports. */
 function formatValue(v: unknown, kind: FieldKind, key?: string): string {
   if (v === null || v === undefined || v === '') return '—';
-  if (key === 'grade' && typeof v === 'string' && GRADE_LABELS[v]) return GRADE_LABELS[v];
+  if (key === 'grade') return displayGradeLabel(String(v));
   if (kind === 'boolean') return v ? 'Yes' : 'No';
   if (kind === 'date') {
     const d = new Date(String(v));
@@ -312,7 +306,10 @@ export function FormDataViewer({ schoolId, category, form, fileBase }: Props) {
     FILTER_KEYS.filter((k) => columns.includes(k)).forEach((key) => {
       const values = [...new Set(rows.map((r) => (r[key] == null ? '' : String(r[key]))).filter(Boolean))];
       if (key === 'month') values.sort((a, b) => MONTH_ORDER.indexOf(a) - MONTH_ORDER.indexOf(b));
-      else if (key === 'grade') values.sort((a, b) => GRADE_ORDER.indexOf(a) - GRADE_ORDER.indexOf(b));
+      else if (key === 'grade') values.sort((a, b) => {
+        const ai = gradeSortIndex(a), bi = gradeSortIndex(b);
+        return (Number.isNaN(ai) ? 99 : ai) - (Number.isNaN(bi) ? 99 : bi);
+      });
       else values.sort((a, b) => (asNumber(b) ?? 0) - (asNumber(a) ?? 0) || a.localeCompare(b));
       if (values.length > 1) out.push({ key, values });
     });
@@ -455,7 +452,7 @@ export function FormDataViewer({ schoolId, category, form, fileBase }: Props) {
                   >
                     <option value="">All {humanizeKey(key).toLowerCase()}s</option>
                     {values.map((v) => (
-                      <option key={v} value={v}>{key === 'grade' ? GRADE_LABELS[v] ?? v : v}</option>
+                      <option key={v} value={v}>{key === 'grade' ? displayGradeLabel(v) : v}</option>
                     ))}
                   </select>
                 </div>

@@ -16,7 +16,7 @@ import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
 import api from '@/lib/api';
-import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
+import { buildYearOptions, isValidAcademicYear, gradeEquals, displayGradeLabel } from '@/lib/utils';
 import type { DcSchool, DcStudentsInfo } from '@/types';
 
 /* ─── Constants ────────────────────────────────── */
@@ -170,8 +170,10 @@ export function StudentsInfoForm({ schoolId }: Props) {
       const all = await api.get<DcStudentsInfo[]>(
         `/data-collection/students/school/${schoolId}`,
       );
+      // Compare grades via the normalized key so mixed spellings
+      // ("1"/"g1"/"Grade 1") can never hide an existing record.
       const match = all.data.find(
-        (r) => Number(r.academicYear) === Number(y) && r.month === m && r.grade === g,
+        (r) => Number(r.academicYear) === Number(y) && r.month === m && gradeEquals(r.grade, g),
       );
       if (match) {
         setForm({
@@ -306,7 +308,7 @@ export function StudentsInfoForm({ schoolId }: Props) {
   const studentsInfoColumns: TableColumn<DcStudentsInfo>[] = [
     { key: 'academicYear', header: 'Academic Year', sortable: true },
     { key: 'month', header: 'Month', sortable: true },
-    { key: 'grade', header: 'Grade', render: (r) => getGradeDisplayName(GRADES.find((g) => g.value === r.grade)?.label ?? r.grade, school?.schoolCategory) },
+    { key: 'grade', header: 'Grade', render: (r) => displayGradeLabel(r.grade, school?.schoolCategory) },
     { key: 'boys', header: 'Boys', className: 'text-right' },
     { key: 'girls', header: 'Girls', className: 'text-right' },
     { key: 'total', header: 'Total', className: 'text-right font-semibold text-gray-900', sortable: true },

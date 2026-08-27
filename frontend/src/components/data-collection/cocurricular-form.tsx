@@ -16,7 +16,7 @@ import { useFormDraft } from '@/hooks/use-form-draft';
 import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
 import { useAuthStore } from '@/store/auth-store';
 import api from '@/lib/api';
-import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
+import { buildYearOptions, isValidAcademicYear, gradeEquals } from '@/lib/utils';
 import type { DcSchool } from '@/types';
 
 /* ─── Constants ──────────────────────────────────────────── */
@@ -101,17 +101,21 @@ export function CocurricularForm({ schoolId }: Props) {
   const [error, setError] = useState('');
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  /** id of the record that matches the currently selected year/month/grade */
+  const [existingMatch, setExistingMatch] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
   const draft = useFormDraft<FormState>('cocurricular-entry', schoolId);
   const draftAppliedRef = useRef(false);
   const [tab, setTab] = useState<'entry' | 'data'>('entry');
 
-  const showToast = (type: 'success' | 'error', msg: string) => {
+  // Memoized so it can safely appear in dependency arrays (a fresh identity
+  // every render here once caused an infinite GET loop).
+  const showToast = useCallback((type: 'success' | 'error', msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast({ type, msg });
     toastTimer.current = setTimeout(() => setToast(null), 4000);
-  };
+  }, []);
 
   const loadRecords = useCallback(() => {
     api.get(`/data-collection/cocurricular/school/${schoolId}`)
@@ -125,6 +129,39 @@ export function CocurricularForm({ schoolId }: Props) {
       .catch(() => showToast('error', 'Failed to load school data'));
     loadRecords();
   }, [schoolId, loadRecords, showToast]);
+
+  /**
+   * Populate the entry form from an already-submitted record when the user
+   * selects Academic Year + Month + Grade (same behavior as Students Info):
+   * previously submitted values must show up instead of blank inputs.
+   */
+  const loadEntry = useCallback((y: string, m: string, g: string) => {
+    if (!y || !m || !g) return;
+    const match = records.find(
+      (r) => Number(r.academicYear) === Number(y) && r.month === m && gradeEquals(r.grade, g),
+    );
+    if (match) {
+      setForm({
+        academicYear: String(match.academicYear),
+        month: match.month,
+        grade: match.grade,
+        song: String(match.song ?? ''),
+        dance: String(match.dance ?? ''),
+        recitation: String(match.recitation ?? ''),
+        acting: String(match.acting ?? ''),
+        debate: String(match.debate ?? ''),
+        quiz: String(match.quiz ?? ''),
+        wallMagazine: String(match.wallMagazine ?? ''),
+        indoorGame: String(match.indoorGame ?? ''),
+        outdoorGame: String(match.outdoorGame ?? ''),
+        others: String(match.others ?? ''),
+      });
+      setExistingMatch(match.id);
+    } else {
+      setForm({ ...BLANK, academicYear: y, month: m, grade: g });
+      setExistingMatch(null);
+    }
+  }, [records]);
 
   // Overlay the user's private draft (an in-progress unsubmitted new entry).
   useEffect(() => {
@@ -157,6 +194,7 @@ export function CocurricularForm({ schoolId }: Props) {
   const resetForm = () => {
     setForm(BLANK);
     setEditingId(null);
+    setExistingMatch(null);
     setError('');
   };
 
@@ -285,7 +323,12 @@ export function CocurricularForm({ schoolId }: Props) {
                   </Label>
                   <select
                     value={form.academicYear}
-                    onChange={(e) => { set('academicYear', e.target.value); set('month', ''); set('grade', ''); }}
+                    onChange={(e) => {
+                      set('academicYear', e.target.value);
+                      set('month', '');
+                      set('grade', '');
+                      setExistingMatch(null);
+                    }}
                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-purple-400 focus:border-purple-400"
                   >
                     <option value="">Select academic year…</option>
@@ -300,7 +343,12 @@ export function CocurricularForm({ schoolId }: Props) {
                   </Label>
                   <select
                     value={form.month}
-                    onChange={(e) => { set('month', e.target.value); if (!e.target.value) set('grade', ''); }}
+                    onChange={(e) => {
+                      const m = e.target.value;
+                      set('month', m);
+                      if (!m) { set('grade', ''); setExistingMatch(null); }
+                      else if (form.grade) loadEntry(form.academicYear, m, form.grade);
+                    }}
                     disabled={monthDisabled}
                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-purple-400 focus:border-purple-400 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -316,7 +364,11 @@ export function CocurricularForm({ schoolId }: Props) {
                   </Label>
                   <select
                     value={form.grade}
-                    onChange={(e) => set('grade', e.target.value)}
+                    onChange={(e) => {
+                      const g = e.target.value;
+                      set('grade', g);
+                      if (g && form.academicYear && form.month) loadEntry(form.academicYear, form.month, g);
+                    }}
                     disabled={inputsDisabled}
                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-purple-400 focus:border-purple-400 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -325,6 +377,13 @@ export function CocurricularForm({ schoolId }: Props) {
                   </select>
                 </div>
               </div>
+
+              {/* Existing record hint */}
+              {!editingId && existingMatch && (
+                <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs font-medium text-amber-700">
+                  Existing record found — submitting will update it.
+                </div>
+              )}
 
               {/* Activity Participation % */}
               <div>

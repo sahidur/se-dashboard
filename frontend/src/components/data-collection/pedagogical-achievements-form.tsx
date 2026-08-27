@@ -87,6 +87,8 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
   const [error, setError] = useState('');
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  /** id of the record matching the selected year (existing data loaded) */
+  const [existingMatch, setExistingMatch] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
   const yearDropRef = useRef<HTMLDivElement>(null);
@@ -94,11 +96,13 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
   const draftAppliedRef = useRef(false);
   const [tab, setTab] = useState<'entry' | 'data'>('entry');
 
-  const showToast = (type: 'success' | 'error', msg: string) => {
+  // Memoized so it can safely appear in dependency arrays (a fresh identity
+  // every render here once caused an infinite GET loop + error-toast storm).
+  const showToast = useCallback((type: 'success' | 'error', msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast({ type, msg });
     toastTimer.current = setTimeout(() => setToast(null), 4000);
-  };
+  }, []);
 
   const loadRecords = useCallback(() => {
     api.get(`/data-collection/pedagogical-achievements/school/${schoolId}`)
@@ -151,10 +155,39 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
   const set = (key: keyof FormState, val: string) =>
     setForm((prev) => ({ ...prev, [key]: val }));
 
+  /**
+   * Populate the entry form from an already-submitted record when the user
+   * selects an Academic Year. Previously submitted values must appear instead
+   * of blank inputs; POST upserts on (schoolId, year), so submitting updates.
+   */
+  const handleYearSelect = (year: number) => {
+    const match = records.find((r) => Number(r.year) === Number(year));
+    if (match) {
+      setForm({
+        year: String(match.year),
+        kgParticipated: String(match.kgParticipated ?? ''),
+        kgScholarship: String(match.kgScholarship ?? ''),
+        primaryParticipated: String(match.primaryParticipated ?? ''),
+        primaryScholarship: String(match.primaryScholarship ?? ''),
+        jrParticipated: String(match.jrParticipated ?? ''),
+        jrScholarship: String(match.jrScholarship ?? ''),
+        sscParticipated: String(match.sscParticipated ?? ''),
+        sscScholarship: String(match.sscScholarship ?? ''),
+        othersParticipated: String(match.othersParticipated ?? ''),
+        othersScholarship: String(match.othersScholarship ?? ''),
+      });
+      setExistingMatch(match.id);
+    } else {
+      setForm({ ...BLANK, year: String(year) });
+      setExistingMatch(null);
+    }
+  };
+
   const resetForm = () => {
     setForm(BLANK);
     setYearSearch('');
     setEditingId(null);
+    setExistingMatch(null);
     setError('');
   };
 
@@ -339,7 +372,7 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
                           <li key={y}>
                             <button
                               type="button"
-                              onClick={() => { set('year', String(y)); setYearOpen(false); setYearSearch(''); }}
+                              onClick={() => { handleYearSelect(y); setYearOpen(false); setYearSearch(''); setError(''); }}
                               className={`w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 transition
                                 ${form.year === String(y) ? 'bg-indigo-100 font-semibold text-indigo-700' : 'text-gray-700'}`}
                             >
@@ -354,6 +387,11 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
                     </div>
                   )}
                 </div>
+                {existingMatch && !editingId && (
+                  <div className="mt-2 flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs font-medium text-amber-700">
+                    Existing record for {form.year} loaded — submitting will update it.
+                  </div>
+                )}
               </div>
 
               {/* Scholarship Segments */}

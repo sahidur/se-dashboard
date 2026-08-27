@@ -27,7 +27,7 @@ const EVENT_NAMES = [
   'Debate Competition', 'Quiz Competition', 'Art Competition', 'Others',
 ];
 
-const AWARD_LEVELS = ['Upazila', 'Zila', 'National'];
+const AWARD_LEVELS = ['School', 'Upazila', 'Zila', 'Divisional', 'National'];
 
 interface FormState {
   academicYear: string;
@@ -61,11 +61,12 @@ export function EventParticipationForm({ schoolId }: Props) {
   const draftAppliedRef = useRef(false);
   const [tab, setTab] = useState<'entry' | 'data'>('entry');
 
-  const showToast = (type: 'success' | 'error', msg: string) => {
+  // Memoized so its identity is stable across renders (prevents repeated effects).
+  const showToast = useCallback((type: 'success' | 'error', msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast({ type, msg });
     toastTimer.current = setTimeout(() => setToast(null), 4000);
-  };
+  }, []);
 
   useEffect(() => {
     api.get(`/data-collection/schools/${schoolId}`).then(({ data }) => setSchool(data)).catch(() => {});

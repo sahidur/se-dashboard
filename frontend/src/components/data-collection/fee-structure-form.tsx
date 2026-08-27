@@ -17,7 +17,7 @@ import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
 import api from '@/lib/api';
-import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
+import { buildYearOptions, isValidAcademicYear, gradeEquals } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth-store';
 import type { DcSchool, DcFeeStructure, DcFeeStructureLog } from '@/types';
 
@@ -30,7 +30,9 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-const GRADES = ['Play & Learn', 'Nursery', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5'];
+// Full grade range: legacy records exist for Grade 6–10 even though this
+// form is labeled "(Primary)" — extending the list keeps them visible/editable.
+const GRADES = ['Play & Learn', 'Nursery', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10'];
 
 const SCHOOL_CATEGORY_LABELS: Record<string, string> = {
   brac_academy: 'BRAC Academy',
@@ -152,7 +154,7 @@ export function FeeStructureForm({ schoolId }: Props) {
     if (skipAmountsRef.current) { skipAmountsRef.current = false; return; }
     if (academicYear && selectedMonths.length === 1 && grade) {
       const existing = allRecords.find(
-        (r) => Number(r.academicYear) === Number(academicYear) && r.month === selectedMonths[0] && r.grade === grade,
+        (r) => Number(r.academicYear) === Number(academicYear) && r.month === selectedMonths[0] && gradeEquals(r.grade, grade),
       );
       if (existing) {
         setAmounts({
@@ -246,7 +248,7 @@ export function FeeStructureForm({ schoolId }: Props) {
   const yearRecords = academicYear
     ? allRecords.filter((r) => Number(r.academicYear) === Number(academicYear))
     : allRecords;
-  const gradeRecords = grade ? yearRecords.filter((r) => r.grade === grade) : [];
+  const gradeRecords = grade ? yearRecords.filter((r) => gradeEquals(r.grade, grade)) : [];
   const sortedGradeRecords = [...gradeRecords].sort(
     (a, b) => (Number(b.academicYear) - Number(a.academicYear)) || (MONTHS.indexOf(a.month) - MONTHS.indexOf(b.month)),
   );
@@ -375,7 +377,7 @@ export function FeeStructureForm({ schoolId }: Props) {
               <div className="flex flex-wrap gap-2">
                 {MONTHS.map((m) => {
                   const selected = selectedMonths.includes(m);
-                  const hasData = grade ? yearRecords.some((r) => r.month === m && r.grade === grade) : yearRecords.some((r) => r.month === m);
+                  const hasData = grade ? yearRecords.some((r) => r.month === m && gradeEquals(r.grade, grade)) : yearRecords.some((r) => r.month === m);
                   return (
                     <button
                       key={m}
@@ -416,7 +418,7 @@ export function FeeStructureForm({ schoolId }: Props) {
                 </select>
                 <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-3 text-gray-400" />
               </div>
-              {academicYear && selectedMonths.length === 1 && grade && yearRecords.some((r) => r.month === selectedMonths[0] && r.grade === grade) && (
+              {academicYear && selectedMonths.length === 1 && grade && yearRecords.some((r) => r.month === selectedMonths[0] && gradeEquals(r.grade, grade)) && (
                 <p className="mt-1.5 text-xs font-medium text-amber-600">
                   Editing existing data for {selectedMonths[0]} {academicYear} — {getGradeDisplayName(grade, school?.schoolCategory)}
                 </p>
@@ -537,7 +539,7 @@ export function FeeStructureForm({ schoolId }: Props) {
           refreshing={loadingRecords}
           onRowClick={(r) => { setAcademicYear(String(r.academicYear ?? '')); setSelectedMonths([r.month]); setGrade(r.grade); setTab('entry'); }}
           rowClassName={(r) =>
-            Number(academicYear) === Number(r.academicYear) && selectedMonths.length === 1 && selectedMonths[0] === r.month
+            Number(academicYear) === Number(r.academicYear) && selectedMonths.length === 1 && selectedMonths[0] === r.month && gradeEquals(grade, r.grade)
               ? 'ring-inset ring-2 ring-amber-300'
               : ''
           }

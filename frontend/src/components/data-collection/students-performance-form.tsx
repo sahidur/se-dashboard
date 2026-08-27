@@ -16,13 +16,14 @@ import { useFormDraft } from '@/hooks/use-form-draft';
 import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
 import { useAuthStore } from '@/store/auth-store';
 import api from '@/lib/api';
-import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
+import { buildYearOptions, isValidAcademicYear, gradeSortIndex } from '@/lib/utils';
 import type { DcSchool, DcStudentsPerformance } from '@/types';
 
 /* ─── Constants ──────────────────────────────────────────── */
 
 const YEARS = buildYearOptions();
-const GRADES = ['Play & Learn', 'Nursery', 'G1', 'G2', 'G3', 'G4', 'G5'];
+// Full grade range: secondary schools report results up to Grade 10.
+const GRADES = ['Play & Learn', 'Nursery', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10'];
 const EXAM_NAMES = ['Half-yearly', 'Annual'];
 
 const GRADE_FIELDS: { key: keyof GradeWiseFields; label: string }[] = [
@@ -95,11 +96,12 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
   const isPlayLearn = form.grade === 'Play & Learn';
   const gradeSumPreview = GRADE_FIELDS.reduce((sum, { key }) => sum + (form[key] !== '' ? Number(form[key]) : 0), 0);
 
-  const showToast = (type: 'success' | 'error', msg: string) => {
+  // Memoized so its identity is stable across renders (prevents repeated effects).
+  const showToast = useCallback((type: 'success' | 'error', msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast({ type, msg });
     toastTimer.current = setTimeout(() => setToast(null), 4000);
-  };
+  }, []);
 
   const loadRecords = useCallback(() => {
     api.get(`/data-collection/students-performance/school/${schoolId}`)
@@ -229,10 +231,15 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
   };
 
   const sortedRecords = useMemo(
-    () => [...records].sort((a, b) =>
-      (b.academicYear - a.academicYear)
-      || a.grade.localeCompare(b.grade)
-      || a.examName.localeCompare(b.examName)),
+    () => [...records].sort((a, b) => {
+      const yDiff = b.academicYear - a.academicYear;
+      if (yDiff !== 0) return yDiff;
+      // gradeSortIndex keeps "G10" after "G9" (localeCompare puts G10 first)
+      const ai = gradeSortIndex(a.grade);
+      const bi = gradeSortIndex(b.grade);
+      if (!Number.isNaN(ai) && !Number.isNaN(bi) && ai !== bi) return ai - bi;
+      return a.examName.localeCompare(b.examName);
+    }),
     [records],
   );
 

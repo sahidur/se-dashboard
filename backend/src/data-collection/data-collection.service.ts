@@ -786,7 +786,9 @@ export class DataCollectionService {
     if (dto.appearedPercent != null && dto.numberOfStudents) {
       for (const row of rows) {
         const rowTotal = Object.values(row.values).reduce((sum, v) => sum + v, 0);
-        if (rowTotal !== dto.appearedPercent) {
+        // Unfilled rows (every scale left blank) are allowed — the entry form
+        // only validates rows the user actually typed into.
+        if (rowTotal > 0 && rowTotal !== dto.appearedPercent) {
           throw new BadRequestException(
             `Row "${row.label}" total (${rowTotal}) must equal Students appeared in the Evaluation (${dto.appearedPercent}).`,
           );
