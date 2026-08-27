@@ -10,12 +10,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { DataTable, type TableColumn } from '@/components/ui/data-table';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
 import api from '@/lib/api';
-import { buildYearOptions } from '@/lib/utils';
+import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
 import type { DcSchool, DcStudentsInfo } from '@/types';
 
 /* ─── Constants ────────────────────────────────── */
@@ -248,6 +249,11 @@ export function StudentsInfoForm({ schoolId }: Props) {
       setError('Please select an academic year.');
       return;
     }
+    if (!isValidAcademicYear(academicYear)) {
+      setFieldErrors((p) => ({ ...p, academicYear: 'Invalid year' }));
+      setError('Please select a valid academic year (1970-2100).');
+      return;
+    }
     if (!validate()) return;
     setSaving(true);
     setError('');
@@ -296,6 +302,25 @@ export function StudentsInfoForm({ schoolId }: Props) {
   /* ─── Derived ─── */
   const fieldsDisabled = !academicYear || !month || !grade || loadingEntry;
   const gradeLabel = getGradeDisplayName(GRADES.find((g) => g.value === grade)?.label ?? '', school?.schoolCategory);
+
+  const studentsInfoColumns: TableColumn<DcStudentsInfo>[] = [
+    { key: 'academicYear', header: 'Academic Year', sortable: true },
+    { key: 'month', header: 'Month', sortable: true },
+    { key: 'grade', header: 'Grade', render: (r) => getGradeDisplayName(GRADES.find((g) => g.value === r.grade)?.label ?? r.grade, school?.schoolCategory) },
+    { key: 'boys', header: 'Boys', className: 'text-right' },
+    { key: 'girls', header: 'Girls', className: 'text-right' },
+    { key: 'total', header: 'Total', className: 'text-right font-semibold text-gray-900', sortable: true },
+    { key: 'personsWithDisability', header: 'PwD', className: 'text-right' },
+    { key: 'ethnic', header: 'Ethnic', className: 'text-right' },
+    { key: 'attendanceRate', header: 'Attendance', className: 'text-right', render: (r) => `${Number(r.attendanceRate).toFixed(1)}%` },
+    { key: 'dropoutRate', header: 'Dropout', className: 'text-right', render: (r) => `${Number(r.dropoutRate).toFixed(1)}%` },
+    { key: 'replacedStudentsRate', header: 'Replaced', className: 'text-right', render: (r) => `${Number(r.replacedStudentsRate ?? 0).toFixed(1)}%` },
+    { key: 'retentionRate', header: 'Retention', className: 'text-right', render: (r) => `${Number(r.retentionRate ?? 0).toFixed(1)}%` },
+    { key: 'remedialSupport', header: 'Remedial', className: 'text-right' },
+    { key: 'createdBy', header: 'Submitted By', render: (r) => (
+      <span className="text-xs text-gray-500 whitespace-nowrap">{r.createdBy ? `${r.createdBy.firstName} ${r.createdBy.lastName}` : '—'}</span>
+    )},
+  ];
 
   if (loading) {
     return (
@@ -566,75 +591,20 @@ export function StudentsInfoForm({ schoolId }: Props) {
     )}
 
     {tab === 'data' && (
-      <Card className="overflow-hidden border-0 shadow-sm">
-        <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
-          <div className="flex items-center gap-2">
-            <Users size={18} className="text-violet-600" />
-            <h3 className="font-semibold text-gray-800">All Students Info Records</h3>
-            <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-700">{allRecords.length}</span>
-          </div>
-          <Button type="button" variant="outline" size="sm" onClick={loadAllRecords} disabled={loadingAll} className="gap-1.5 text-xs">
-            <RefreshCw size={13} className={loadingAll ? 'animate-spin' : ''} /> Refresh
-          </Button>
-        </div>
-
-        {loadingAll ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="h-7 w-7 animate-spin rounded-full border-4 border-violet-200 border-t-violet-600" />
-          </div>
-        ) : allRecords.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-14 text-gray-400">
-            <Users size={40} className="mb-3 opacity-20" />
-            <p className="text-sm font-medium">No student info records yet.</p>
-            <p className="text-xs mt-1 opacity-70">Use the Fill Form tab to add the first record.</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50/70">
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 whitespace-nowrap">Academic Year</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Month</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Grade</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Boys</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Girls</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Total</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500 whitespace-nowrap">PwD</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Ethnic</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500 whitespace-nowrap">Attendance</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500 whitespace-nowrap">Dropout</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500 whitespace-nowrap">Replaced</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500 whitespace-nowrap">Retention</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500 whitespace-nowrap">Remedial</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Submitted By</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {allRecords.map((r, idx) => (
-                  <tr key={r.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}>
-                    <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{r.academicYear ?? '—'}</td>
-                    <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{r.month}</td>
-                    <td className="px-4 py-3 text-gray-700">{getGradeDisplayName(GRADES.find((g) => g.value === r.grade)?.label ?? r.grade, school?.schoolCategory)}</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{r.boys}</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{r.girls}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-gray-900">{r.total}</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{r.personsWithDisability}</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{r.ethnic}</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{Number(r.attendanceRate).toFixed(1)}%</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{Number(r.dropoutRate).toFixed(1)}%</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{Number(r.replacedStudentsRate ?? 0).toFixed(1)}%</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{Number(r.retentionRate ?? 0).toFixed(1)}%</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{r.remedialSupport}</td>
-                    <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
-                      {r.createdBy ? `${r.createdBy.firstName} ${r.createdBy.lastName}` : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
+      <DataTable<DcStudentsInfo>
+        columns={studentsInfoColumns}
+        data={allRecords}
+        loading={loadingAll}
+        searchable
+        searchPlaceholder="Search by grade, month..."
+        title="All Students Info Records"
+        titleIcon={<Users size={18} />}
+        badge={<span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-700">{allRecords.length}</span>}
+        emptyMessage="No student info records yet."
+        emptyIcon={<Users size={40} className="mb-3 opacity-20" />}
+        onRefresh={loadAllRecords}
+        refreshing={loadingAll}
+      />
     )}
     </div>
   );

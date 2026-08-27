@@ -37,7 +37,8 @@ export default function TeachersSubPage() {
       .then(({ data }) => setDashboard(data))
       .catch(() => router.push('/data-collection/schools'))
       .finally(() => setLoading(false));
-  }, [id, router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   const loadIndividual = useCallback(async () => {
     setLoadingIndividual(true);

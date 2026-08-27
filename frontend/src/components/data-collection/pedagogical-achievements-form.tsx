@@ -10,11 +10,12 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { DataTable, type TableColumn } from '@/components/ui/data-table';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
-import { buildYearOptions } from '@/lib/utils';
+import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
 import api from '@/lib/api';
 import type { DcSchool } from '@/types';
 
@@ -193,6 +194,7 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
     e.preventDefault();
     setError('');
     if (!form.year) { setError('Please select a year.'); return; }
+    if (!isValidAcademicYear(form.year)) { setError('Please select a valid academic year (1970-2100).'); return; }
 
     setSaving(true);
     try {
@@ -225,6 +227,31 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
   const SCHOOL_CATEGORY_LABELS: Record<string, string> = {
     brac_academy: 'BRAC Academy', brac_primary: 'BRAC Primary', brac_secondary: 'BRAC Secondary',
   };
+
+  const achievementColumns: TableColumn<AchievementRecord>[] = [
+    { key: 'year', header: 'Year', sortable: true, render: (rec) => (
+      <Badge variant="default" className="font-mono text-indigo-700 border-indigo-200 bg-indigo-50">{rec.year}</Badge>
+    )},
+    { key: 'kgScholarship', header: 'KG', className: 'text-right', render: (rec) => (
+      <span className="font-medium">{rec.kgScholarship}<span className="text-xs font-normal text-gray-400"> / {rec.kgParticipated ?? 0}</span></span>
+    )},
+    { key: 'primaryScholarship', header: 'Primary', className: 'text-right', render: (rec) => (
+      <span className="font-medium">{rec.primaryScholarship}<span className="text-xs font-normal text-gray-400"> / {rec.primaryParticipated ?? 0}</span></span>
+    )},
+    { key: 'jrScholarship', header: 'Jr.', className: 'text-right', render: (rec) => (
+      <span className="font-medium">{rec.jrScholarship}<span className="text-xs font-normal text-gray-400"> / {rec.jrParticipated ?? 0}</span></span>
+    )},
+    { key: 'sscScholarship', header: 'SSC', className: 'text-right', render: (rec) => (
+      <span className="font-medium">{rec.sscScholarship}<span className="text-xs font-normal text-gray-400"> / {rec.sscParticipated ?? 0}</span></span>
+    )},
+    { key: 'othersScholarship', header: 'Others', className: 'text-right', render: (rec) => (
+      <span className="font-medium">{rec.othersScholarship}<span className="text-xs font-normal text-gray-400"> / {rec.othersParticipated ?? 0}</span></span>
+    )},
+    { key: 'total', header: 'Total', className: 'text-right', render: (rec) => {
+      const total = rec.kgScholarship + rec.primaryScholarship + rec.jrScholarship + rec.sscScholarship + rec.othersScholarship;
+      return <Badge variant="default" className="font-semibold">{total}</Badge>;
+    }},
+  ];
 
   return (
     <div className="space-y-6">
@@ -401,93 +428,28 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
       </div>
       )}
 
-      {/* Records Table */}
-      {tab === 'data' && records.length > 0 && (
-        <Card className="overflow-hidden">
-          <CardHeader className="pb-2 pt-5 px-6">
-            <CardTitle className="text-base font-semibold text-gray-800">
-              Recorded Achievements
-              <Badge variant="default" className="ml-2">{records.length}</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-6">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="py-2 pr-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">#</th>
-                    <th className="py-2 pr-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Year</th>
-                    <th className="py-2 pr-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">KG</th>
-                    <th className="py-2 pr-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Primary</th>
-                    <th className="py-2 pr-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Jr.</th>
-                    <th className="py-2 pr-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">SSC</th>
-                    <th className="py-2 pr-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Others</th>
-                    <th className="py-2 pr-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Total</th>
-                    <th className="py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
-                  </tr>
-                  <tr>
-                    <th colSpan={9} className="pb-2 text-right text-[11px] font-normal normal-case tracking-normal text-gray-400">
-                      Shown as awarded / participated
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {records.map((rec, idx) => {
-                    const total = rec.kgScholarship + rec.primaryScholarship + rec.jrScholarship + rec.sscScholarship + rec.othersScholarship;
-                    return (
-                      <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="py-3 pr-4 text-gray-400">{idx + 1}</td>
-                        <td className="py-3 pr-4">
-                          <Badge variant="default" className="font-mono text-indigo-700 border-indigo-200 bg-indigo-50">
-                            {rec.year}
-                          </Badge>
-                        </td>
-                        <td className="py-3 pr-4 text-right font-medium text-gray-700">
-                          {rec.kgScholarship}<span className="text-xs font-normal text-gray-400"> / {rec.kgParticipated ?? 0}</span>
-                        </td>
-                        <td className="py-3 pr-4 text-right font-medium text-gray-700">
-                          {rec.primaryScholarship}<span className="text-xs font-normal text-gray-400"> / {rec.primaryParticipated ?? 0}</span>
-                        </td>
-                        <td className="py-3 pr-4 text-right font-medium text-gray-700">
-                          {rec.jrScholarship}<span className="text-xs font-normal text-gray-400"> / {rec.jrParticipated ?? 0}</span>
-                        </td>
-                        <td className="py-3 pr-4 text-right font-medium text-gray-700">
-                          {rec.sscScholarship}<span className="text-xs font-normal text-gray-400"> / {rec.sscParticipated ?? 0}</span>
-                        </td>
-                        <td className="py-3 pr-4 text-right font-medium text-gray-700">
-                          {rec.othersScholarship}<span className="text-xs font-normal text-gray-400"> / {rec.othersParticipated ?? 0}</span>
-                        </td>
-                        <td className="py-3 pr-4 text-right">
-                          <Badge variant="default" className="font-semibold">{total}</Badge>
-                        </td>
-                        <td className="py-3 text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button size="sm" variant="ghost" disabled={!canEditSubmitted} onClick={() => handleEdit(rec)} title={canEditSubmitted ? undefined : 'You do not have permission to edit submitted data'} className="h-7 px-2 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed">
-                              Edit
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => handleDelete(rec.id)} className="h-7 px-2 text-red-500 hover:text-red-700 hover:bg-red-50">
-                              <Trash2 size={13} />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+      {tab === 'data' && (
+        <DataTable<AchievementRecord>
+          columns={achievementColumns}
+          data={records}
+          searchable
+          searchPlaceholder="Search by year..."
+          title="Recorded Achievements"
+          titleIcon={<Trophy size={18} />}
+          badge={<Badge variant="default" className="ml-2">{records.length}</Badge>}
+          emptyMessage="No achievement records yet."
+          emptyIcon={<Trophy size={40} className="mb-3 opacity-20" />}
+          actions={(rec) => (
+            <div className="flex justify-end gap-1">
+              <Button size="sm" variant="ghost" disabled={!canEditSubmitted} onClick={() => handleEdit(rec)} title={canEditSubmitted ? undefined : 'You do not have permission to edit submitted data'} className="h-7 px-2 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                Edit
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => handleDelete(rec.id)} className="h-7 px-2 text-red-500 hover:text-red-700 hover:bg-red-50">
+                <Trash2 size={13} />
+              </Button>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {tab === 'data' && records.length === 0 && (
-        <Card className="overflow-hidden">
-          <CardContent className="flex flex-col items-center justify-center py-14 text-gray-400">
-            <Trophy size={40} className="mb-3 opacity-20" />
-            <p className="text-sm font-medium">No achievement records yet.</p>
-            <p className="text-xs mt-1 opacity-70">Use the Fill Form tab to add the first record.</p>
-          </CardContent>
-        </Card>
+          )}
+        />
       )}
     </div>
   );

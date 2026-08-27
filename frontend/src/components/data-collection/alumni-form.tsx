@@ -12,12 +12,13 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { DataTable, type TableColumn } from '@/components/ui/data-table';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import api from '@/lib/api';
-import { buildYearOptions } from '@/lib/utils';
+import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
 import type { DcSchool, DcAlumni } from '@/types';
 
 /* ─── Constants ──────────────────────────────────────────── */
@@ -164,6 +165,11 @@ export function AlumniForm({ schoolId }: Props) {
       setFieldErrors((prev) => ({ ...prev, academicYear: 'Please select an academic year.' }));
       return;
     }
+    if (!isValidAcademicYear(form.academicYear)) {
+      setError('Please select a valid academic year (1970-2100).');
+      setFieldErrors((prev) => ({ ...prev, academicYear: 'Invalid year' }));
+      return;
+    }
     if (!validate()) return;
     setSaving(true);
     setError('');
@@ -242,6 +248,26 @@ export function AlumniForm({ schoolId }: Props) {
 
   const formatDate = (iso: string) =>
     new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+  const alumniColumns: TableColumn<DcAlumni>[] = [
+    { key: 'academicYear', header: 'Academic Year', sortable: true },
+    { key: 'alumniName', header: 'Name', sortable: true, render: (r) => <span className="font-semibold text-gray-800 whitespace-nowrap">{r.alumniName}</span> },
+    { key: 'graduationYear', header: 'Passing Year', render: (r) => (
+      r.graduationYear ? (
+        <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">{r.graduationYear}</span>
+      ) : <span className="text-gray-300">—</span>
+    )},
+    { key: 'presentAddress', header: 'Present Address', render: (r) => <p className="line-clamp-2 text-xs max-w-[160px]">{r.presentAddress || <span className="text-gray-300">—</span>}</p> },
+    { key: 'currentOccupation', header: 'Occupation', render: (r) => (
+      r.currentOccupation ? (
+        <span className="inline-flex items-center rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-xs font-medium text-emerald-700 whitespace-nowrap">{r.currentOccupation}</span>
+      ) : <span className="text-gray-300">—</span>
+    )},
+    { key: 'institution', header: 'Institute', render: (r) => <p className="truncate text-xs max-w-[150px]">{r.institution || <span className="text-gray-300">—</span>}</p> },
+    { key: 'contactPhone', header: 'Mobile', render: (r) => <span className="text-xs font-mono">{r.contactPhone || <span className="text-gray-300">—</span>}</span> },
+    { key: 'contactEmail', header: 'Email', render: (r) => <p className="truncate text-xs max-w-[140px]">{r.contactEmail || <span className="text-gray-300">—</span>}</p> },
+    { key: 'createdAt', header: 'Added', render: (r) => <span className="text-xs text-gray-400 whitespace-nowrap">{formatDate(r.createdAt)}</span> },
+  ];
 
   if (!school) {
     return (
@@ -497,120 +523,48 @@ export function AlumniForm({ schoolId }: Props) {
 
       {/* ── Records Table ── */}
       {tab === 'data' && (
-      <Card className="overflow-hidden border-0 shadow-sm">
-        <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
-          <div className="flex items-center gap-2">
-            <UserCheck size={18} className="text-slate-500" />
-            <h3 className="font-semibold text-gray-800">Alumni Records</h3>
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-700">{records.length}</span>
-          </div>
-          <Button variant="outline" size="sm" onClick={loadRecords} disabled={loadingRecords} className="gap-1.5 text-xs">
-            <RefreshCw size={13} className={loadingRecords ? 'animate-spin' : ''} /> Refresh
-          </Button>
-        </div>
-
-        {loadingRecords ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="h-7 w-7 animate-spin rounded-full border-4 border-slate-200 border-t-slate-600" />
-          </div>
-        ) : records.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-14 text-gray-400">
-            <UserCheck size={40} className="mb-3 opacity-20" />
-            <p className="text-sm font-medium">No alumni records yet.</p>
-            <p className="text-xs mt-1 opacity-70">Use the form above to add the first record.</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50/70">
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">#</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 whitespace-nowrap">Academic Year</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 whitespace-nowrap">Passing Year</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Present Address</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Occupation</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Institute</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 whitespace-nowrap">Mobile</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Email</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Added</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase text-gray-500">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {records.map((r, idx) => (
-                  <tr
-                    key={r.id}
-                    className={`transition-colors hover:bg-slate-50/50 ${
-                      editingId === r.id ? 'ring-inset ring-2 ring-slate-300 bg-slate-50/70' :
-                      idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
-                    }`}
-                  >
-                    <td className="px-4 py-3 text-xs text-gray-400 font-medium">{idx + 1}</td>
-                    <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">{r.academicYear ?? '—'}</td>
-                    <td className="px-4 py-3">
-                      <p className="font-semibold text-gray-800 whitespace-nowrap">{r.alumniName}</p>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {r.graduationYear ? (
-                        <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
-                          {r.graduationYear}
-                        </span>
-                      ) : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-600 max-w-[160px]">
-                      <p className="line-clamp-2">{r.presentAddress || <span className="text-gray-300">—</span>}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      {r.currentOccupation ? (
-                        <span className="inline-flex items-center rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-xs font-medium text-emerald-700 whitespace-nowrap">
-                          {r.currentOccupation}
-                        </span>
-                      ) : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-600 max-w-[150px]">
-                      <p className="truncate">{r.institution || <span className="text-gray-300">—</span>}</p>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap font-mono">{r.contactPhone || <span className="text-gray-300">—</span>}</td>
-                    <td className="px-4 py-3 text-xs text-gray-600 max-w-[140px]">
-                      <p className="truncate">{r.contactEmail || <span className="text-gray-300">—</span>}</p>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">{formatDate(r.createdAt)}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => canEditSubmitted && handleEdit(r)}
-                          disabled={!canEditSubmitted}
-                          className={`flex h-7 w-7 items-center justify-center rounded-md border transition-colors ${
-                            canEditSubmitted
-                              ? 'border-gray-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50'
-                              : 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
-                          }`}
-                          title={canEditSubmitted ? 'Edit' : 'You do not have permission to edit submitted data'}
-                        >
-                          <Pencil size={12} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(r.id)}
-                          disabled={deletingId === r.id}
-                          className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 bg-white text-red-400 hover:border-red-300 hover:bg-red-50 transition-colors disabled:opacity-50"
-                          title="Delete"
-                        >
-                          {deletingId === r.id
-                            ? <RefreshCw size={12} className="animate-spin" />
-                            : <Trash2 size={12} />}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <DataTable<DcAlumni>
+        columns={alumniColumns}
+        data={records}
+        loading={loadingRecords}
+        searchable
+        searchPlaceholder="Search by name, occupation..."
+        title="Alumni Records"
+        titleIcon={<UserCheck size={18} />}
+        badge={<span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-700">{records.length}</span>}
+        emptyMessage="No alumni records yet."
+        emptyIcon={<UserCheck size={40} className="mb-3 opacity-20" />}
+        onRefresh={loadRecords}
+        refreshing={loadingRecords}
+        actions={(r) => (
+          <div className="flex items-center justify-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => canEditSubmitted && handleEdit(r)}
+              disabled={!canEditSubmitted}
+              className={`flex h-7 w-7 items-center justify-center rounded-md border transition-colors ${
+                canEditSubmitted
+                  ? 'border-gray-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50'
+                  : 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
+              }`}
+              title={canEditSubmitted ? 'Edit' : 'You do not have permission to edit submitted data'}
+            >
+              <Pencil size={12} />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDelete(r.id)}
+              disabled={deletingId === r.id}
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 bg-white text-red-400 hover:border-red-300 hover:bg-red-50 transition-colors disabled:opacity-50"
+              title="Delete"
+            >
+              {deletingId === r.id
+                ? <RefreshCw size={12} className="animate-spin" />
+                : <Trash2 size={12} />}
+            </button>
           </div>
         )}
-      </Card>
+      />
       )}
     </div>
   );

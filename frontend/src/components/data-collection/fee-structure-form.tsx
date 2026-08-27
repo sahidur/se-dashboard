@@ -11,12 +11,13 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { DataTable, type TableColumn } from '@/components/ui/data-table';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
 import api from '@/lib/api';
-import { buildYearOptions } from '@/lib/utils';
+import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth-store';
 import type { DcSchool, DcFeeStructure, DcFeeStructureLog } from '@/types';
 
@@ -110,7 +111,8 @@ export function FeeStructureForm({ schoolId }: Props) {
     api.get(`/data-collection/schools/${schoolId}`)
       .then(({ data }) => setSchool(data))
       .catch(() => router.push('/data-collection/schools'));
-  }, [schoolId, router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schoolId]);
 
   const loadRecords = useCallback(async () => {
     setLoadingRecords(true);
@@ -202,6 +204,7 @@ export function FeeStructureForm({ schoolId }: Props) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!academicYear) { setError('Please select an academic year.'); return; }
+    if (!isValidAcademicYear(academicYear)) { setError('Please select a valid academic year (1970-2100).'); return; }
     if (selectedMonths.length === 0) { setError('Please select at least one month.'); return; }
     if (!grade) { setError('Please select a grade.'); return; }
     setSaving(true);
@@ -486,70 +489,60 @@ export function FeeStructureForm({ schoolId }: Props) {
 
       {/* ── All Records Table ── */}
       {grade && (
-        <Card className="overflow-hidden border-0 shadow-sm">
-          <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
-            <div className="flex items-center gap-2">
-              <BookOpen size={18} className="text-amber-600" />
-              <h3 className="font-semibold text-gray-800">Records for {grade}</h3>
-              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-700">{gradeRecords.length}</span>
-            </div>
-            <Button variant="outline" size="sm" onClick={loadRecords} disabled={loadingRecords} className="gap-1.5 text-xs">
-              <RefreshCw size={13} className={loadingRecords ? 'animate-spin' : ''} /> Refresh
-            </Button>
-          </div>
-          {loadingRecords ? (
-            <div className="flex items-center justify-center py-10">
-              <div className="h-7 w-7 animate-spin rounded-full border-4 border-amber-200 border-t-amber-600" />
-            </div>
-          ) : gradeRecords.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-10 text-gray-400">
-              <BookOpen size={32} className="mb-2 opacity-30" />
-              <p className="text-sm">No records for {grade} yet.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50/70">
-                    <th className="whitespace-nowrap px-3 py-3 text-left text-xs font-semibold uppercase text-gray-500">Academic Year</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold uppercase text-gray-500">Month</th>
-                    {FEE_FIELDS.map((f) => (
-                      <th key={f.key} className="whitespace-nowrap px-3 py-3 text-right text-xs font-semibold uppercase text-gray-500">{f.label}</th>
-                    ))}
-                    <th className="whitespace-nowrap px-3 py-3 text-right text-xs font-semibold uppercase text-gray-500">Total</th>
-                    <th className="whitespace-nowrap px-3 py-3 text-left text-xs font-semibold uppercase text-gray-500">Updated At</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {sortedGradeRecords.map((r, idx) => {
-                    const total = FEE_FIELDS.reduce((s, f) => s + Number(r[f.key] ?? 0), 0);
-                    return (
-                      <tr
-                        key={r.id}
-                        className={`cursor-pointer transition-colors hover:brightness-95 ${
-                          Number(academicYear) === Number(r.academicYear) && selectedMonths.length === 1 && selectedMonths[0] === r.month ? 'ring-inset ring-2 ring-amber-300' :
-                          idx % 2 === 0 ? 'bg-white' : 'bg-amber-50/30'
-                        }`}
-                        onClick={() => { setAcademicYear(String(r.academicYear ?? '')); setSelectedMonths([r.month]); setGrade(r.grade); setTab('entry'); }}
-                      >
-                        <td className="px-3 py-3 text-xs font-medium text-gray-700">{r.academicYear ?? '—'}</td>
-                        <td className="px-3 py-3">
-                          <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">{r.month}</span>
-                        </td>
-                        {FEE_FIELDS.map((f) => (
-                          <td key={f.key} className="px-3 py-3 text-right font-mono text-gray-700 text-xs">{formatAmount(Number(r[f.key] ?? 0))}</td>
-                        ))}
-                        <td className="px-3 py-3 text-right font-bold text-emerald-700 text-xs">{formatAmount(total)}</td>
-                        <td className="px-3 py-3 text-xs text-gray-400 whitespace-nowrap">{formatDateTime(r.updatedAt)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              <p className="border-t border-gray-100 px-5 py-2 text-xs text-gray-400">Click a row to load it into the form for editing.</p>
-            </div>
-          )}
-        </Card>
+        <DataTable<DcFeeStructure & { _total?: number }>
+          columns={[
+            { key: 'academicYear', header: 'Academic Year', className: 'whitespace-nowrap' },
+            {
+              key: 'month',
+              header: 'Month',
+              render: (r) => (
+                <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">{r.month}</span>
+              ),
+            },
+            ...FEE_FIELDS.map((f) => ({
+              key: f.key,
+              header: f.label,
+              className: 'whitespace-nowrap text-right font-mono text-xs',
+              render: (r: DcFeeStructure) => formatAmount(Number(r[f.key] ?? 0)),
+            })),
+            {
+              key: '_total',
+              header: 'Total',
+              className: 'text-right font-bold text-emerald-700 text-xs',
+              render: (r) => {
+                const total = FEE_FIELDS.reduce((s, f) => s + Number(r[f.key] ?? 0), 0);
+                return formatAmount(total);
+              },
+            },
+            {
+              key: 'updatedAt',
+              header: 'Updated At',
+              className: 'whitespace-nowrap text-gray-400',
+              render: (r) => formatDateTime(r.updatedAt),
+            },
+          ]}
+          data={sortedGradeRecords.map((r) => ({
+            ...r,
+            _total: FEE_FIELDS.reduce((s, f) => s + Number(r[f.key] ?? 0), 0),
+          }))}
+          loading={loadingRecords}
+          emptyMessage={`No records for ${grade} yet.`}
+          emptyIcon={<BookOpen size={32} className="mb-2 opacity-30" />}
+          searchable
+          searchPlaceholder="Search records..."
+          title={`Records for ${grade}`}
+          titleIcon={<BookOpen size={18} className="text-amber-600" />}
+          badge={<span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-700">{gradeRecords.length}</span>}
+          onRefresh={loadRecords}
+          refreshing={loadingRecords}
+          onRowClick={(r) => { setAcademicYear(String(r.academicYear ?? '')); setSelectedMonths([r.month]); setGrade(r.grade); setTab('entry'); }}
+          rowClassName={(r) =>
+            Number(academicYear) === Number(r.academicYear) && selectedMonths.length === 1 && selectedMonths[0] === r.month
+              ? 'ring-inset ring-2 ring-amber-300'
+              : ''
+          }
+          footer={<p className="px-1 py-1 text-xs text-gray-400">Click a row to load it into the form for editing.</p>}
+        />
       )}
 
       {/* ── Edit Log (Admin only) ── */}

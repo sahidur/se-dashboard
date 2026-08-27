@@ -15,7 +15,7 @@ import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import api from '@/lib/api';
-import { buildYearOptions } from '@/lib/utils';
+import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
 import type { DcSchool, DcRevenueTotalRecord } from '@/types';
 
 /* ─── Constants ─────────────────────────────────── */
@@ -108,7 +108,8 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
     api.get(`/data-collection/schools/${schoolId}`)
       .then(({ data }) => setSchool(data))
       .catch(() => router.push('/data-collection/schools'));
-  }, [schoolId, router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schoolId]);
 
   const loadRecord = useCallback(async () => {
     try {
@@ -177,6 +178,7 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!academicYear) { setError('Please select an academic year.'); return; }
+    if (!isValidAcademicYear(academicYear)) { setError('Please select a valid academic year (1970-2100).'); return; }
     setSaving(true);
     setError('');
     try {

@@ -59,12 +59,19 @@ export function buildYearOptions(options?: {
   pastYears?: number;
   futureYears?: number;
 }): number[] {
-  const { pastYears = 60, futureYears = 20 } = options ?? {};
+  const { pastYears = 20, futureYears = 5 } = options ?? {};
   const current = new Date().getFullYear();
   const years: number[] = [];
   for (let y = current; y <= current + futureYears; y++) years.push(y);
   for (let y = current - 1; y >= current - pastYears; y--) years.push(y);
   return years;
+}
+
+/** Validate that a year string is a valid 4-digit year within the allowed range. */
+export function isValidAcademicYear(year: string): boolean {
+  const n = Number(year);
+  if (!Number.isInteger(n) || n < 1970 || n > 2100) return false;
+  return true;
 }
 
 /**

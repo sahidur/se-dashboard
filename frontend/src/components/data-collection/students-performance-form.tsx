@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   GraduationCap, School, MapPin, Save, Trash2, AlertCircle, CheckCircle2, PlusCircle,
 } from 'lucide-react';
@@ -9,13 +9,14 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { DataTable, type TableColumn } from '@/components/ui/data-table';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
 import { useAuthStore } from '@/store/auth-store';
 import api from '@/lib/api';
-import { buildYearOptions } from '@/lib/utils';
+import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
 import type { DcSchool, DcStudentsPerformance } from '@/types';
 
 /* ─── Constants ──────────────────────────────────────────── */
@@ -179,6 +180,7 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
     e.preventDefault();
     setError('');
     if (!form.academicYear) { setError('Please select an academic year.'); return; }
+    if (!isValidAcademicYear(form.academicYear)) { setError('Please select a valid academic year (1970-2100).'); return; }
     if (!form.grade) { setError('Please select a grade.'); return; }
     if (!form.examName) { setError('Please select an exam name.'); return; }
 
@@ -226,10 +228,13 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
     brac_academy: 'BRAC Academy', brac_primary: 'BRAC Primary', brac_secondary: 'BRAC Secondary',
   };
 
-  const groupedByGrade = GRADES.map((g) => ({
-    grade: g,
-    rows: records.filter((r) => r.grade === g),
-  })).filter((g) => g.rows.length > 0);
+  const sortedRecords = useMemo(
+    () => [...records].sort((a, b) =>
+      (b.academicYear - a.academicYear)
+      || a.grade.localeCompare(b.grade)
+      || a.examName.localeCompare(b.examName)),
+    [records],
+  );
 
   return (
     <div className="space-y-6">
@@ -453,70 +458,59 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
         )}
       </div>
 
-      {tab === 'data' && groupedByGrade.map(({ grade, rows }) => (
-        <Card key={grade} className="overflow-hidden">
-          <CardHeader className="pb-2 pt-4 px-6">
-            <CardTitle className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-              {getGradeDisplayName(grade, school?.schoolCategory)}
-              <Badge variant="default">{rows.length} exam{rows.length > 1 ? 's' : ''}</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-4">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="py-2 pr-3 text-left text-gray-500 uppercase tracking-wider font-semibold">Academic Year</th>
-                    <th className="py-2 pr-3 text-left text-gray-500 uppercase tracking-wider font-semibold">Exam</th>
-                    <th className="py-2 pr-3 text-right text-gray-500 uppercase tracking-wider font-semibold">Students</th>
-                    {GRADE_FIELDS.map(({ label }) => (
-                      <th key={label} className="py-2 pr-3 text-right text-gray-500 uppercase tracking-wider font-semibold">{label}</th>
-                    ))}
-                    <th className="py-2 text-right text-gray-500 uppercase tracking-wider font-semibold">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {rows.map((rec) => (
-                    <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="py-2.5 pr-3 text-gray-700 font-medium">{rec.academicYear ?? '—'}</td>
-                      <td className="py-2.5 pr-3">
-                        <Badge variant="default" className="text-teal-700 border-teal-200 bg-teal-50 font-medium">
-                          {rec.examName}
-                        </Badge>
-                      </td>
-                      <td className="py-2.5 pr-3 text-right text-gray-700 font-medium">{rec.numberOfStudents}</td>
-                      {GRADE_FIELDS.map(({ key }) => (
-                        <td key={key} className="py-2.5 pr-3 text-right text-gray-700 font-medium">
-                          {rec[key as keyof DcStudentsPerformance] ?? 0}
-                        </td>
-                      ))}
-                      <td className="py-2.5 text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button size="sm" variant="ghost" disabled={!canEditSubmitted} onClick={() => handleEdit(rec)} title={canEditSubmitted ? undefined : 'You do not have permission to edit submitted data'} className="h-6 px-2 text-teal-600 hover:text-teal-700 hover:bg-teal-50 disabled:opacity-40 disabled:cursor-not-allowed">
-                            Edit
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => handleDelete(rec.id)} className="h-6 px-2 text-red-500 hover:text-red-700 hover:bg-red-50">
-                            <Trash2 size={12} />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-
-      {tab === 'data' && groupedByGrade.length === 0 && (
-        <Card className="overflow-hidden">
-          <CardContent className="flex flex-col items-center justify-center py-14 text-gray-400">
-            <GraduationCap size={40} className="mb-3 opacity-20" />
-            <p className="text-sm font-medium">No performance records yet.</p>
-            <p className="text-xs mt-1 opacity-70">Use the Fill Form tab to add the first record.</p>
-          </CardContent>
-        </Card>
+      {tab === 'data' && (
+        records.length === 0 ? (
+          <Card className="overflow-hidden">
+            <CardContent className="flex flex-col items-center justify-center py-14 text-gray-400">
+              <GraduationCap size={40} className="mb-3 opacity-20" />
+              <p className="text-sm font-medium">No performance records yet.</p>
+              <p className="text-xs mt-1 opacity-70">Use the Fill Form tab to add the first record.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'academicYear', header: 'Academic Year', className: 'font-medium text-gray-700' },
+              {
+                key: 'grade',
+                header: 'Grade',
+                render: (rec) => getGradeDisplayName(rec.grade, school?.schoolCategory),
+              },
+              {
+                key: 'examName',
+                header: 'Exam',
+                render: (rec) => (
+                  <Badge variant="default" className="text-teal-700 border-teal-200 bg-teal-50 font-medium">
+                    {rec.examName}
+                  </Badge>
+                ),
+              },
+              { key: 'numberOfStudents', header: 'Students', className: 'text-right font-medium text-gray-700' },
+              ...GRADE_FIELDS.map(({ key, label }) => ({
+                key,
+                header: label,
+                className: 'text-right font-medium text-gray-700',
+                render: (rec: DcStudentsPerformance) => rec[key as keyof DcStudentsPerformance] ?? 0,
+              })),
+            ]}
+            data={sortedRecords}
+            searchable
+            searchPlaceholder="Search records..."
+            title="Submitted Records"
+            emptyMessage="No performance records yet."
+            emptyIcon={<GraduationCap size={40} className="mb-3 opacity-20" />}
+            actions={(rec) => (
+              <div className="flex justify-end gap-1">
+                <Button size="sm" variant="ghost" disabled={!canEditSubmitted} onClick={() => handleEdit(rec)} title={canEditSubmitted ? undefined : 'You do not have permission to edit submitted data'} className="h-6 px-2 text-teal-600 hover:text-teal-700 hover:bg-teal-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                  Edit
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => handleDelete(rec.id)} className="h-6 px-2 text-red-500 hover:text-red-700 hover:bg-red-50">
+                  <Trash2 size={12} />
+                </Button>
+              </div>
+            )}
+          />
+        )
       )}
     </div>
   );

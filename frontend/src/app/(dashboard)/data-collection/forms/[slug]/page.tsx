@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense, lazy } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -8,28 +8,67 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ArrowLeft, Save, CheckCircle2 } from 'lucide-react';
-import { InfrastructureStatusForm } from '@/components/data-collection/infrastructure-status-form';
-import { ClassroomStatusForm } from '@/components/data-collection/classroom-status-form';
-import { StudentsInfoForm } from '@/components/data-collection/students-info-form';
-import { TeachersInfoForm } from '@/components/data-collection/teachers-info-form';
-import { TeachersDevForm } from '@/components/data-collection/teachers-dev-form';
-import { FeeStructureForm } from '@/components/data-collection/fee-structure-form';
-import { RevenueTotalForm } from '@/components/data-collection/revenue-total-form';
-import { RevenueMonthlyForm } from '@/components/data-collection/revenue-monthly-form';
-import { AlumniForm } from '@/components/data-collection/alumni-form';
-import { PedagogicalAchievementsForm } from '@/components/data-collection/pedagogical-achievements-form';
-import { CocurricularForm } from '@/components/data-collection/cocurricular-form';
-import { StudentsPerformanceForm } from '@/components/data-collection/students-performance-form';
-import { StudentPerformanceForm } from '@/components/data-collection/student-performance-form';
 import {
   STUDENT_PERFORMANCE_FORMS,
   STUDENT_PERFORMANCE_SECTIONS,
   getFormDisplayLabel,
 } from '@/components/data-collection/student-performance-catalog';
-import { ActivityParticipationForm } from '@/components/data-collection/activity-participation-form';
-import { EventParticipationForm } from '@/components/data-collection/event-participation-form';
 import api from '@/lib/api';
 import type { DcSchool } from '@/types';
+
+const InfrastructureStatusForm = lazy(() => import('@/components/data-collection/infrastructure-status-form').then(m => ({ default: m.InfrastructureStatusForm })));
+const ClassroomStatusForm = lazy(() => import('@/components/data-collection/classroom-status-form').then(m => ({ default: m.ClassroomStatusForm })));
+const StudentsInfoForm = lazy(() => import('@/components/data-collection/students-info-form').then(m => ({ default: m.StudentsInfoForm })));
+const TeachersInfoForm = lazy(() => import('@/components/data-collection/teachers-info-form').then(m => ({ default: m.TeachersInfoForm })));
+const TeachersDevForm = lazy(() => import('@/components/data-collection/teachers-dev-form').then(m => ({ default: m.TeachersDevForm })));
+const FeeStructureForm = lazy(() => import('@/components/data-collection/fee-structure-form').then(m => ({ default: m.FeeStructureForm })));
+const RevenueTotalForm = lazy(() => import('@/components/data-collection/revenue-total-form').then(m => ({ default: m.RevenueTotalForm })));
+const RevenueMonthlyForm = lazy(() => import('@/components/data-collection/revenue-monthly-form').then(m => ({ default: m.RevenueMonthlyForm })));
+const AlumniForm = lazy(() => import('@/components/data-collection/alumni-form').then(m => ({ default: m.AlumniForm })));
+const PedagogicalAchievementsForm = lazy(() => import('@/components/data-collection/pedagogical-achievements-form').then(m => ({ default: m.PedagogicalAchievementsForm })));
+const CocurricularForm = lazy(() => import('@/components/data-collection/cocurricular-form').then(m => ({ default: m.CocurricularForm })));
+const StudentsPerformanceForm = lazy(() => import('@/components/data-collection/students-performance-form').then(m => ({ default: m.StudentsPerformanceForm })));
+const StudentPerformanceForm = lazy(() => import('@/components/data-collection/student-performance-form').then(m => ({ default: m.StudentPerformanceForm })));
+const ActivityParticipationForm = lazy(() => import('@/components/data-collection/activity-participation-form').then(m => ({ default: m.ActivityParticipationForm })));
+const EventParticipationForm = lazy(() => import('@/components/data-collection/event-participation-form').then(m => ({ default: m.EventParticipationForm })));
+
+/* ─── Slug → component lookup ───────────────────── */
+
+interface FormMeta {
+  component: React.ComponentType<any>;
+  title: string;
+  subtitle: string;
+  maxWidth?: string;
+}
+
+function makeMeta(component: FormMeta['component'], title: string, subtitle: string, maxWidth = 'max-w-4xl'): FormMeta {
+  return { component, title, subtitle, maxWidth };
+}
+
+const SLUG_MAP: Record<string, FormMeta> = {
+  'infrastructure-classroom-status': makeMeta(InfrastructureStatusForm, 'Infrastructure Status', 'Campus, building, rooms & facilities'),
+  'classroom-status': makeMeta(ClassroomStatusForm, 'Classroom Status', 'Digital equipment, seating & classroom features'),
+  'students-information': makeMeta(StudentsInfoForm, "Students' Information", 'Monthly enrollment by grade'),
+  'teachers-information': makeMeta(TeachersInfoForm, "Teachers' Information", 'Individual teacher records'),
+  'teachers-development': makeMeta(TeachersDevForm, "Teachers' Development", 'Monthly training & development data'),
+  'fee-structure-primary': makeMeta(FeeStructureForm, 'Fee Structure (Primary)', 'Monthly fee structure per grade', 'max-w-5xl'),
+  'revenue-budget-total': makeMeta(RevenueTotalForm, 'Planned Revenue Collection - Total', 'Yearly budget targets and achievements per fee category', 'max-w-5xl'),
+  'revenue-budget-monthly': makeMeta(RevenueMonthlyForm, 'Planned Revenue Collection - Monthly', 'Monthly tuition fee budget and collection tracking', 'max-w-5xl'),
+  'revenue-actual-total': makeMeta(RevenueTotalForm, 'Actual Revenue Collection - Total', 'Yearly actual student revenue targets and achievements', 'max-w-5xl'),
+  'revenue-actual-monthly': makeMeta(RevenueMonthlyForm, 'Actual Revenue Collection - Monthly', 'Monthly actual student revenue tracking', 'max-w-5xl'),
+  'alumni-information': makeMeta(AlumniForm, 'Alumni Information', 'School alumni records', 'max-w-5xl'),
+  'pedagogical-achievements': makeMeta(PedagogicalAchievementsForm, "School's Pedagogical Achievements", 'Annual scholarship and achievement records', 'max-w-5xl'),
+  'co-curricular-activities': makeMeta(CocurricularForm, 'Participation in Co-curricular Activities', 'Monthly activity participation by grade', 'max-w-5xl'),
+  'students-performance': makeMeta(StudentsPerformanceForm, "Students' Academic Performance", 'Exam-wise grade results and progress indicators', 'max-w-5xl'),
+  'activity-participation': makeMeta(ActivityParticipationForm, "Students' Participation in Corner/Club/Library/Lab Activities", 'Monthly activity participation by grade with photo evidence', 'max-w-5xl'),
+  'event-participation': makeMeta(EventParticipationForm, "School's Participation in Different Events", 'Events, award levels and students awarded', 'max-w-5xl'),
+};
+
+/* ─── Revenue mode helper ───────────────────── */
+
+function isRevenueSlug(slug: string): boolean {
+  return slug === 'revenue-budget-total' || slug === 'revenue-budget-monthly' || slug === 'revenue-actual-total' || slug === 'revenue-actual-monthly';
+}
 
 /* ─────────────── Form Configurations (Demo) ─────────────── */
 
@@ -391,336 +430,28 @@ export default function DemoFormPage() {
     }
   }, [schoolId]);
 
-  /* ── Custom real forms ── */
-  if (slug === 'infrastructure-classroom-status') {
-    return (
-      <>
-        <Header
-          title="Infrastructure Status"
-          subtitle="Campus, building, rooms & facilities"
-          actions={
-            <Button variant="outline" onClick={() => router.back()}>
-              <ArrowLeft size={16} className="mr-1.5" />
-              <span className="hidden sm:inline">Back</span>
-            </Button>
-          }
-        />
-        <div className="p-4 sm:p-6 max-w-4xl mx-auto">
-          <InfrastructureStatusForm schoolId={schoolId ?? ''} />
-        </div>
-      </>
-    );
-  }
+  /* ── Revenue mode props ── */
+  const revenueMode = slug === 'revenue-budget-total' || slug === 'revenue-budget-monthly' ? 'budget'
+    : slug === 'revenue-actual-total' || slug === 'revenue-actual-monthly' ? 'actual' : undefined;
 
-  if (slug === 'classroom-status') {
-    return (
-      <>
-        <Header
-          title="Classroom Status"
-          subtitle="Digital equipment, seating & classroom features"
-          actions={
-            <Button variant="outline" onClick={() => router.back()}>
-              <ArrowLeft size={16} className="mr-1.5" />
-              <span className="hidden sm:inline">Back</span>
-            </Button>
-          }
-        />
-        <div className="p-4 sm:p-6 max-w-4xl mx-auto">
-          <ClassroomStatusForm schoolId={schoolId ?? ''} />
-        </div>
-      </>
-    );
-  }
-
-  if (slug === 'students-information') {
-    return (
-      <>
-        <Header
-          title="Students' Information"
-          subtitle="Monthly enrollment by grade"
-          actions={
-            <Button variant="outline" onClick={() => router.back()}>
-              <ArrowLeft size={16} className="mr-1.5" />
-              <span className="hidden sm:inline">Back</span>
-            </Button>
-          }
-        />
-        <div className="p-4 sm:p-6 max-w-4xl mx-auto">
-          <StudentsInfoForm schoolId={schoolId ?? ''} />
-        </div>
-      </>
-    );
-  }
-
-  if (slug === 'teachers-information') {
-    return (
-      <>
-        <Header
-          title="Teachers' Information"
-          subtitle="Individual teacher records"
-          actions={
-            <Button variant="outline" onClick={() => router.back()}>
-              <ArrowLeft size={16} className="mr-1.5" />
-              <span className="hidden sm:inline">Back</span>
-            </Button>
-          }
-        />
-        <div className="p-4 sm:p-6 max-w-4xl mx-auto">
-          <TeachersInfoForm schoolId={schoolId ?? ''} />
-        </div>
-      </>
-    );
-  }
-
-  if (slug === 'teachers-development') {
-    return (
-      <>
-        <Header
-          title="Teachers' Development"
-          subtitle="Monthly training & development data"
-          actions={
-            <Button variant="outline" onClick={() => router.back()}>
-              <ArrowLeft size={16} className="mr-1.5" />
-              <span className="hidden sm:inline">Back</span>
-            </Button>
-          }
-        />
-        <div className="p-4 sm:p-6 max-w-4xl mx-auto">
-          <TeachersDevForm schoolId={schoolId ?? ''} />
-        </div>
-      </>
-    );
-  }
-
-  if (slug === 'fee-structure-primary') {
-    return (
-      <>
-        <Header
-          title="Fee Structure (Primary)"
-          subtitle="Monthly fee structure per grade"
-          actions={
-            <Button variant="outline" onClick={() => router.back()}>
-              <ArrowLeft size={16} className="mr-1.5" />
-              <span className="hidden sm:inline">Back</span>
-            </Button>
-          }
-        />
-        <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-          <FeeStructureForm schoolId={schoolId ?? ''} />
-        </div>
-      </>
-    );
-  }
-
-  if (slug === 'revenue-budget-total') {
-    return (
-      <>
-        <Header
-          title="Planned Revenue Collection - Total"
-          subtitle="Yearly budget targets and achievements per fee category"
-          actions={
-            <Button variant="outline" onClick={() => router.back()}>
-              <ArrowLeft size={16} className="mr-1.5" />
-              <span className="hidden sm:inline">Back</span>
-            </Button>
-          }
-        />
-        <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-          <RevenueTotalForm schoolId={schoolId ?? ''} mode="budget" />
-        </div>
-      </>
-    );
-  }
-
-  if (slug === 'revenue-budget-monthly') {
-    return (
-      <>
-        <Header
-          title="Planned Revenue Collection - Monthly"
-          subtitle="Monthly tuition fee budget and collection tracking"
-          actions={
-            <Button variant="outline" onClick={() => router.back()}>
-              <ArrowLeft size={16} className="mr-1.5" />
-              <span className="hidden sm:inline">Back</span>
-            </Button>
-          }
-        />
-        <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-          <RevenueMonthlyForm schoolId={schoolId ?? ''} mode="budget" />
-        </div>
-      </>
-    );
-  }
-
-  if (slug === 'revenue-actual-total') {
-    return (
-      <>
-        <Header
-          title="Actual Revenue Collection - Total"
-          subtitle="Yearly actual student revenue targets and achievements"
-          actions={
-            <Button variant="outline" onClick={() => router.back()}>
-              <ArrowLeft size={16} className="mr-1.5" />
-              <span className="hidden sm:inline">Back</span>
-            </Button>
-          }
-        />
-        <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-          <RevenueTotalForm schoolId={schoolId ?? ''} mode="actual" />
-        </div>
-      </>
-    );
-  }
-
-  if (slug === 'revenue-actual-monthly') {
-    return (
-      <>
-        <Header
-          title="Actual Revenue Collection - Monthly"
-          subtitle="Monthly actual student revenue tracking"
-          actions={
-            <Button variant="outline" onClick={() => router.back()}>
-              <ArrowLeft size={16} className="mr-1.5" />
-              <span className="hidden sm:inline">Back</span>
-            </Button>
-          }
-        />
-        <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-          <RevenueMonthlyForm schoolId={schoolId ?? ''} mode="actual" />
-        </div>
-      </>
-    );
-  }
-
-  if (slug === 'alumni-information') {
-    return (
-      <>
-        <Header
-          title="Alumni Information"
-          subtitle="School alumni records"
-          actions={
-            <Button variant="outline" onClick={() => router.back()}>
-              <ArrowLeft size={16} className="mr-1.5" />
-              <span className="hidden sm:inline">Back</span>
-            </Button>
-          }
-        />
-        <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-          <AlumniForm schoolId={schoolId ?? ''} />
-        </div>
-      </>
-    );
-  }
-
-  if (slug === 'pedagogical-achievements') {
-    return (
-      <>
-        <Header
-          title="School's Pedagogical Achievements"
-          subtitle="Annual scholarship and achievement records"
-          actions={
-            <Button variant="outline" onClick={() => router.back()}>
-              <ArrowLeft size={16} className="mr-1.5" />
-              <span className="hidden sm:inline">Back</span>
-            </Button>
-          }
-        />
-        <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-          <PedagogicalAchievementsForm schoolId={schoolId ?? ''} />
-        </div>
-      </>
-    );
-  }
-
-  if (slug === 'co-curricular-activities') {
-    return (
-      <>
-        <Header
-          title="Participation in Co-curricular Activities"
-          subtitle="Monthly activity participation by grade"
-          actions={
-            <Button variant="outline" onClick={() => router.back()}>
-              <ArrowLeft size={16} className="mr-1.5" />
-              <span className="hidden sm:inline">Back</span>
-            </Button>
-          }
-        />
-        <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-          <CocurricularForm schoolId={schoolId ?? ''} />
-        </div>
-      </>
-    );
-  }
-
-  if (slug === 'students-performance') {
-    return (
-      <>
-        <Header
-          title="Students' Academic Performance"
-          subtitle="Exam-wise grade results and progress indicators"
-          actions={
-            <Button variant="outline" onClick={() => router.back()}>
-              <ArrowLeft size={16} className="mr-1.5" />
-              <span className="hidden sm:inline">Back</span>
-            </Button>
-          }
-        />
-        <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-          <StudentsPerformanceForm schoolId={schoolId ?? ''} />
-        </div>
-      </>
-    );
-  }
+  /* ── Real form (lookup map) ── */
+  const meta = SLUG_MAP[slug as string];
 
   /* ── Student Performance (BA / BPS / BSS) ── */
   const studentPerfDef = STUDENT_PERFORMANCE_FORMS.find((f) => f.slug === slug);
-  if (studentPerfDef) {
-    const section = STUDENT_PERFORMANCE_SECTIONS.find((s) => s.key === studentPerfDef.sectionKey)!;
-    return (
-      <>
-        <Header
-          title={`${section.label} — Form ${studentPerfDef.formNo}`}
-          subtitle={getFormDisplayLabel(studentPerfDef, school?.schoolCategory)}
-          actions={
-            <Button variant="outline" onClick={() => router.back()}>
-              <ArrowLeft size={16} className="mr-1.5" />
-              <span className="hidden sm:inline">Back</span>
-            </Button>
-          }
-        />
-        <div className="mx-auto max-w-6xl p-4 sm:p-6">
-          <StudentPerformanceForm schoolId={schoolId ?? ''} formKey={studentPerfDef.key} />
-        </div>
-      </>
-    );
-  }
 
-  if (slug === 'activity-participation') {
-    return (
-      <>
-        <Header
-          title="Students' Participation in Corner/Club/Library/Lab Activities"
-          subtitle="Monthly activity participation by grade with photo evidence"
-          actions={
-            <Button variant="outline" onClick={() => router.back()}>
-              <ArrowLeft size={16} className="mr-1.5" />
-              <span className="hidden sm:inline">Back</span>
-            </Button>
-          }
-        />
-        <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-          <ActivityParticipationForm schoolId={schoolId ?? ''} />
-        </div>
-      </>
-    );
-  }
+  if (meta || studentPerfDef) {
+    const section = studentPerfDef ? STUDENT_PERFORMANCE_SECTIONS.find((s) => s.key === studentPerfDef.sectionKey) : null;
+    const title = studentPerfDef && section ? `${section.label} — Form ${studentPerfDef.formNo}` : meta!.title;
+    const subtitle = studentPerfDef ? getFormDisplayLabel(studentPerfDef, school?.schoolCategory) : meta!.subtitle;
+    const FormComponent = meta?.component ?? StudentPerformanceForm;
+    const extraProps = studentPerfDef ? { formKey: studentPerfDef.key } : revenueMode ? { mode: revenueMode } : {};
 
-  if (slug === 'event-participation') {
     return (
       <>
         <Header
-          title="School's Participation in Different Events"
-          subtitle="Events, award levels and students awarded"
+          title={title}
+          subtitle={subtitle}
           actions={
             <Button variant="outline" onClick={() => router.back()}>
               <ArrowLeft size={16} className="mr-1.5" />
@@ -728,8 +459,14 @@ export default function DemoFormPage() {
             </Button>
           }
         />
-        <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-          <EventParticipationForm schoolId={schoolId ?? ''} />
+        <div className={`p-4 sm:p-6 ${meta?.maxWidth ?? 'max-w-6xl'} mx-auto`}>
+          <Suspense fallback={
+            <div className="flex items-center justify-center py-32">
+              <div className="h-12 w-12 animate-spin rounded-full border-4 border-brand-200 border-t-brand-600" />
+            </div>
+          }>
+            <FormComponent schoolId={schoolId ?? ''} {...extraProps} />
+          </Suspense>
         </div>
       </>
     );

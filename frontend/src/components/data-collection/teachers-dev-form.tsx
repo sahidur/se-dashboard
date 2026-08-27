@@ -11,11 +11,12 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { DataTable, type TableColumn } from '@/components/ui/data-table';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import api from '@/lib/api';
-import { buildYearOptions } from '@/lib/utils';
+import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
 import type { DcSchool, DcTeachersDevelopment, HeadTeacherLeadership } from '@/types';
 
 /* ─── Constants ────────────────────────────────── */
@@ -225,6 +226,7 @@ export function TeachersDevForm({ schoolId }: Props) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!academicYear) { setError('Please select an academic year.'); return; }
+    if (!isValidAcademicYear(academicYear)) { setError('Please select a valid academic year (1970-2100).'); return; }
     if (!month) { setError('Please select a month.'); return; }
     setSaving(true);
     setError('');
@@ -255,6 +257,26 @@ export function TeachersDevForm({ schoolId }: Props) {
       month: 'short', day: 'numeric', year: 'numeric',
       hour: '2-digit', minute: '2-digit', hour12: true,
     });
+
+  const teacherDevColumns: TableColumn<DcTeachersDevelopment>[] = [
+    { key: 'academicYear', header: 'Academic Year', sortable: true },
+    { key: 'month', header: 'Month', render: (r) => (
+      <span className="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-700">{r.month}</span>
+    )},
+    { key: 'onlineRefresher', header: 'Online Ref.', className: 'text-right font-mono' },
+    { key: 'offlineRefresher', header: 'Offline Ref.', className: 'text-right font-mono' },
+    { key: 'developmentForum', header: 'Dev. Forum', className: 'text-right font-mono' },
+    { key: 'basicTraining', header: 'Basic Train.', className: 'text-right font-mono' },
+    { key: 'subjectBasedTraining', header: 'Subject Train.', className: 'text-right font-mono' },
+    { key: 'leadershipTraining', header: 'Leadership', className: 'text-right font-mono' },
+    { key: 'others', header: 'Others', className: 'text-right font-mono' },
+    { key: 'total', header: 'Total', className: 'text-right', render: (r) => {
+      const total = r.onlineRefresher + r.offlineRefresher + r.developmentForum +
+        r.basicTraining + r.subjectBasedTraining + r.leadershipTraining + r.others;
+      return <span className="inline-flex min-w-[2rem] items-center justify-center rounded-lg bg-emerald-100 px-2 py-0.5 font-extrabold text-emerald-700 text-sm">{total}</span>;
+    }},
+    { key: 'updatedAt', header: 'Updated At', render: (r) => <span className="text-xs text-gray-400 whitespace-nowrap">{formatDateTime(r.updatedAt)}</span> },
+  ];
 
   if (!school) {
     return (
@@ -509,104 +531,33 @@ export function TeachersDevForm({ schoolId }: Props) {
       </form>
       )}
 
-      {/* ── All Responses Table ── */}
       {tab === 'data' && (
-      <Card className="overflow-hidden border-0 shadow-sm">
-        <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
-          <div className="flex items-center gap-2">
-            <BookOpen size={18} className="text-rose-600" />
-            <h3 className="font-semibold text-gray-800">Submitted Development Records</h3>
-            <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">{allRecords.length}</span>
+      <DataTable<DcTeachersDevelopment>
+        columns={teacherDevColumns}
+        data={allRecords}
+        loading={loadingAll}
+        searchable
+        searchPlaceholder="Search by month, year..."
+        title="Submitted Development Records"
+        titleIcon={<BookOpen size={18} />}
+        badge={<span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">{allRecords.length}</span>}
+        emptyMessage="No development records yet. Select a month and submit data above."
+        emptyIcon={<BookOpen size={40} className="mb-3 opacity-30" />}
+        onRefresh={loadAllRecords}
+        refreshing={loadingAll}
+        onRowClick={(r) => handleRecordClick(r)}
+        rowClassName={(r) =>
+          month === r.month && Number(academicYear) === Number(r.academicYear) ? 'ring-inset ring-2 ring-rose-300' : ''
+        }
+        footer={allRecords.length > 1 ? (
+          <div className="flex items-center px-4 py-3">
+            <span className="text-xs font-bold text-rose-700">Totals</span>
           </div>
-          <Button variant="outline" size="sm" onClick={loadAllRecords} disabled={loadingAll} className="gap-1.5 text-xs">
-            <RefreshCw size={13} className={loadingAll ? 'animate-spin' : ''} />
-            Refresh
-          </Button>
-        </div>
-
-        {loadingAll ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-rose-200 border-t-rose-600" />
-          </div>
-        ) : allRecords.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-14 text-gray-400">
-            <BookOpen size={40} className="mb-3 opacity-30" />
-            <p className="text-sm">No development records yet. Select a month and submit data above.</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50/70">
-                  <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Academic Year</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Month</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Online Ref.</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Offline Ref.</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Dev. Forum</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Basic Train.</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Subject Train.</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Leadership</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Others</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Total</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Updated At</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {allRecords.map((r, idx) => {
-                  const total = r.onlineRefresher + r.offlineRefresher + r.developmentForum +
-                    r.basicTraining + r.subjectBasedTraining + r.leadershipTraining + r.others;
-                  return (
-                    <tr
-                      key={r.id}
-                      className={`cursor-pointer transition-colors hover:brightness-95 ${
-                        month === r.month && Number(academicYear) === Number(r.academicYear) ? 'ring-inset ring-2 ring-rose-300' :
-                        idx % 2 === 0 ? 'bg-white' : 'bg-rose-50/30'
-                      }`}
-                      onClick={() => handleRecordClick(r)}
-                    >
-                      <td className="px-4 py-3 text-sm font-medium text-gray-700">{r.academicYear ?? '—'}</td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-700">{r.month}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono text-gray-700">{r.onlineRefresher}</td>
-                      <td className="px-4 py-3 text-right font-mono text-gray-700">{r.offlineRefresher}</td>
-                      <td className="px-4 py-3 text-right font-mono text-gray-700">{r.developmentForum}</td>
-                      <td className="px-4 py-3 text-right font-mono text-gray-700">{r.basicTraining}</td>
-                      <td className="px-4 py-3 text-right font-mono text-gray-700">{r.subjectBasedTraining}</td>
-                      <td className="px-4 py-3 text-right font-mono text-gray-700">{r.leadershipTraining}</td>
-                      <td className="px-4 py-3 text-right font-mono text-gray-700">{r.others}</td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="inline-flex min-w-[2rem] items-center justify-center rounded-lg bg-emerald-100 px-2 py-0.5 font-extrabold text-emerald-700 text-sm">{total}</span>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">{formatDateTime(r.updatedAt)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              {allRecords.length > 1 && (
-                <tfoot>
-                  <tr className="border-t-2 border-rose-200 bg-rose-50/50">
-                    <td className="px-4 py-3 text-xs font-bold text-rose-700">Totals</td>
-                    <td />
-                    {(['onlineRefresher','offlineRefresher','developmentForum','basicTraining','subjectBasedTraining','leadershipTraining','others'] as (keyof DcTeachersDevelopment)[]).map((k) => (
-                      <td key={k} className="px-4 py-3 text-right font-bold text-gray-700">
-                        {allRecords.reduce((s, r) => s + Number(r[k] ?? 0), 0)}
-                      </td>
-                    ))}
-                    <td className="px-4 py-3 text-right font-bold text-emerald-700">
-                      {allRecords.reduce((s, r) => s + r.onlineRefresher + r.offlineRefresher + r.developmentForum + r.basicTraining + r.subjectBasedTraining + r.leadershipTraining + r.others, 0)}
-                    </td>
-                    <td />
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-            <p className="border-t border-gray-100 px-5 py-2 text-xs text-gray-400">
-              Click any row to load that month&apos;s data into the form for editing.
-            </p>
-          </div>
-        )}
-      </Card>
+        ) : undefined}
+        headerExtra={
+          <p className="text-xs text-gray-400">Click any row to load that month&apos;s data into the form for editing.</p>
+        }
+      />
       )}
     </div>
   );

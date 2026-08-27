@@ -9,13 +9,14 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { DataTable, type TableColumn } from '@/components/ui/data-table';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
 import { useAuthStore } from '@/store/auth-store';
 import api from '@/lib/api';
-import { buildYearOptions } from '@/lib/utils';
+import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
 import type { DcSchool } from '@/types';
 
 /* ─── Constants ──────────────────────────────────────────── */
@@ -190,6 +191,7 @@ export function CocurricularForm({ schoolId }: Props) {
     e.preventDefault();
     setError('');
     if (!form.academicYear) { setError('Please select an academic year.'); return; }
+    if (!isValidAcademicYear(form.academicYear)) { setError('Please select a valid academic year (1970-2100).'); return; }
     if (!form.month) { setError('Please select a month.'); return; }
     if (!form.grade) { setError('Please select a grade.'); return; }
 
@@ -220,19 +222,6 @@ export function CocurricularForm({ schoolId }: Props) {
   const SCHOOL_CATEGORY_LABELS: Record<string, string> = {
     brac_academy: 'BRAC Academy', brac_primary: 'BRAC Primary', brac_secondary: 'BRAC Secondary',
   };
-
-  /* ── Group records by academic year + month for display ──
-     Records are unique per (year, month, grade), so grouping on month alone
-     would merge different academic years into a single card. */
-  const yearsPresent = [...new Set(records.map((r) => Number(r.academicYear)))].sort((a, b) => b - a);
-  const groupedByMonth = yearsPresent.flatMap((year) =>
-    MONTHS.map((m) => ({
-      key: `${year}-${m}`,
-      year,
-      month: m,
-      rows: records.filter((r) => Number(r.academicYear) === year && r.month === m),
-    })),
-  ).filter((g) => g.rows.length > 0);
 
   return (
     <div className="space-y-6">
@@ -406,69 +395,55 @@ export function CocurricularForm({ schoolId }: Props) {
       </div>
       )}
 
-      {/* Records Table — grouped by month */}
-      {tab === 'data' && groupedByMonth.map(({ key, year, month, rows }) => (
-        <Card key={key} className="overflow-hidden">
-          <CardHeader className="pb-2 pt-4 px-6">
-            <CardTitle className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-              {year} &bull; {month}
-              <Badge variant="default">{rows.length} grade{rows.length > 1 ? 's' : ''}</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-4">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="py-2 pr-3 text-left text-gray-500 uppercase tracking-wider font-semibold">Academic Year</th>
-                    <th className="py-2 pr-3 text-left text-gray-500 uppercase tracking-wider font-semibold">Grade</th>
-                    {ACTIVITY_FIELDS.map(({ label }) => (
-                      <th key={label} className="py-2 pr-3 text-right text-gray-500 uppercase tracking-wider font-semibold whitespace-nowrap">{label}</th>
-                    ))}
-                    <th className="py-2 text-right text-gray-500 uppercase tracking-wider font-semibold">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {rows.map((rec) => (
-                    <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="py-2.5 pr-3 text-gray-700 font-medium">{rec.academicYear ?? '—'}</td>
-                      <td className="py-2.5 pr-3">
-                        <Badge variant="default" className="text-purple-700 border-purple-200 bg-purple-50 font-medium">
-                          {getGradeDisplayName(rec.grade, school?.schoolCategory)}
-                        </Badge>
-                      </td>
-                      {ACTIVITY_FIELDS.map(({ key }) => (
-                        <td key={key} className="py-2.5 pr-3 text-right text-gray-700 font-medium">
-                          {Number(rec[key as keyof CocurricularRecord] ?? 0).toFixed(1)}%
-                        </td>
-                      ))}
-                      <td className="py-2.5 text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button size="sm" variant="ghost" disabled={!canEditSubmitted} onClick={() => handleEdit(rec)} title={canEditSubmitted ? undefined : 'You do not have permission to edit submitted data'} className="h-6 px-2 text-purple-600 hover:text-purple-700 hover:bg-purple-50 disabled:opacity-40 disabled:cursor-not-allowed">
-                            Edit
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => handleDelete(rec.id)} className="h-6 px-2 text-red-500 hover:text-red-700 hover:bg-red-50">
-                            <Trash2 size={12} />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-
-      {tab === 'data' && groupedByMonth.length === 0 && (
-        <Card className="overflow-hidden">
-          <CardContent className="flex flex-col items-center justify-center py-14 text-gray-400">
-            <Sparkles size={40} className="mb-3 opacity-20" />
-            <p className="text-sm font-medium">No co-curricular records yet.</p>
-            <p className="text-xs mt-1 opacity-70">Use the Fill Form tab to add the first record.</p>
-          </CardContent>
-        </Card>
+      {/* Records Table — all records */}
+      {tab === 'data' && (
+        records.length === 0 ? (
+          <Card className="overflow-hidden">
+            <CardContent className="flex flex-col items-center justify-center py-14 text-gray-400">
+              <Sparkles size={40} className="mb-3 opacity-20" />
+              <p className="text-sm font-medium">No co-curricular records yet.</p>
+              <p className="text-xs mt-1 opacity-70">Use the Fill Form tab to add the first record.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'academicYear', header: 'Academic Year', className: 'font-medium text-gray-700' },
+              { key: 'month', header: 'Month' },
+              {
+                key: 'grade',
+                header: 'Grade',
+                render: (rec) => (
+                  <Badge variant="default" className="text-purple-700 border-purple-200 bg-purple-50 font-medium">
+                    {getGradeDisplayName(rec.grade, school?.schoolCategory)}
+                  </Badge>
+                ),
+              },
+              ...ACTIVITY_FIELDS.map(({ key, label }) => ({
+                key,
+                header: label,
+                className: 'text-right font-medium text-gray-700 whitespace-nowrap',
+                render: (rec: CocurricularRecord) => Number(rec[key as keyof CocurricularRecord] ?? 0).toFixed(1) + '%',
+              })),
+            ]}
+            data={records}
+            searchable
+            searchPlaceholder="Search records..."
+            title="Co-curricular Records"
+            emptyMessage="No co-curricular records yet."
+            emptyIcon={<Sparkles size={40} className="mb-3 opacity-20" />}
+            actions={(rec) => (
+              <div className="flex justify-end gap-1">
+                <Button size="sm" variant="ghost" disabled={!canEditSubmitted} onClick={() => handleEdit(rec)} title={canEditSubmitted ? undefined : 'You do not have permission to edit submitted data'} className="h-6 px-2 text-purple-600 hover:text-purple-700 hover:bg-purple-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                  Edit
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => handleDelete(rec.id)} className="h-6 px-2 text-red-500 hover:text-red-700 hover:bg-red-50">
+                  <Trash2 size={12} />
+                </Button>
+              </div>
+            )}
+          />
+        )
       )}
     </div>
   );

@@ -11,11 +11,12 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { DataTable, type TableColumn } from '@/components/ui/data-table';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import api from '@/lib/api';
-import { buildYearOptions } from '@/lib/utils';
+import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
 import type { DcSchool, DcTeacherIndividual } from '@/types';
 
 /* ─── Constants ────────────────────────────────────────── */
@@ -196,6 +197,7 @@ export function TeachersInfoForm({ schoolId }: Props) {
   const validate = (): boolean => {
     const errs: Record<string, string> = {};
     if (!form.academicYear) errs.academicYear = 'Please select an academic year.';
+    if (form.academicYear && !isValidAcademicYear(form.academicYear)) errs.academicYear = 'Invalid year (1970-2100).';
     if (!form.name.trim()) errs.name = 'Name is required';
     if (!form.designation) errs.designation = 'Designation is required';
     if (!form.gender) errs.gender = 'Gender is required';
@@ -273,6 +275,36 @@ export function TeachersInfoForm({ schoolId }: Props) {
       month: 'short', day: 'numeric', year: 'numeric',
       hour: '2-digit', minute: '2-digit', hour12: true,
     });
+
+  const teacherInfoColumns: TableColumn<DcTeacherIndividual>[] = [
+    { key: 'academicYear', header: 'Academic Year', sortable: true },
+    { key: 'name', header: 'Name', sortable: true, render: (r) => <span className="font-semibold text-gray-900 whitespace-nowrap">{r.name}</span> },
+    { key: 'designation', header: 'Designation', render: (r) => (
+      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+        r.designation === 'Head Teacher' ? 'bg-purple-100 text-purple-700'
+        : r.designation === 'Assistant Teacher' ? 'bg-blue-100 text-blue-700'
+        : 'bg-gray-100 text-gray-700'
+      }`}>{r.designation}</span>
+    )},
+    { key: 'gender', header: 'Gender', render: (r) => (
+      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+        r.gender === 'Male' ? 'bg-sky-100 text-sky-700' : 'bg-rose-100 text-rose-700'
+      }`}>{r.gender}</span>
+    )},
+    { key: 'educationalQualification', header: 'Qualification' },
+    { key: 'experienceYears', header: 'Exp. (Yrs)', className: 'text-right font-mono', render: (r) => <span className="font-semibold">{Number(r.experienceYears).toFixed(1)}</span> },
+    { key: 'subjectExpertise', header: 'Subjects', render: (r) => <span className="text-xs max-w-[160px] block">{fmtList(r.subjectExpertise)}</span> },
+    { key: 'trainingReceived', header: 'Training', render: (r) => <span className="text-xs max-w-[160px] block">{fmtList(r.trainingReceived)}</span> },
+    { key: 'assessmentScore', header: 'Score', className: 'text-right', render: (r) => (
+      r.assessmentScore != null ? (
+        <span className={`font-semibold text-sm ${
+          Number(r.assessmentScore) >= 80 ? 'text-emerald-600' :
+          Number(r.assessmentScore) >= 60 ? 'text-amber-600' : 'text-red-600'
+        }`}>{Number(r.assessmentScore).toFixed(0)}</span>
+      ) : <span>—</span>
+    )},
+    { key: 'createdAt', header: 'Added At', render: (r) => <span className="text-xs text-gray-400 whitespace-nowrap">{formatDateTime(r.createdAt)}</span> },
+  ];
 
   if (!school) {
     return (
@@ -524,105 +556,33 @@ export function TeachersInfoForm({ schoolId }: Props) {
       </form>
       )}
 
-      {/* ── Responses Table ── */}
       {tab === 'data' && (
-      <Card className="overflow-hidden border-0 shadow-sm">
-        <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
-          <div className="flex items-center gap-2">
-            <TableProperties size={18} className="text-pink-600" />
-            <h3 className="font-semibold text-gray-800">All Teacher Records</h3>
-            <span className="rounded-full bg-pink-100 px-2 py-0.5 text-xs font-bold text-pink-700">{records.length}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={loadRecords} disabled={loadingRecords} className="gap-1.5 text-xs">
-              <RefreshCw size={13} className={loadingRecords ? 'animate-spin' : ''} />
-              Refresh
-            </Button>
-          </div>
-        </div>
-
-        {(
-          loadingRecords ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-pink-200 border-t-pink-600" />
-            </div>
-          ) : records.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-14 text-gray-400">
-              <Users size={40} className="mb-3 opacity-30" />
-              <p className="text-sm">No teacher records yet. Add the first one above.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50/70">
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">#</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Academic Year</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Name</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Designation</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Gender</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Qualification</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Exp. (Yrs)</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Subjects</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Training</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Score</th>
-                    <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Added At</th>
-                    <th className="px-4 py-3" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {records.map((r, idx) => (
-                    <tr key={r.id} className={`transition-colors hover:brightness-95 ${idx % 2 === 0 ? 'bg-white' : 'bg-pink-50/30'}`}>
-                      <td className="px-4 py-3 text-xs text-gray-400">{idx + 1}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{r.academicYear ?? '—'}</td>
-                      <td className="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap">{r.name}</td>
-                      <td className="px-4 py-3">
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                          r.designation === 'Head Teacher'
-                            ? 'bg-purple-100 text-purple-700'
-                            : r.designation === 'Assistant Teacher'
-                            ? 'bg-blue-100 text-blue-700'
-                            : 'bg-gray-100 text-gray-700'
-                        }`}>{r.designation}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                          r.gender === 'Male' ? 'bg-sky-100 text-sky-700' : 'bg-rose-100 text-rose-700'
-                        }`}>{r.gender}</span>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{r.educationalQualification}</td>
-                      <td className="px-4 py-3 text-right font-mono text-sm font-semibold text-gray-700">{Number(r.experienceYears).toFixed(1)}</td>
-                      <td className="px-4 py-3 text-xs text-gray-500 max-w-[160px]">{fmtList(r.subjectExpertise)}</td>
-                      <td className="px-4 py-3 text-xs text-gray-500 max-w-[160px]">{fmtList(r.trainingReceived)}</td>
-                      <td className="px-4 py-3 text-right">
-                        {r.assessmentScore != null ? (
-                          <span className={`font-semibold text-sm ${
-                            Number(r.assessmentScore) >= 80 ? 'text-emerald-600' :
-                            Number(r.assessmentScore) >= 60 ? 'text-amber-600' : 'text-red-600'
-                          }`}>{Number(r.assessmentScore).toFixed(0)}</span>
-                        ) : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">{formatDateTime(r.createdAt)}</td>
-                      <td className="px-4 py-3">
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(r.id, r.name)}
-                          disabled={deletingId === r.id}
-                          className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50"
-                        >
-                          {deletingId === r.id
-                            ? <RefreshCw size={14} className="animate-spin" />
-                            : <Trash2 size={14} />}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )
+      <DataTable<DcTeacherIndividual>
+        columns={teacherInfoColumns}
+        data={records}
+        loading={loadingRecords}
+        searchable
+        searchPlaceholder="Search by name, subject..."
+        title="All Teacher Records"
+        titleIcon={<TableProperties size={18} />}
+        badge={<span className="rounded-full bg-pink-100 px-2 py-0.5 text-xs font-bold text-pink-700">{records.length}</span>}
+        emptyMessage="No teacher records yet. Add the first one above."
+        emptyIcon={<Users size={40} className="mb-3 opacity-30" />}
+        onRefresh={loadRecords}
+        refreshing={loadingRecords}
+        actions={(r) => (
+          <button
+            type="button"
+            onClick={() => handleDelete(r.id, r.name)}
+            disabled={deletingId === r.id}
+            className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50"
+          >
+            {deletingId === r.id
+              ? <RefreshCw size={14} className="animate-spin" />
+              : <Trash2 size={14} />}
+          </button>
         )}
-      </Card>
+      />
       )}
     </div>
   );

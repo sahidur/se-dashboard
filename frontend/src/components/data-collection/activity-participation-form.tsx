@@ -11,13 +11,14 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { DataTable, type TableColumn } from '@/components/ui/data-table';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
 import { useAuthStore } from '@/store/auth-store';
 import api from '@/lib/api';
-import { buildYearOptions, resolveAssetUrl } from '@/lib/utils';
+import { buildYearOptions, resolveAssetUrl, isValidAcademicYear } from '@/lib/utils';
 import type { DcSchool, DcActivityParticipation } from '@/types';
 
 /* ─── Constants ──────────────────────────────────────────── */
@@ -198,6 +199,7 @@ export function ActivityParticipationForm({ schoolId }: Props) {
     setError('');
     if (!form.item) { setError('Please select an item.'); return; }
     if (!form.year) { setError('Please select a year.'); return; }
+    if (!isValidAcademicYear(form.year)) { setError('Please select a valid academic year (1970-2100).'); return; }
     if (!form.month) { setError('Please select a month.'); return; }
     if (!form.grade) { setError('Please select a grade.'); return; }
 
@@ -231,11 +233,6 @@ export function ActivityParticipationForm({ schoolId }: Props) {
   const SCHOOL_CATEGORY_LABELS: Record<string, string> = {
     brac_academy: 'BRAC Academy', brac_primary: 'BRAC Primary', brac_secondary: 'BRAC Secondary',
   };
-
-  const groupedByItem = ITEMS.map((it) => ({
-    item: it,
-    rows: records.filter((r) => r.item === it),
-  })).filter((g) => g.rows.length > 0);
 
   return (
     <div className="space-y-6">
@@ -474,82 +471,71 @@ export function ActivityParticipationForm({ schoolId }: Props) {
         )}
       </div>
 
-      {tab === 'data' && groupedByItem.map(({ item, rows }) => (
-        <Card key={item} className="overflow-hidden">
-          <CardHeader className="pb-2 pt-4 px-6">
-            <CardTitle className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-              {item}
-              <Badge variant="default">{rows.length} record{rows.length > 1 ? 's' : ''}</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-4">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="py-2 pr-3 text-left text-gray-500 uppercase tracking-wider font-semibold">Year</th>
-                    <th className="py-2 pr-3 text-left text-gray-500 uppercase tracking-wider font-semibold">Month</th>
-                    <th className="py-2 pr-3 text-left text-gray-500 uppercase tracking-wider font-semibold">Grade</th>
-                    <th className="py-2 pr-3 text-left text-gray-500 uppercase tracking-wider font-semibold">Activity/Books</th>
-                    <th className="py-2 pr-3 text-center text-gray-500 uppercase tracking-wider font-semibold">Photo</th>
-                    <th className="py-2 pr-3 text-right text-gray-500 uppercase tracking-wider font-semibold">Conducted</th>
-                    <th className="py-2 text-right text-gray-500 uppercase tracking-wider font-semibold">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {rows.map((rec) => (
-                    <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="py-2.5 pr-3 text-gray-700">{rec.year || '—'}</td>
-                      <td className="py-2.5 pr-3 text-gray-700">{rec.month}</td>
-                      <td className="py-2.5 pr-3">
-                        <Badge variant="default" className="text-amber-700 border-amber-200 bg-amber-50 font-medium">
-                          {getGradeDisplayName(rec.grade, school?.schoolCategory)}
-                        </Badge>
-                      </td>
-                      <td className="py-2.5 pr-3 text-gray-700 max-w-[220px] truncate">{rec.activityName || '—'}</td>
-                      <td className="py-2.5 pr-3 text-center">
-                        {rec.photoUrl && !brokenPhotoIds.has(rec.id) ? (
-                          <NextImage
-                            src={resolveAssetUrl(rec.photoUrl)}
-                            alt=""
-                            width={32}
-                            height={32}
-                            unoptimized
-                            className="inline-block h-8 w-8 rounded object-cover"
-                            onError={() => setBrokenPhotoIds((prev) => new Set(prev).add(rec.id))}
-                          />
-                        ) : rec.photoUrl ? (
-                          <ImageIcon size={16} className="inline-block text-gray-300" />
-                        ) : '—'}
-                      </td>
-                      <td className="py-2.5 pr-3 text-right text-gray-700 font-medium">{rec.conductedCount}</td>
-                      <td className="py-2.5 text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button size="sm" variant="ghost" disabled={!canEditSubmitted} onClick={() => handleEdit(rec)} title={canEditSubmitted ? undefined : 'You do not have permission to edit submitted data'} className="h-6 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50 disabled:opacity-40 disabled:cursor-not-allowed">
-                            Edit
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => handleDelete(rec.id)} className="h-6 px-2 text-red-500 hover:text-red-700 hover:bg-red-50">
-                            <Trash2 size={12} />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-
-      {tab === 'data' && groupedByItem.length === 0 && (
-        <Card className="overflow-hidden">
-          <CardContent className="flex flex-col items-center justify-center py-14 text-gray-400">
-            <Library size={40} className="mb-3 opacity-20" />
-            <p className="text-sm font-medium">No activity participation records yet.</p>
-            <p className="text-xs mt-1 opacity-70">Use the Fill Form tab to add the first record.</p>
-          </CardContent>
-        </Card>
+      {tab === 'data' && (
+        records.length === 0 ? (
+          <Card className="overflow-hidden">
+            <CardContent className="flex flex-col items-center justify-center py-14 text-gray-400">
+              <Library size={40} className="mb-3 opacity-20" />
+              <p className="text-sm font-medium">No activity participation records yet.</p>
+              <p className="text-xs mt-1 opacity-70">Use the Fill Form tab to add the first record.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <DataTable
+            columns={[
+              { key: 'item', header: 'Item', className: 'font-medium text-gray-700' },
+              { key: 'year', header: 'Year' },
+              { key: 'month', header: 'Month' },
+              {
+                key: 'grade',
+                header: 'Grade',
+                render: (rec) => (
+                  <Badge variant="default" className="text-amber-700 border-amber-200 bg-amber-50 font-medium">
+                    {getGradeDisplayName(rec.grade, school?.schoolCategory)}
+                  </Badge>
+                ),
+              },
+              { key: 'activityName', header: 'Activity/Books', className: 'max-w-[220px] truncate' },
+              {
+                key: 'photoUrl',
+                header: 'Photo',
+                className: 'text-center',
+                render: (rec) => (
+                  rec.photoUrl && !brokenPhotoIds.has(rec.id) ? (
+                    <NextImage
+                      src={resolveAssetUrl(rec.photoUrl)}
+                      alt=""
+                      width={32}
+                      height={32}
+                      unoptimized
+                      className="inline-block h-8 w-8 rounded object-cover"
+                      onError={() => setBrokenPhotoIds((prev) => new Set(prev).add(rec.id))}
+                    />
+                  ) : rec.photoUrl ? (
+                    <ImageIcon size={16} className="inline-block text-gray-300" />
+                  ) : <span className="text-gray-400">—</span>
+                ),
+              },
+              { key: 'conductedCount', header: 'Conducted', className: 'text-right font-medium text-gray-700' },
+            ]}
+            data={records}
+            searchable
+            searchPlaceholder="Search records..."
+            title="Activity Participation Records"
+            emptyMessage="No activity participation records yet."
+            emptyIcon={<Library size={40} className="mb-3 opacity-20" />}
+            actions={(rec) => (
+              <div className="flex justify-end gap-1">
+                <Button size="sm" variant="ghost" disabled={!canEditSubmitted} onClick={() => handleEdit(rec)} title={canEditSubmitted ? undefined : 'You do not have permission to edit submitted data'} className="h-6 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                  Edit
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => handleDelete(rec.id)} className="h-6 px-2 text-red-500 hover:text-red-700 hover:bg-red-50">
+                  <Trash2 size={12} />
+                </Button>
+              </div>
+            )}
+          />
+        )
       )}
     </div>
   );

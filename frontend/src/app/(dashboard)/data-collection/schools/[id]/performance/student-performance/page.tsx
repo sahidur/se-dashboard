@@ -42,7 +42,8 @@ export default function StudentPerformanceHubPage() {
       // would otherwise leave the page spinning forever.
       .finally(() => setLoading(false));
     return () => { cancelled = true; };
-  }, [id, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   const countFor = (formKey: string) => records.filter((r) => r.formKey === formKey).length;
   // Only the section matching this school's own category (BA/BPS/BSS) is shown.

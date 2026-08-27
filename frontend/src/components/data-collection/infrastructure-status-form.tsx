@@ -14,7 +14,7 @@ import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import api from '@/lib/api';
-import { buildYearOptions } from '@/lib/utils';
+import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
 import type { DcSchool } from '@/types';
 
 const ROOM_TYPES = [
@@ -261,6 +261,11 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
     if (!form.academicYear) {
       setFieldErrors({ academicYear: 'Required' });
       setError('Please select an academic year.');
+      return;
+    }
+    if (!isValidAcademicYear(form.academicYear)) {
+      setFieldErrors({ academicYear: 'Invalid year' });
+      setError('Please select a valid academic year (1970-2100).');
       return;
     }
     const errs = validate();

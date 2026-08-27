@@ -11,11 +11,12 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { DataTable, type TableColumn } from '@/components/ui/data-table';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import api from '@/lib/api';
-import { buildYearOptions } from '@/lib/utils';
+import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
 import type { DcSchool, DcRevenueMonthlyRecord } from '@/types';
 
 /* ─── Constants ─────────────────────────────────── */
@@ -82,7 +83,8 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
     api.get(`/data-collection/schools/${schoolId}`)
       .then(({ data }) => setSchool(data))
       .catch(() => router.push('/data-collection/schools'));
-  }, [schoolId, router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schoolId]);
 
   const loadRecords = useCallback(async () => {
     setLoadingRecords(true);
@@ -152,6 +154,7 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!academicYear) { setError('Please select an academic year.'); return; }
+    if (!isValidAcademicYear(academicYear)) { setError('Please select a valid academic year (1970-2100).'); return; }
     if (!month) { setError('Please select a month.'); return; }
     setSaving(true);
     setError('');
@@ -198,6 +201,35 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
   const totalTarget = records.reduce((s, r) => s + Number(r.tuitionFeeTarget), 0);
   const totalAchievement = records.reduce((s, r) => s + Number(r.tuitionFeeAchievement), 0);
   const totalPct = calcPct(totalTarget, totalAchievement);
+
+  const revenueColumns: TableColumn<DcRevenueMonthlyRecord>[] = [
+    { key: 'academicYear', header: 'Academic Year', sortable: true },
+    { key: 'month', header: 'Month', render: (r) => (
+      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${accentClasses.badgeBase}`}>{r.month}</span>
+    )},
+    { key: 'tuitionFeeTarget', header: `${mode === 'budget' ? 'Planned' : 'Actual'} Revenue Target (BDT)`, className: 'text-right font-mono', render: (r) => <span className="text-sm">{formatAmount(Number(r.tuitionFeeTarget))}</span> },
+    { key: 'tuitionFeeAchievement', header: 'Actual Collected Revenue (BDT)', className: 'text-right font-mono', render: (r) => <span className="text-sm">{formatAmount(Number(r.tuitionFeeAchievement))}</span> },
+    { key: 'deficit', header: `${mode === 'budget' ? 'Revenue Deficit (BDT)' : 'Outstanding Dues %'}`, className: 'text-right font-mono', render: (r) => {
+      const deficit = Number(r.tuitionFeeTarget) - Number(r.tuitionFeeAchievement);
+      return <span className={`text-sm ${deficit > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+        {mode === 'budget' ? formatAmount(deficit) : calcDuesPct(Number(r.tuitionFeeTarget), Number(r.tuitionFeeAchievement))}
+      </span>;
+    }},
+    { key: 'pctCollection', header: '% Collection', className: 'text-center', render: (r) => {
+      const pct = calcPct(Number(r.tuitionFeeTarget), Number(r.tuitionFeeAchievement));
+      const pctColor = pct >= 100 ? 'text-emerald-600' : pct >= 70 ? 'text-amber-600' : 'text-red-500';
+      const barColor = pct >= 100 ? 'bg-emerald-500' : pct >= 70 ? 'bg-amber-500' : 'bg-red-400';
+      return (
+        <div className="space-y-0.5">
+          <span className={`text-sm font-bold ${pctColor}`}>{pct.toFixed(1)}%</span>
+          <div className="mx-auto h-1.5 w-20 rounded-full bg-gray-100">
+            <div className={`h-1.5 rounded-full ${barColor}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+          </div>
+        </div>
+      );
+    }},
+    { key: 'updatedAt', header: 'Updated', render: (r) => <span className="text-xs text-gray-400 whitespace-nowrap">{formatDateTime(r.updatedAt)}</span> },
+  ];
 
   if (!school) {
     return (
@@ -384,107 +416,28 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
       </form>
       )}
 
-      {/* ── Response Table ── */}
-      {tab === 'data' && records.length > 0 && (
-        <Card className="overflow-hidden border-0 shadow-sm">
-          <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
-            <div className="flex items-center gap-2">
-              <CalendarDays size={18} className="text-orange-500" />
-              <h3 className="font-semibold text-gray-800">Submitted Months</h3>
-              <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${accentClasses.badgeBase}`}>{records.length}</span>
-            </div>
-            <Button variant="outline" size="sm" onClick={loadRecords} disabled={loadingRecords} className="gap-1.5 text-xs">
-              <RefreshCw size={13} className={loadingRecords ? 'animate-spin' : ''} /> Refresh
-            </Button>
-          </div>
-          {loadingRecords ? (
-            <div className="flex items-center justify-center py-10">
-              <div className="h-7 w-7 animate-spin rounded-full border-4 border-orange-200 border-t-orange-500" />
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50/70">
-                    <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Academic Year</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Month</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">{mode === 'budget' ? 'Planned' : 'Actual'} Revenue Target (BDT)</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Actual Collected Revenue (BDT)</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">{mode === 'budget' ? 'Revenue Deficit (BDT)' : 'Outstanding Dues %'}</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase text-gray-500">% Collection</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Updated</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {sortedRecords.map((r, idx) => {
-                    const pct = calcPct(Number(r.tuitionFeeTarget), Number(r.tuitionFeeAchievement));
-                    const pctColor2 = pct >= 100 ? 'text-emerald-600' : pct >= 70 ? 'text-amber-600' : 'text-red-500';
-                    return (
-                      <tr
-                        key={r.id}
-                        className={`cursor-pointer transition-colors hover:brightness-95 ${
-                          month === r.month && Number(academicYear) === Number(r.academicYear) ? 'ring-inset ring-2 ring-orange-300' :
-                          idx % 2 === 0 ? 'bg-white' : 'bg-orange-50/20'
-                        }`}
-                        onClick={() => { setAcademicYear(String(r.academicYear ?? '')); setMonth(r.month); setTab('entry'); }}
-                      >
-                        <td className="px-4 py-3 text-sm font-medium text-gray-700">{r.academicYear ?? '—'}</td>
-                        <td className="px-4 py-3">
-                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${accentClasses.badgeBase}`}>{r.month}</span>
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono text-sm text-gray-700">{formatAmount(Number(r.tuitionFeeTarget))}</td>
-                        <td className="px-4 py-3 text-right font-mono text-sm text-gray-700">{formatAmount(Number(r.tuitionFeeAchievement))}</td>
-                        <td className={`px-4 py-3 text-right font-mono text-sm ${Number(r.tuitionFeeTarget) - Number(r.tuitionFeeAchievement) > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-                          {mode === 'budget'
-                            ? formatAmount(Number(r.tuitionFeeTarget) - Number(r.tuitionFeeAchievement))
-                            : calcDuesPct(Number(r.tuitionFeeTarget), Number(r.tuitionFeeAchievement))}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <div className="space-y-0.5">
-                            <span className={`text-sm font-bold ${pctColor2}`}>{pct.toFixed(1)}%</span>
-                            <div className="mx-auto h-1.5 w-20 rounded-full bg-gray-100">
-                              <div className={`h-1.5 rounded-full ${pct >= 100 ? 'bg-emerald-500' : pct >= 70 ? 'bg-amber-500' : 'bg-red-400'}`}
-                                style={{ width: `${Math.min(pct, 100)}%` }} />
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">{formatDateTime(r.updatedAt)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-orange-200 bg-orange-50/40 font-bold">
-                    <td className="px-4 py-3 text-sm text-gray-700">Total</td>
-                    <td />
-                    <td className="px-4 py-3 text-right font-mono text-sm text-gray-800">{formatAmount(totalTarget)}</td>
-                    <td className="px-4 py-3 text-right font-mono text-sm text-gray-800">{formatAmount(totalAchievement)}</td>
-                    <td className={`px-4 py-3 text-right font-mono text-sm ${totalTarget - totalAchievement > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-                      {mode === 'budget' ? formatAmount(totalTarget - totalAchievement) : calcDuesPct(totalTarget, totalAchievement)}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className={`text-sm font-bold ${totalPct >= 100 ? 'text-emerald-600' : totalPct >= 70 ? 'text-amber-600' : totalTarget > 0 ? 'text-red-500' : 'text-gray-400'}`}>
-                        {totalTarget > 0 ? totalPct.toFixed(1) + '%' : '—'}
-                      </span>
-                    </td>
-                    <td />
-                  </tr>
-                </tfoot>
-              </table>
-              <p className="border-t border-gray-100 px-5 py-2 text-xs text-gray-400">Click a row to load it into the form for editing.</p>
-            </div>
-          )}
-        </Card>
-      )}
-
-      {tab === 'data' && records.length === 0 && (
-        <Card className="overflow-hidden border-0 shadow-sm">
-          <CardContent className="flex flex-col items-center justify-center py-14 text-gray-400">
-            <CalendarDays size={40} className="mb-3 opacity-20" />
-            <p className="text-sm font-medium">No monthly revenue records yet.</p>
-            <p className="text-xs mt-1 opacity-70">Use the Fill Form tab to add the first record.</p>
-          </CardContent>
-        </Card>
+      {tab === 'data' && (
+        <DataTable<DcRevenueMonthlyRecord>
+          columns={revenueColumns}
+          data={sortedRecords}
+          loading={loadingRecords}
+          searchable
+          searchPlaceholder="Search by month, year..."
+          title="Submitted Months"
+          titleIcon={<CalendarDays size={18} />}
+          badge={<span className={`rounded-full px-2 py-0.5 text-xs font-bold ${accentClasses.badgeBase}`}>{records.length}</span>}
+          emptyMessage="No monthly revenue records yet."
+          emptyIcon={<CalendarDays size={40} className="mb-3 opacity-20" />}
+          onRefresh={loadRecords}
+          refreshing={loadingRecords}
+          onRowClick={(r) => { setAcademicYear(String(r.academicYear ?? '')); setMonth(r.month); setTab('entry'); }}
+          rowClassName={(r) =>
+            month === r.month && Number(academicYear) === Number(r.academicYear) ? 'ring-inset ring-2 ring-orange-300' : ''
+          }
+          headerExtra={
+            <p className="text-xs text-gray-400">Click a row to load it into the form for editing.</p>
+          }
+        />
       )}
     </div>
   );

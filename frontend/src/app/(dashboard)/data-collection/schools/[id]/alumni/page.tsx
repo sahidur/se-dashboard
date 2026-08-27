@@ -42,7 +42,8 @@ export default function AlumniSubPage() {
       .then(({ data }) => setDashboard(data))
       .catch(() => router.push('/data-collection/schools'))
       .finally(() => setLoading(false));
-  }, [id, router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   if (loading) {
     return (

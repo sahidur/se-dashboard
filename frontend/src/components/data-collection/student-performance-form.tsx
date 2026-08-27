@@ -25,7 +25,7 @@ import {
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import api from '@/lib/api';
-import { buildYearOptions } from '@/lib/utils';
+import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
 import type { DcSchool, DcStudentPerformance } from '@/types';
 
 const YEARS = buildYearOptions();
@@ -185,6 +185,7 @@ export function StudentPerformanceForm({ schoolId, formKey }: Props) {
     e.preventDefault();
     setError('');
     if (!academicYear) { setError('Please select an academic year first.'); return; }
+    if (!isValidAcademicYear(academicYear)) { setError('Please select a valid academic year (1970-2100).'); return; }
     if (!grade) { setError('Please select a grade.'); return; }
     if (!evaluationPeriod) { setError(`Please select a ${def.periodLabel.toLowerCase()}.`); return; }
     if (filledRows === 0) { setError(`Please enter performance figures for at least one ${def.rowHeader.toLowerCase().replace(/s$/, '')}.`); return; }

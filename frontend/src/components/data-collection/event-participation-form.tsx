@@ -9,12 +9,13 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { DataTable, type TableColumn } from '@/components/ui/data-table';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import api from '@/lib/api';
-import { buildYearOptions } from '@/lib/utils';
+import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
 import type { DcSchool, DcEventParticipation } from '@/types';
 
 /* ─── Constants ──────────────────────────────────────────── */
@@ -144,6 +145,7 @@ export function EventParticipationForm({ schoolId }: Props) {
     e.preventDefault();
     setError('');
     if (!form.academicYear) { setError('Please select an academic year.'); return; }
+    if (!isValidAcademicYear(form.academicYear)) { setError('Please select a valid academic year (1970-2100).'); return; }
     if (!form.eventName) { setError('Please select an event name.'); return; }
     if (!form.awardLevel) { setError('Please select an award level.'); return; }
 
@@ -179,6 +181,18 @@ export function EventParticipationForm({ schoolId }: Props) {
   const SCHOOL_CATEGORY_LABELS: Record<string, string> = {
     brac_academy: 'BRAC Academy', brac_primary: 'BRAC Primary', brac_secondary: 'BRAC Secondary',
   };
+
+  const eventParticipationColumns: TableColumn<DcEventParticipation>[] = [
+    { key: 'academicYear', header: 'Academic Year', sortable: true },
+    { key: 'eventName', header: 'Event', sortable: true },
+    { key: 'awardLevel', header: 'Award Level', render: (rec) => (
+      <Badge variant="default" className="text-rose-700 border-rose-200 bg-rose-50 font-medium">{rec.awardLevel}</Badge>
+    )},
+    { key: 'maleAwarded', header: 'Male', className: 'text-right' },
+    { key: 'femaleAwarded', header: 'Female', className: 'text-right' },
+    { key: 'othersAwarded', header: 'Others', className: 'text-right' },
+    { key: 'totalAwarded', header: 'Total', className: 'text-right font-semibold text-gray-900', sortable: true },
+  ];
 
   return (
     <div className="space-y-6">
@@ -336,70 +350,28 @@ export function EventParticipationForm({ schoolId }: Props) {
         )}
       </div>
 
-      {tab === 'data' && records.length > 0 && (
-        <Card className="overflow-hidden">
-          <CardHeader className="pb-2 pt-4 px-6">
-            <CardTitle className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-              Event Participation Records
-              <Badge variant="default">{records.length} record{records.length > 1 ? 's' : ''}</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-4">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="py-2 pr-3 text-left text-gray-500 uppercase tracking-wider font-semibold">Academic Year</th>
-                    <th className="py-2 pr-3 text-left text-gray-500 uppercase tracking-wider font-semibold">Event</th>
-                    <th className="py-2 pr-3 text-left text-gray-500 uppercase tracking-wider font-semibold">Award Level</th>
-                    <th className="py-2 pr-3 text-right text-gray-500 uppercase tracking-wider font-semibold">Male</th>
-                    <th className="py-2 pr-3 text-right text-gray-500 uppercase tracking-wider font-semibold">Female</th>
-                    <th className="py-2 pr-3 text-right text-gray-500 uppercase tracking-wider font-semibold">Others</th>
-                    <th className="py-2 pr-3 text-right text-gray-500 uppercase tracking-wider font-semibold">Total</th>
-                    <th className="py-2 text-right text-gray-500 uppercase tracking-wider font-semibold">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {records.map((rec) => (
-                    <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="py-2.5 pr-3 text-gray-700 font-medium">{rec.academicYear ?? '—'}</td>
-                      <td className="py-2.5 pr-3 text-gray-700">{rec.eventName}</td>
-                      <td className="py-2.5 pr-3">
-                        <Badge variant="default" className="text-rose-700 border-rose-200 bg-rose-50 font-medium">
-                          {rec.awardLevel}
-                        </Badge>
-                      </td>
-                      <td className="py-2.5 pr-3 text-right text-gray-700">{rec.maleAwarded}</td>
-                      <td className="py-2.5 pr-3 text-right text-gray-700">{rec.femaleAwarded}</td>
-                      <td className="py-2.5 pr-3 text-right text-gray-700">{rec.othersAwarded}</td>
-                      <td className="py-2.5 pr-3 text-right text-gray-900 font-semibold">{rec.totalAwarded}</td>
-                      <td className="py-2.5 text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button size="sm" variant="ghost" disabled={!canEditSubmitted} onClick={() => handleEdit(rec)} title={canEditSubmitted ? undefined : 'You do not have permission to edit submitted data'} className="h-6 px-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed">
-                            Edit
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => handleDelete(rec.id)} className="h-6 px-2 text-red-500 hover:text-red-700 hover:bg-red-50">
-                            <Trash2 size={12} />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      {tab === 'data' && (
+        <DataTable<DcEventParticipation>
+          columns={eventParticipationColumns}
+          data={records}
+          searchable
+          searchPlaceholder="Search by event, year..."
+          title="Event Participation Records"
+          titleIcon={<Award size={18} />}
+          badge={<Badge variant="default">{records.length} record{records.length > 1 ? 's' : ''}</Badge>}
+          emptyMessage="No event participation records yet."
+          emptyIcon={<Award size={40} className="mb-3 opacity-20" />}
+          actions={(rec) => (
+            <div className="flex justify-end gap-1">
+              <Button size="sm" variant="ghost" disabled={!canEditSubmitted} onClick={() => handleEdit(rec)} title={canEditSubmitted ? undefined : 'You do not have permission to edit submitted data'} className="h-6 px-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                Edit
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => handleDelete(rec.id)} className="h-6 px-2 text-red-500 hover:text-red-700 hover:bg-red-50">
+                <Trash2 size={12} />
+              </Button>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {tab === 'data' && records.length === 0 && (
-        <Card className="overflow-hidden">
-          <CardContent className="flex flex-col items-center justify-center py-14 text-gray-400">
-            <Award size={40} className="mb-3 opacity-20" />
-            <p className="text-sm font-medium">No event participation records yet.</p>
-            <p className="text-xs mt-1 opacity-70">Use the Fill Form tab to add the first record.</p>
-          </CardContent>
-        </Card>
+          )}
+        />
       )}
     </div>
   );
