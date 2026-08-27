@@ -102,13 +102,15 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
   const loadRecords = useCallback(() => {
     api.get(`/data-collection/pedagogical-achievements/school/${schoolId}`)
       .then(({ data }) => setRecords(data))
-      .catch(() => {});
-  }, [schoolId]);
+      .catch(() => showToast('error', 'Failed to load achievement records'));
+  }, [schoolId, showToast]);
 
   useEffect(() => {
-    api.get(`/data-collection/schools/${schoolId}`).then(({ data }) => setSchool(data)).catch(() => {});
+    api.get(`/data-collection/schools/${schoolId}`)
+      .then(({ data }) => setSchool(data))
+      .catch(() => showToast('error', 'Failed to load school data'));
     loadRecords();
-  }, [schoolId, loadRecords]);
+  }, [schoolId, loadRecords, showToast]);
 
   // Overlay the user's private draft (an in-progress unsubmitted new entry).
   useEffect(() => {

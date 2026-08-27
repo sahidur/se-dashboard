@@ -153,11 +153,12 @@ export function TeachersInfoForm({ schoolId }: Props) {
       );
       setRecords(data);
     } catch {
+      showToast('error', 'Failed to load teacher records');
       setRecords([]);
     } finally {
       setLoadingRecords(false);
     }
-  }, [schoolId]);
+  }, [schoolId, showToast]);
 
   useEffect(() => { loadRecords(); }, [loadRecords]);
 

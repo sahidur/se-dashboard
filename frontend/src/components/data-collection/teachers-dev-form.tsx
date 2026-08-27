@@ -125,11 +125,12 @@ export function TeachersDevForm({ schoolId }: Props) {
       );
       setAllRecords(data);
     } catch {
+      showToast('error', 'Failed to load teacher development records');
       setAllRecords([]);
     } finally {
       setLoadingAll(false);
     }
-  }, [schoolId]);
+  }, [schoolId, showToast]);
 
   useEffect(() => { loadAllRecords(); }, [loadAllRecords]);
 

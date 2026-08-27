@@ -125,9 +125,12 @@ export function StudentsInfoForm({ schoolId }: Props) {
     setLoadingAll(true);
     api.get<DcStudentsInfo[]>(`/data-collection/students/school/${schoolId}`)
       .then(({ data }) => setAllRecords(data))
-      .catch(() => setAllRecords([]))
+      .catch(() => {
+        showToast('error', 'Failed to load student records');
+        setAllRecords([]);
+      })
       .finally(() => setLoadingAll(false));
-  }, [schoolId]);
+  }, [schoolId, showToast]);
 
   useEffect(() => { loadAllRecords(); }, [loadAllRecords]);
 
@@ -187,7 +190,6 @@ export function StudentsInfoForm({ schoolId }: Props) {
         setIsEditing(false);
       }
     } catch {
-      // no entry yet is fine
       setForm(emptyForm);
       setIsEditing(false);
     } finally {

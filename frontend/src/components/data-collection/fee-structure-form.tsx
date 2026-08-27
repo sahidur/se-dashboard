@@ -117,9 +117,11 @@ export function FeeStructureForm({ schoolId }: Props) {
     try {
       const { data } = await api.get<DcFeeStructure[]>(`/data-collection/fee-structure/school/${schoolId}`);
       setAllRecords(data);
-    } catch { setAllRecords([]); }
-    finally { setLoadingRecords(false); }
-  }, [schoolId]);
+    } catch {
+      showToast('error', 'Failed to load fee structure records');
+      setAllRecords([]);
+    } finally { setLoadingRecords(false); }
+  }, [schoolId, showToast]);
 
   useEffect(() => { loadRecords(); }, [loadRecords]);
 
@@ -128,8 +130,10 @@ export function FeeStructureForm({ schoolId }: Props) {
     try {
       const { data } = await api.get<DcFeeStructureLog[]>(`/data-collection/fee-structure/logs/school/${schoolId}`);
       setLogs(data);
-    } catch { setLogs([]); }
-    finally { setLoadingLogs(false); }
+    } catch {
+      showToast('error', 'Failed to load fee structure logs');
+      setLogs([]);
+    } finally { setLoadingLogs(false); }
   };
 
   const toggleMonth = (m: string) => {

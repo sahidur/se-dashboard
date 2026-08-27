@@ -119,12 +119,18 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
         setIsEditing(true);
         if (data.academicYear != null) setAcademicYear(String(data.academicYear));
       }
-    } catch { /* no data yet */ }
+    } catch {
+      // No data yet — form stays blank
+    }
     // Overlay the user's private draft on top of any saved data.
-    const d = await draft.loadDraft();
-    if (d?.form) {
-      setForm(d.form);
-      if (d.academicYear) setAcademicYear(d.academicYear);
+    try {
+      const d = await draft.loadDraft();
+      if (d?.form) {
+        setForm(d.form);
+        if (d.academicYear) setAcademicYear(d.academicYear);
+      }
+    } catch {
+      // Draft load failure is non-critical
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getEndpoint]);

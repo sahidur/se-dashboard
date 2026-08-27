@@ -103,9 +103,11 @@ export function AlumniForm({ schoolId }: Props) {
     try {
       const { data } = await api.get<DcAlumni[]>(`/data-collection/alumni/school/${schoolId}`);
       setRecords(data);
-    } catch { setRecords([]); }
-    finally { setLoadingRecords(false); }
-  }, [schoolId]);
+    } catch {
+      showToast('error', 'Failed to load alumni records');
+      setRecords([]);
+    } finally { setLoadingRecords(false); }
+  }, [schoolId, showToast]);
 
   useEffect(() => { loadRecords(); }, [loadRecords]);
 

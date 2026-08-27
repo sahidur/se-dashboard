@@ -89,9 +89,11 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
     try {
       const { data } = await api.get<DcRevenueMonthlyRecord[]>(getEndpoint);
       setRecords(data);
-    } catch { setRecords([]); }
-    finally { setLoadingRecords(false); }
-  }, [getEndpoint]);
+    } catch {
+      showToast('error', 'Failed to load revenue records');
+      setRecords([]);
+    } finally { setLoadingRecords(false); }
+  }, [getEndpoint, showToast]);
 
   useEffect(() => { loadRecords(); }, [loadRecords]);
 
