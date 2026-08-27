@@ -362,13 +362,13 @@ export class RolesService {
 
       const ensurePermissions = async (roleId: string, current: Permission[]) => {
         const existingKeys = new Set(
-          (current || []).map((p) => `${p.module}:${p.action}`),
+          (current || []).map((p) => `${p.module}:${p.action}:${p.resource || '*'}`),
         );
         const missing: Permission[] = [];
 
         for (const perm of roleData.permissions) {
           for (const action of perm.actions) {
-            const key = `${perm.module}:${action}`;
+            const key = `${perm.module}:${action}:*`;
             if (!existingKeys.has(key)) {
               missing.push(
                 this.permissionsRepository.create({

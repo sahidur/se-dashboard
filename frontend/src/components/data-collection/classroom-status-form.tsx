@@ -120,7 +120,7 @@ export function ClassroomStatusForm({ schoolId }: Props) {
     async function load() {
       try {
         const [dashRes, infraRes] = await Promise.all([
-          api.get(`/data-collection/schools/${schoolId}/dashboard`).catch(() => ({ data: { school: null } })),
+          api.get(`/data-collection/schools/${schoolId}/dashboard`),
           api.get(`/data-collection/infrastructure/school/${schoolId}`).catch(() => ({ data: null })),
         ]);
         setSchool(dashRes.data.school);
@@ -130,8 +130,9 @@ export function ClassroomStatusForm({ schoolId }: Props) {
           setForm(loaded);
           setSavedRecord(loaded);
         }
-      } catch {
-        setError('Failed to load school data. Please try again.');
+      } catch (err: any) {
+        const msg = err?.response?.data?.message || err?.message || 'Unknown error';
+        setError(`Failed to load school data: ${msg}`);
       } finally {
         setLoading(false);
       }

@@ -99,7 +99,8 @@ export class AccessGuard implements CanActivate {
             }),
           );
         }
-      } catch {
+      } catch (err) {
+        console.error('[AccessGuard] Failed to load user permissions:', err);
         permissionCheckPassed = false;
       }
     }

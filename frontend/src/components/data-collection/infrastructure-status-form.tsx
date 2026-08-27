@@ -97,10 +97,18 @@ const defaultState: FormState = {
 interface Props { schoolId: string }
 
 function mapRecord(d: Record<string, any>): FormState {
+  let buildingStatus: string[] = [];
+  if (d.buildingStatus) {
+    try {
+      buildingStatus = JSON.parse(d.buildingStatus);
+    } catch {
+      buildingStatus = [];
+    }
+  }
   return {
     academicYear: d.academicYear != null ? String(d.academicYear) : '',
     campusStatus: d.campusStatus || '',
-    buildingStatus: d.buildingStatus ? JSON.parse(d.buildingStatus) : [],
+    buildingStatus,
     roomHeadTeachers: d.roomHeadTeachers ?? 0,
     roomTeachers: d.roomTeachers ?? 0,
     roomClassroom: d.roomClassroom ?? 0,
@@ -143,7 +151,7 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
     async function load() {
       try {
         const [dashRes, infraRes] = await Promise.all([
-          api.get(`/data-collection/schools/${schoolId}/dashboard`).catch(() => ({ data: { school: null } })),
+          api.get(`/data-collection/schools/${schoolId}/dashboard`),
           api.get(`/data-collection/infrastructure/school/${schoolId}`).catch(() => ({ data: null })),
         ]);
         setSchool(dashRes.data.school);
@@ -153,8 +161,9 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
           setForm(loaded);
           setSavedRecord(loaded);
         }
-      } catch {
-        setError('Failed to load school data. Please try again.');
+      } catch (err: any) {
+        const msg = err?.response?.data?.message || err?.message || 'Unknown error';
+        setError(`Failed to load school data: ${msg}`);
       } finally {
         setLoading(false);
       }
