@@ -58,6 +58,9 @@ DB_DATABASE="${DB_DATABASE:-bep_se}"
 DB_SCHEMA="${DB_SCHEMA:-bep}"
 DB_SSL="${DB_SSL:-true}"
 DB_SSL_REJECT_UNAUTHORIZED="${DB_SSL_REJECT_UNAUTHORIZED:-false}"
+# Path to the CA certificate file (relative to backend/). Required when
+# DB_SSL=true and the DB provider uses a self-signed CA (e.g. DigitalOcean).
+DB_CA_CERT="${DB_CA_CERT:-ca-certificate.crt}"
 S3_ENDPOINT="${S3_ENDPOINT:-https://sgp1.digitaloceanspaces.com}"
 S3_REGION="${S3_REGION:-sgp1}"
 S3_BUCKET="${S3_BUCKET:-dev-shomadhanhobe-resources}"
@@ -232,6 +235,9 @@ DB_SSL=${DB_SSL}
 # DigitalOcean managed DBs need this set to false (their CA is not in the
 # default trust store). Set to true only when your host trusts the DB CA.
 DB_SSL_REJECT_UNAUTHORIZED=${DB_SSL_REJECT_UNAUTHORIZED}
+# Path to the CA certificate file (relative to backend/). Required when
+# DB_SSL=true and the DB provider uses a self-signed CA.
+DB_CA_CERT=${DB_CA_CERT}
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
 JWT_SECRET=${JWT_SECRET}

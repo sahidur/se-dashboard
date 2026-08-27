@@ -470,6 +470,10 @@ ensure_env TRUST_PROXY "1"
 # an explicit value removes any ambiguity.
 ensure_env COOKIE_SECURE "true"
 
+# Path to the CA certificate file (relative to backend/). Required when
+# DB_SSL=true and the DB provider uses a self-signed CA (e.g. DigitalOcean).
+ensure_env DB_CA_CERT "ca-certificate.crt"
+
 # Read only by 'npm run seed', and only when admin@bep.org does not exist yet.
 # SEED_ADMIN_PASSWORD is REQUIRED — seed.ts exits with an error if it is missing
 # or still a placeholder value.

@@ -3,6 +3,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { RolesModule } from './roles/roles.module';
@@ -43,6 +45,24 @@ import { AuditModule } from './common/audit/audit.module';
         if (!dbPassword) {
           throw new Error('DB_PASSWORD environment variable is not set');
         }
+
+        // If DB_CA_CERT is set, read the CA certificate file and include it
+        // in the TLS options. This is required for managed databases (e.g.
+        // DigitalOcean) whose CA is not in the default Node.js trust store.
+        let sslOptions: Record<string, any> = {
+          rejectUnauthorized: dbSslRejectUnauthorized,
+        };
+        const caCertPath = configService.get<string>('DB_CA_CERT');
+        if (caCertPath) {
+          try {
+            const caCert = readFileSync(resolve(caCertPath), 'utf-8');
+            sslOptions.ca = caCert;
+          } catch {
+            // If the file cannot be read, fall back to the default trust store
+            // (rejectUnauthorized=true will still enforce CA validation).
+          }
+        }
+
         return {
           type: 'postgres' as const,
           host: configService.get<string>('DB_HOST', 'localhost'),
@@ -50,9 +70,7 @@ import { AuditModule } from './common/audit/audit.module';
           username: configService.get<string>('DB_USERNAME', 'postgres'),
           password: dbPassword,
           database: configService.get<string>('DB_DATABASE', 'bep_se'),
-          ssl: dbSslEnabled
-            ? { rejectUnauthorized: dbSslRejectUnauthorized }
-            : false,
+          ssl: dbSslEnabled ? sslOptions : false,
           schema: configService.get<string>('DB_SCHEMA', 'bep'),
           autoLoadEntities: true,
           // Auto-DDL only for local development databases. A dev machine with
