@@ -15,7 +15,8 @@ import { DataTable, type TableColumn } from '@/components/ui/data-table';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
-import api from '@/lib/api';
+import { useAuthStore } from '@/store/auth-store';
+import api, { getErrorMessage } from '@/lib/api';
 import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
 import type { DcSchool, DcTeacherIndividual } from '@/types';
 
@@ -118,6 +119,7 @@ function MultiSelect({ options, selected, onChange, otherValue, onOtherChange, l
 /* ─── Main Component ────────────────────────────────────── */
 export function TeachersInfoForm({ schoolId }: Props) {
   const router = useRouter();
+  const canDeleteSubmitted = useAuthStore((s) => s.hasPermission('data-collection', 'delete', 'teachers-individual'));
   const [school, setSchool] = useState<DcSchool | null>(null);
   const [form, setForm] = useState<FormState>(BLANK_FORM);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -257,10 +259,10 @@ export function TeachersInfoForm({ schoolId }: Props) {
     setDeletingId(id);
     try {
       await api.delete(`/data-collection/teachers/individual/${id}`);
-      showToast('success', `${name} removed.`);
+      showToast('success', `${name} removed and moved to recycle bin.`);
       await loadRecords();
-    } catch {
-      showToast('error', 'Failed to remove teacher record.');
+    } catch (err) {
+      showToast('error', getErrorMessage(err, 'Failed to remove teacher record.'));
     } finally {
       setDeletingId(null);
     }
@@ -573,7 +575,10 @@ export function TeachersInfoForm({ schoolId }: Props) {
         actions={(r) => (
           <button
             type="button"
-            onClick={() => handleDelete(r.id, r.name)}
+            onClick={() => {
+              if (!canDeleteSubmitted) { showToast('error', 'You do not have permission to delete submitted data'); return; }
+              handleDelete(r.id, r.name);
+            }}
             disabled={deletingId === r.id}
             className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50"
           >

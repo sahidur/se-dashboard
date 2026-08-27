@@ -19,6 +19,15 @@ import {
   Search,
   Loader2,
   X,
+  GraduationCap,
+  Presentation,
+  Trophy,
+  Activity,
+  BarChart3,
+  PieChart,
+  CalendarCheck,
+  Medal,
+  Banknote,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -38,6 +47,7 @@ interface RecycleBinData {
   schoolRecords: RecycleBinItem[];
   schools: RecycleBinItem[];
   geoLocations: RecycleBinItem[];
+  [key: string]: RecycleBinItem[] | undefined;
 }
 
 const entityConfig: Record<
@@ -50,6 +60,180 @@ const entityConfig: Record<
   'school-record': { label: 'School Records', icon: School, color: 'text-green-600', bgColor: 'bg-green-50' },
   school: { label: 'Schools', icon: School, color: 'text-teal-600', bgColor: 'bg-teal-50' },
   'geo-location': { label: 'Geo Locations', icon: MapPin, color: 'text-rose-600', bgColor: 'bg-rose-50' },
+  'dc-alumni': { label: 'Alumni', icon: GraduationCap, color: 'text-indigo-600', bgColor: 'bg-indigo-50' },
+  'dc-teacher-individual': { label: 'Teacher Individual', icon: Presentation, color: 'text-sky-600', bgColor: 'bg-sky-50' },
+  'dc-pedagogical-achievement': { label: 'Pedagogical Achievement', icon: Trophy, color: 'text-fuchsia-600', bgColor: 'bg-fuchsia-50' },
+  'dc-cocurricular': { label: 'Co-Curricular', icon: Activity, color: 'text-orange-600', bgColor: 'bg-orange-50' },
+  'dc-students-performance': { label: 'Students Performance', icon: BarChart3, color: 'text-emerald-600', bgColor: 'bg-emerald-50' },
+  'dc-student-performance': { label: 'Student Performance', icon: PieChart, color: 'text-cyan-600', bgColor: 'bg-cyan-50' },
+  'dc-activity-participation': { label: 'Activity Participation', icon: CalendarCheck, color: 'text-violet-600', bgColor: 'bg-violet-50' },
+  'dc-event-participation': { label: 'Event Participation', icon: Medal, color: 'text-pink-600', bgColor: 'bg-pink-50' },
+  'dc-fee-structure': { label: 'Fee Structure', icon: Banknote, color: 'text-lime-600', bgColor: 'bg-lime-50' },
+};
+
+const DC_ENTITY_TYPES = [
+  'dc-alumni',
+  'dc-teacher-individual',
+  'dc-pedagogical-achievement',
+  'dc-cocurricular',
+  'dc-students-performance',
+  'dc-student-performance',
+  'dc-activity-participation',
+  'dc-event-participation',
+  'dc-fee-structure',
+] as const;
+
+const ITEM_META_KEYS = [
+  'id',
+  'entityType',
+  'displayName',
+  'deletedAt',
+  'createdAt',
+  'updatedAt',
+];
+
+const txt = (value: unknown): string => {
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' || typeof value === 'boolean')
+    return String(value);
+  return '';
+};
+
+const firstTxt = (...values: unknown[]): string => {
+  for (const value of values) {
+    const s = txt(value);
+    if (s) return s;
+  }
+  return '';
+};
+
+const joinTxt = (...values: unknown[]): string =>
+  values
+    .map((value) => txt(value))
+    .filter(Boolean)
+    .join(' • ');
+
+const shortId = (id?: unknown): string =>
+  txt(id) ? `#${txt(id).slice(0, 8)}` : '#item';
+
+const yearLabel = (item: RecycleBinItem): string => {
+  const year = txt(item.academicYear);
+  return year ? `Year ${year}` : '';
+};
+
+const genericFallback = (item: RecycleBinItem): string => {
+  const values = Object.entries(item)
+    .filter(
+      ([key, value]) =>
+        !ITEM_META_KEYS.includes(key) &&
+        (typeof value === 'string' || typeof value === 'number'),
+    )
+    .map(([, value]) => txt(value))
+    .filter(Boolean)
+    .slice(0, 4);
+  return values.join(' • ') || shortId(item.id);
+};
+
+const getItemLabels = (
+  entityType: string,
+  item: RecycleBinItem,
+): { title: string; meta: string } => {
+  const baseMeta = () => joinTxt(yearLabel(item), item.month, item.grade);
+
+  switch (entityType) {
+    case 'dc-alumni': {
+      const completionYear = firstTxt(item.passingYear, item.completionYear);
+      return {
+        title:
+          firstTxt(item.name, item.studentName, item.fullName) ||
+          genericFallback(item),
+        meta: joinTxt(
+          completionYear ? `Class of ${completionYear}` : '',
+          item.grade,
+          item.occupation,
+        ),
+      };
+    }
+    case 'dc-teacher-individual':
+      return {
+        title:
+          firstTxt(item.teacherName, item.staffName, item.name) ||
+          genericFallback(item),
+        meta: joinTxt(baseMeta(), item.subject, item.designation),
+      };
+    case 'dc-pedagogical-achievement':
+      return {
+        title:
+          firstTxt(item.achievementName, item.title, item.name) ||
+          genericFallback(item),
+        meta: joinTxt(baseMeta(), item.awardLevel, item.category),
+      };
+    case 'dc-cocurricular':
+      return {
+        title:
+          firstTxt(item.itemName, item.activityName, item.name, item.title) ||
+          genericFallback(item),
+        meta: baseMeta(),
+      };
+    case 'dc-students-performance':
+    case 'dc-student-performance': {
+      const totalMarks = txt(item.totalMarks);
+      const scored = firstTxt(item.obtainedMarks, item.marksObtained);
+      return {
+        title:
+          firstTxt(
+            item.examName,
+            item.formKey,
+            item.particulars,
+            item.title,
+            item.name,
+          ) || genericFallback(item),
+        meta: joinTxt(
+          baseMeta(),
+          totalMarks ? `Total ${totalMarks}` : '',
+          scored ? `Scored ${scored}` : '',
+        ),
+      };
+    }
+    case 'dc-activity-participation':
+      return {
+        title:
+          firstTxt(
+            item.cornersActivityName,
+            item.activityName,
+            item.name,
+            item.title,
+          ) || genericFallback(item),
+        meta: joinTxt(baseMeta(), item.participants, item.totalParticipants),
+      };
+    case 'dc-event-participation':
+      return {
+        title:
+          firstTxt(item.eventName, item.eventTitle, item.name, item.title) ||
+          genericFallback(item),
+        meta: joinTxt(item.awardLevel, baseMeta()),
+      };
+    case 'dc-fee-structure': {
+      const tuition = txt(item.tuitionFee);
+      const total = txt(item.total);
+      return {
+        title:
+          firstTxt(item.feeName, item.name, item.title) ||
+          joinTxt(item.grade, item.month, yearLabel(item)) ||
+          genericFallback(item),
+        meta: joinTxt(
+          baseMeta(),
+          tuition ? `Tuition ${tuition}` : '',
+          total ? `Total ${total}` : '',
+        ),
+      };
+    }
+    default:
+      return {
+        title: txt(item.displayName) || genericFallback(item),
+        meta: '',
+      };
+  }
 };
 
 export default function RecycleBinPage() {
@@ -115,14 +299,7 @@ export default function RecycleBinPage() {
 
   const getAllItems = (): RecycleBinItem[] => {
     if (!data) return [];
-    return [
-      ...data.surveys,
-      ...data.users,
-      ...data.categories,
-      ...data.schoolRecords,
-      ...data.schools,
-      ...data.geoLocations,
-    ];
+    return Object.values(data).flatMap((items) => items ?? []);
   };
 
   const getFilteredItems = (): RecycleBinItem[] => {
@@ -132,9 +309,14 @@ export default function RecycleBinPage() {
     }
     if (search) {
       const q = search.toLowerCase();
-      items = items.filter((item) =>
-        item.displayName.toLowerCase().includes(q),
-      );
+      items = items.filter((item) => {
+        const labels = getItemLabels(item.entityType, item);
+        return (
+          item.displayName.toLowerCase().includes(q) ||
+          labels.title.toLowerCase().includes(q) ||
+          labels.meta.toLowerCase().includes(q)
+        );
+      });
     }
     return items.sort(
       (a, b) =>
@@ -145,14 +327,36 @@ export default function RecycleBinPage() {
   const totalCount = getAllItems().length;
   const filteredItems = getFilteredItems();
 
+  const countByType: Record<string, number> = {};
+  getAllItems().forEach((item) => {
+    countByType[item.entityType] = (countByType[item.entityType] || 0) + 1;
+  });
+
   const tabs = [
     { key: 'all', label: 'All', count: totalCount },
-    { key: 'survey', label: 'Surveys', count: data?.surveys?.length || 0 },
-    { key: 'user', label: 'Users', count: data?.users?.length || 0 },
-    { key: 'category', label: 'Categories', count: data?.categories?.length || 0 },
-    { key: 'school-record', label: 'School Records', count: data?.schoolRecords?.length || 0 },
-    { key: 'school', label: 'Schools', count: data?.schools?.length || 0 },
-    { key: 'geo-location', label: 'Locations', count: data?.geoLocations?.length || 0 },
+    { key: 'survey', label: 'Surveys', count: countByType['survey'] || 0 },
+    { key: 'user', label: 'Users', count: countByType['user'] || 0 },
+    {
+      key: 'category',
+      label: 'Categories',
+      count: countByType['category'] || 0,
+    },
+    {
+      key: 'school-record',
+      label: 'School Records',
+      count: countByType['school-record'] || 0,
+    },
+    { key: 'school', label: 'Schools', count: countByType['school'] || 0 },
+    {
+      key: 'geo-location',
+      label: 'Locations',
+      count: countByType['geo-location'] || 0,
+    },
+    ...DC_ENTITY_TYPES.map((key) => ({
+      key,
+      label: entityConfig[key].label,
+      count: countByType[key] || 0,
+    })),
   ];
 
   if (loading) {
@@ -331,6 +535,7 @@ export default function RecycleBinPage() {
               bgColor: 'bg-gray-50',
             };
             const Icon = config.icon;
+            const labels = getItemLabels(item.entityType, item);
             return (
               <div
                 key={`${item.entityType}-${item.id}`}
@@ -348,7 +553,7 @@ export default function RecycleBinPage() {
                   </div>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-gray-900">
-                      {item.displayName}
+                      {labels.title}
                     </p>
                     <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
                       <span
@@ -360,6 +565,7 @@ export default function RecycleBinPage() {
                       >
                         {config.label}
                       </span>
+                      {labels.meta && <span>{labels.meta}</span>}
                       <span>
                         Deleted{' '}
                         {new Date(item.deletedAt).toLocaleDateString('en-US', {
@@ -380,7 +586,7 @@ export default function RecycleBinPage() {
                         type: 'restore',
                         entityType: item.entityType,
                         id: item.id,
-                        name: item.displayName,
+                        name: labels.title,
                       })
                     }
                     className="flex items-center gap-1.5 rounded-lg border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"
@@ -394,7 +600,7 @@ export default function RecycleBinPage() {
                         type: 'delete',
                         entityType: item.entityType,
                         id: item.id,
-                        name: item.displayName,
+                        name: labels.title,
                       })
                     }
                     className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"

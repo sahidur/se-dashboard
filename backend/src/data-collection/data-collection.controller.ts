@@ -375,6 +375,16 @@ export class DataCollectionController {
     return this.service.getFeeStructureLogs(schoolId, userId, roles);
   }
 
+  @Delete('fee-structure/:id')
+  @Permissions({ module: 'data-collection', action: 'delete', resource: 'fee-structure' })
+  deleteFeeStructure(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.deleteFeeStructure(id, userId, roles);
+  }
+
   // ===================== Revenue Budget Total =====================
 
   @Post('revenue/budget/total')

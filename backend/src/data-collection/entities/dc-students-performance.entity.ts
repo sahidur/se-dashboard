@@ -7,6 +7,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Unique,
+  DeleteDateColumn,
 } from 'typeorm';
 import { DcSchool } from './dc-school.entity';
 import { User } from '../../users/entities/user.entity';
@@ -92,4 +93,7 @@ export class DcStudentsPerformance {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
+
+  @DeleteDateColumn({ name: 'deleted_at' })
+  deletedAt: Date;
 }

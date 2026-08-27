@@ -17,7 +17,7 @@ import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
 import type { DcSchool, DcAlumni } from '@/types';
 
@@ -71,6 +71,7 @@ interface Props { schoolId: string }
 export function AlumniForm({ schoolId }: Props) {
   const router = useRouter();
   const canEditSubmitted = useAuthStore((s) => s.hasPermission('data-collection-edit', 'update'));
+  const canDeleteSubmitted = useAuthStore((s) => s.hasPermission('data-collection', 'delete', 'alumni'));
   const [school, setSchool] = useState<DcSchool | null>(null);
   const [form, setForm] = useState<AlumniFormState>(BLANK_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -237,10 +238,10 @@ export function AlumniForm({ schoolId }: Props) {
     setDeletingId(id);
     try {
       await api.delete(`/data-collection/alumni/${id}`);
-      showToast('success', 'Alumni record deleted.');
+      showToast('success', 'Alumni record deleted and moved to recycle bin.');
       await loadRecords();
-    } catch {
-      showToast('error', 'Failed to delete record.');
+    } catch (err) {
+      showToast('error', getErrorMessage(err, 'Failed to delete record.'));
     } finally {
       setDeletingId(null);
     }
@@ -540,20 +541,21 @@ export function AlumniForm({ schoolId }: Props) {
           <div className="flex items-center justify-center gap-1.5">
             <button
               type="button"
-              onClick={() => canEditSubmitted && handleEdit(r)}
-              disabled={!canEditSubmitted}
-              className={`flex h-7 w-7 items-center justify-center rounded-md border transition-colors ${
-                canEditSubmitted
-                  ? 'border-gray-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50'
-                  : 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
-              }`}
-              title={canEditSubmitted ? 'Edit' : 'You do not have permission to edit submitted data'}
+              onClick={() => {
+                if (!canEditSubmitted) { showToast('error', 'You do not have permission to edit submitted data'); return; }
+                handleEdit(r);
+              }}
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50 transition-colors"
+              title="Edit"
             >
               <Pencil size={12} />
             </button>
             <button
               type="button"
-              onClick={() => handleDelete(r.id)}
+              onClick={() => {
+                if (!canDeleteSubmitted) { showToast('error', 'You do not have permission to delete submitted data'); return; }
+                handleDelete(r.id);
+              }}
               disabled={deletingId === r.id}
               className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 bg-white text-red-400 hover:border-red-300 hover:bg-red-50 transition-colors disabled:opacity-50"
               title="Delete"

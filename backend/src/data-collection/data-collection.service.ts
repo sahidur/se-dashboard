@@ -401,7 +401,7 @@ export class DataCollectionService {
     });
     if (!record) throw new NotFoundException('Teacher record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
-    await this.teacherIndividualRepo.remove(record);
+    await this.teacherIndividualRepo.softRemove(record);
   }
 
   // ===================== Teachers Development (per month) =====================
@@ -513,7 +513,7 @@ export class DataCollectionService {
     const record = await this.alumniRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Alumni record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
-    await this.alumniRepo.remove(record);
+    await this.alumniRepo.softRemove(record);
   }
 
   // ===================== Fee Structure =====================
@@ -566,6 +566,13 @@ export class DataCollectionService {
       relations: ['editedBy'],
       order: { editedAt: 'DESC' },
     });
+  }
+
+  async deleteFeeStructure(id: string, userId: string, roles: string[]): Promise<void> {
+    const record = await this.feeStructureRepo.findOne({ where: { id } });
+    if (!record) throw new NotFoundException('Fee structure record not found');
+    await this.validateSchoolAccess(record.schoolId, userId, roles);
+    await this.feeStructureRepo.softRemove(record);
   }
 
   // ===================== Revenue Budget Total =====================
@@ -682,7 +689,7 @@ export class DataCollectionService {
     const record = await this.pedagAchievRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
-    await this.pedagAchievRepo.remove(record);
+    await this.pedagAchievRepo.softRemove(record);
   }
 
   // ===================== Co-curricular =====================
@@ -710,7 +717,7 @@ export class DataCollectionService {
     const record = await this.cocurricularRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
-    await this.cocurricularRepo.remove(record);
+    await this.cocurricularRepo.softRemove(record);
   }
 
   // ===================== Students' Performance =====================
@@ -738,7 +745,7 @@ export class DataCollectionService {
     const record = await this.studentsPerfRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
-    await this.studentsPerfRepo.remove(record);
+    await this.studentsPerfRepo.softRemove(record);
   }
 
   // ===================== Student Performance (BA / BPS / BSS) =====================
@@ -859,7 +866,7 @@ export class DataCollectionService {
     const record = await this.studentPerfRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
-    await this.studentPerfRepo.remove(record);
+    await this.studentPerfRepo.softRemove(record);
   }
 
   // ===================== Activity Participation (Corner/Club/Library/Lab) =====================
@@ -886,7 +893,7 @@ export class DataCollectionService {
     const record = await this.activityPartRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
-    await this.activityPartRepo.remove(record);
+    await this.activityPartRepo.softRemove(record);
   }
 
   // ===================== Event Participation =====================
@@ -917,7 +924,7 @@ export class DataCollectionService {
     const record = await this.eventPartRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Event participation record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
-    await this.eventPartRepo.remove(record);
+    await this.eventPartRepo.softRemove(record);
   }
 
   // ===================== Programme Overview (aggregated) =====================

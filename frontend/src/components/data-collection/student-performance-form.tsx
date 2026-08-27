@@ -24,7 +24,7 @@ import {
 } from '@/components/data-collection/student-performance-catalog';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
 import type { DcSchool, DcStudentPerformance } from '@/types';
 
@@ -59,6 +59,7 @@ export function StudentPerformanceForm({ schoolId, formKey }: Props) {
   const rowDefs = useMemo(() => getStudentPerformanceRows(formKey), [formKey]);
 
   const canEditSubmitted = useAuthStore((s) => s.hasPermission('data-collection-edit', 'update'));
+  const canDeleteSubmitted = useAuthStore((s) => s.hasPermission('data-collection', 'delete', 'student-performance'));
 
   const [school, setSchool] = useState<DcSchool | null>(null);
   const [records, setRecords] = useState<DcStudentPerformance[]>([]);
@@ -174,11 +175,10 @@ export function StudentPerformanceForm({ schoolId, formKey }: Props) {
     if (!confirm('Delete this student performance record?')) return;
     try {
       await api.delete(`/data-collection/student-performance/${id}`);
-      showToast('success', 'Record deleted.');
+      showToast('success', 'Record deleted and moved to recycle bin.');
       loadRecords();
-    } catch (err: any) {
-      const msg = err?.response?.data?.message;
-      showToast('error', Array.isArray(msg) ? msg[0] : (msg || 'Failed to delete record.'));
+    } catch (err) {
+      showToast('error', getErrorMessage(err, 'Failed to delete record.'));
     }
   };
 
@@ -634,17 +634,21 @@ export function StudentPerformanceForm({ schoolId, formKey }: Props) {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                disabled={!canEditSubmitted}
-                                onClick={() => handleEdit(rec)}
-                                title={canEditSubmitted ? undefined : 'You do not have permission to edit submitted data'}
-                                className="h-6 px-2 text-brand-600 hover:bg-brand-50 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
+                                onClick={() => {
+                                  if (!canEditSubmitted) { showToast('error', 'You do not have permission to edit submitted data'); return; }
+                                  handleEdit(rec);
+                                }}
+                                className="h-6 px-2 text-brand-600 hover:bg-brand-50 hover:text-brand-700"
                               >
                                 Edit
                               </Button>
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                onClick={() => handleDelete(rec.id)}
+                                onClick={() => {
+                                  if (!canDeleteSubmitted) { showToast('error', 'You do not have permission to delete submitted data'); return; }
+                                  handleDelete(rec.id);
+                                }}
                                 className="h-6 px-2 text-red-500 hover:bg-red-50 hover:text-red-700"
                               >
                                 <Trash2 size={12} />

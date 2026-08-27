@@ -16,7 +16,7 @@ import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import type { DcSchool } from '@/types';
 
 /* ─── Types ──────────────────────────────────────────────── */
@@ -78,6 +78,7 @@ interface Props { schoolId: string }
 
 export function PedagogicalAchievementsForm({ schoolId }: Props) {
   const canEditSubmitted = useAuthStore((s) => s.hasPermission('data-collection-edit', 'update'));
+  const canDeleteSubmitted = useAuthStore((s) => s.hasPermission('data-collection', 'delete', 'pedagogical-achievements'));
   const [school, setSchool] = useState<DcSchool | null>(null);
   const [records, setRecords] = useState<AchievementRecord[]>([]);
   const [form, setForm] = useState<FormState>(BLANK);
@@ -216,10 +217,10 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
     if (!confirm('Delete this achievement record?')) return;
     try {
       await api.delete(`/data-collection/pedagogical-achievements/${id}`);
-      showToast('success', 'Record deleted.');
+      showToast('success', 'Record deleted and moved to recycle bin.');
       loadRecords();
-    } catch {
-      showToast('error', 'Failed to delete record.');
+    } catch (err) {
+      showToast('error', getErrorMessage(err, 'Failed to delete record.'));
     }
   };
 
@@ -479,10 +480,26 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
           emptyIcon={<Trophy size={40} className="mb-3 opacity-20" />}
           actions={(rec) => (
             <div className="flex justify-end gap-1">
-              <Button size="sm" variant="ghost" disabled={!canEditSubmitted} onClick={() => handleEdit(rec)} title={canEditSubmitted ? undefined : 'You do not have permission to edit submitted data'} className="h-7 px-2 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  if (!canEditSubmitted) { showToast('error', 'You do not have permission to edit submitted data'); return; }
+                  handleEdit(rec);
+                }}
+                className="h-7 px-2 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50"
+              >
                 Edit
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => handleDelete(rec.id)} className="h-7 px-2 text-red-500 hover:text-red-700 hover:bg-red-50">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  if (!canDeleteSubmitted) { showToast('error', 'You do not have permission to delete submitted data'); return; }
+                  handleDelete(rec.id);
+                }}
+                className="h-7 px-2 text-red-500 hover:text-red-700 hover:bg-red-50"
+              >
                 <Trash2 size={13} />
               </Button>
             </div>

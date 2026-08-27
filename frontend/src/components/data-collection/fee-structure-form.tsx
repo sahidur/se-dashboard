@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Save, CheckCircle2, AlertCircle, BookOpen, School,
-  MapPin, Users, RefreshCw, X, History, ChevronDown,
+  MapPin, Users, RefreshCw, X, History, ChevronDown, Pencil, Trash2, RotateCcw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,7 +16,7 @@ import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { buildYearOptions, isValidAcademicYear, gradeEquals } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth-store';
 import type { DcSchool, DcFeeStructure, DcFeeStructureLog } from '@/types';
@@ -76,6 +76,11 @@ interface Props {
   schoolId: string;
 }
 
+const gradeRank = (g: string) => {
+  const idx = GRADES.findIndex((x) => gradeEquals(x, g));
+  return idx === -1 ? GRADES.length : idx;
+};
+
 /* ─── Component ─────────────────────────────────────────── */
 
 export function FeeStructureForm({ schoolId }: Props) {
@@ -100,8 +105,13 @@ export function FeeStructureForm({ schoolId }: Props) {
   const draftAppliedRef = useRef(false);
   const skipAmountsRef = useRef(false);
   const [tab, setTab] = useState<'entry' | 'data'>('entry');
+  const [dataYear, setDataYear] = useState('');
+  const [dataGrade, setDataGrade] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const isAdmin = hasPermission('data-collection', 'update');
+  const canEdit = hasPermission('data-collection-edit', 'update');
+  const canDelete = hasPermission('data-collection', 'delete', 'fee-structure');
 
   const showToast = useCallback((type: 'success' | 'error', msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -239,6 +249,34 @@ export function FeeStructureForm({ schoolId }: Props) {
   const formatAmount = (n: number) =>
     new Intl.NumberFormat('en-BD').format(Number(n) || 0);
 
+  const loadRecordIntoForm = useCallback((r: DcFeeStructure) => {
+    setAcademicYear(String(r.academicYear ?? ''));
+    setSelectedMonths([r.month]);
+    setGrade(r.grade);
+    setTab('entry');
+  }, []);
+
+  const handleEditRecord = useCallback((r: DcFeeStructure) => {
+    if (!canEdit) { showToast('error', 'You do not have permission to edit submitted data'); return; }
+    loadRecordIntoForm(r);
+    showToast('success', 'Loaded for editing');
+  }, [canEdit, loadRecordIntoForm, showToast]);
+
+  const handleDeleteRecord = async (r: DcFeeStructure) => {
+    if (!canDelete) { showToast('error', 'You do not have permission to delete submitted data'); return; }
+    if (!window.confirm('Delete this fee structure record? It will be moved to the recycle bin.')) return;
+    setDeletingId(r.id);
+    try {
+      await api.delete(`/data-collection/fee-structure/${r.id}`);
+      showToast('success', 'Record deleted and moved to recycle bin');
+      await loadRecords();
+    } catch (err: unknown) {
+      showToast('error', getErrorMessage(err, 'Failed to delete fee structure record'));
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const formatDateTime = (iso: string) =>
     new Date(iso).toLocaleString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
@@ -248,15 +286,23 @@ export function FeeStructureForm({ schoolId }: Props) {
   const yearRecords = academicYear
     ? allRecords.filter((r) => Number(r.academicYear) === Number(academicYear))
     : allRecords;
-  const gradeRecords = grade ? yearRecords.filter((r) => gradeEquals(r.grade, grade)) : [];
-  const sortedGradeRecords = [...gradeRecords].sort(
-    (a, b) => (Number(b.academicYear) - Number(a.academicYear)) || (MONTHS.indexOf(a.month) - MONTHS.indexOf(b.month)),
-  );
   const monthsDone = yearRecords.reduce<Record<string, string[]>>((acc, r) => {
     if (!acc[r.grade]) acc[r.grade] = [];
     if (!acc[r.grade].includes(r.month)) acc[r.grade].push(r.month);
     return acc;
   }, {});
+
+  const dataRecords = allRecords.filter((r) => {
+    if (dataYear && String(r.academicYear) !== dataYear) return false;
+    if (dataGrade && !gradeEquals(r.grade, dataGrade)) return false;
+    return true;
+  });
+  const sortedDataRecords = [...dataRecords].sort(
+    (a, b) =>
+      (Number(b.academicYear) - Number(a.academicYear)) ||
+      (gradeRank(a.grade) - gradeRank(b.grade)) ||
+      (MONTHS.indexOf(a.month) - MONTHS.indexOf(b.month)),
+  );
 
   if (!school) {
     return (
@@ -469,83 +515,129 @@ export function FeeStructureForm({ schoolId }: Props) {
 
       {tab === 'data' && (
       <>
-      {!grade && (
-        <Card className="overflow-hidden border-0 shadow-sm">
-          <CardContent className="p-5">
-            <Label className="mb-2 block text-xs font-medium text-gray-600">Select a grade to view its records</Label>
-            <div className="flex flex-wrap gap-2">
-              {GRADES.map((g) => (
-                <button
-                  key={g}
-                  type="button"
-                  onClick={() => setGrade(g)}
-                  className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:border-amber-300 hover:text-amber-700"
+      <Card className="overflow-hidden border-0 shadow-sm">
+        <CardContent className="px-5 py-4">
+          <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
+            <div>
+              <Label className="mb-1.5 block text-xs font-medium text-gray-600">Academic Year</Label>
+              <div className="relative w-44">
+                <select
+                  value={dataYear}
+                  onChange={(e) => setDataYear(e.target.value)}
+                  className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
                 >
-                  {getGradeDisplayName(g, school?.schoolCategory)} {monthsDone[g]?.length ? `(${monthsDone[g].length})` : ''}
-                </button>
-              ))}
+                  <option value="">All Years</option>
+                  {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+                </select>
+                <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-3 text-gray-400" />
+              </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
+            <div>
+              <Label className="mb-1.5 block text-xs font-medium text-gray-600">Grade</Label>
+              <div className="relative w-48">
+                <select
+                  value={dataGrade}
+                  onChange={(e) => setDataGrade(e.target.value)}
+                  className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
+                >
+                  <option value="">All Grades</option>
+                  {GRADES.map((g) => <option key={g} value={g}>{getGradeDisplayName(g, school?.schoolCategory)}</option>)}
+                </select>
+                <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-3 text-gray-400" />
+              </div>
+            </div>
+            <p className="pb-2.5 text-xs text-gray-500">
+              Showing <span className="font-semibold text-gray-700">{sortedDataRecords.length}</span> of {allRecords.length} records
+            </p>
+            <div className="ml-auto pb-1">
+              <Button
+                variant="outline" size="sm"
+                onClick={() => { setDataYear(''); setDataGrade(''); }}
+                className="gap-1.5 text-xs"
+              >
+                <RotateCcw size={13} /> Reset
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* ── All Records Table ── */}
-      {grade && (
-        <DataTable<DcFeeStructure & { _total?: number }>
-          columns={[
-            { key: 'academicYear', header: 'Academic Year', className: 'whitespace-nowrap' },
-            {
-              key: 'month',
-              header: 'Month',
-              render: (r) => (
-                <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">{r.month}</span>
-              ),
+      <DataTable<DcFeeStructure & { _total?: number }>
+        columns={[
+          { key: 'academicYear', header: 'Academic Year', className: 'whitespace-nowrap' },
+          {
+            key: 'month',
+            header: 'Month',
+            render: (r) => (
+              <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">{r.month}</span>
+            ),
+          },
+          ...FEE_FIELDS.map((f) => ({
+            key: f.key,
+            header: f.label,
+            className: 'whitespace-nowrap text-right font-mono text-xs',
+            render: (r: DcFeeStructure) => formatAmount(Number(r[f.key] ?? 0)),
+          })),
+          {
+            key: '_total',
+            header: 'Total',
+            className: 'text-right font-bold text-emerald-700 text-xs',
+            render: (r) => {
+              const total = FEE_FIELDS.reduce((s, f) => s + Number(r[f.key] ?? 0), 0);
+              return formatAmount(total);
             },
-            ...FEE_FIELDS.map((f) => ({
-              key: f.key,
-              header: f.label,
-              className: 'whitespace-nowrap text-right font-mono text-xs',
-              render: (r: DcFeeStructure) => formatAmount(Number(r[f.key] ?? 0)),
-            })),
-            {
-              key: '_total',
-              header: 'Total',
-              className: 'text-right font-bold text-emerald-700 text-xs',
-              render: (r) => {
-                const total = FEE_FIELDS.reduce((s, f) => s + Number(r[f.key] ?? 0), 0);
-                return formatAmount(total);
-              },
-            },
-            {
-              key: 'updatedAt',
-              header: 'Updated At',
-              className: 'whitespace-nowrap text-gray-400',
-              render: (r) => formatDateTime(r.updatedAt),
-            },
-          ]}
-          data={sortedGradeRecords.map((r) => ({
-            ...r,
-            _total: FEE_FIELDS.reduce((s, f) => s + Number(r[f.key] ?? 0), 0),
-          }))}
-          loading={loadingRecords}
-          emptyMessage={`No records for ${grade} yet.`}
-          emptyIcon={<BookOpen size={32} className="mb-2 opacity-30" />}
-          searchable
-          searchPlaceholder="Search records..."
-          title={`Records for ${grade}`}
-          titleIcon={<BookOpen size={18} className="text-amber-600" />}
-          badge={<span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-700">{gradeRecords.length}</span>}
-          onRefresh={loadRecords}
-          refreshing={loadingRecords}
-          onRowClick={(r) => { setAcademicYear(String(r.academicYear ?? '')); setSelectedMonths([r.month]); setGrade(r.grade); setTab('entry'); }}
-          rowClassName={(r) =>
-            Number(academicYear) === Number(r.academicYear) && selectedMonths.length === 1 && selectedMonths[0] === r.month && gradeEquals(grade, r.grade)
-              ? 'ring-inset ring-2 ring-amber-300'
-              : ''
-          }
-          footer={<p className="px-1 py-1 text-xs text-gray-400">Click a row to load it into the form for editing.</p>}
-        />
-      )}
+          },
+          {
+            key: 'updatedAt',
+            header: 'Updated At',
+            className: 'whitespace-nowrap text-gray-400',
+            render: (r) => formatDateTime(r.updatedAt),
+          },
+        ]}
+        data={sortedDataRecords.map((r) => ({
+          ...r,
+          _total: FEE_FIELDS.reduce((s, f) => s + Number(r[f.key] ?? 0), 0),
+        }))}
+        loading={loadingRecords}
+        emptyMessage={(dataYear || dataGrade) ? 'No records match the selected filters.' : 'No records yet.'}
+        emptyIcon={<BookOpen size={32} className="mb-2 opacity-30" />}
+        searchable
+        searchPlaceholder="Search records..."
+        title="Submitted Records"
+        titleIcon={<BookOpen size={18} className="text-amber-600" />}
+        badge={<span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-700">{dataRecords.length}</span>}
+        onRefresh={loadRecords}
+        refreshing={loadingRecords}
+        actions={(r) => (
+          <div className="flex items-center justify-center gap-1">
+            <Button
+              type="button" variant="ghost" size="sm"
+              onClick={(e) => { e.stopPropagation(); handleEditRecord(r); }}
+              className="h-7 w-7 p-0 text-gray-500 hover:bg-amber-50 hover:text-amber-600"
+              title="Edit"
+            >
+              <Pencil size={13} />
+            </Button>
+            <Button
+              type="button" variant="ghost" size="sm"
+              disabled={deletingId === r.id}
+              onClick={(e) => { e.stopPropagation(); handleDeleteRecord(r); }}
+              className="h-7 w-7 p-0 text-red-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+              title="Delete"
+            >
+              {deletingId === r.id ? <RefreshCw size={13} className="animate-spin" /> : <Trash2 size={13} />}
+            </Button>
+          </div>
+        )}
+        onRowClick={(r) => loadRecordIntoForm(r)}
+        rowClassName={(r) =>
+          Number(academicYear) === Number(r.academicYear) && selectedMonths.length === 1 && selectedMonths[0] === r.month && gradeEquals(grade, r.grade)
+            ? 'ring-inset ring-2 ring-amber-300'
+            : ''
+        }
+        footer={<p className="px-1 py-1 text-xs text-gray-400">Click a row to load it into the form for editing.</p>}
+      />
 
       {/* ── Edit Log (Admin only) ── */}
       {isAdmin && (

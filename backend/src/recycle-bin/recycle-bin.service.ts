@@ -1,12 +1,22 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not, IsNull } from 'typeorm';
+import { Repository, Not, IsNull, In } from 'typeorm';
 import { Survey } from '../surveys/entities/survey.entity';
 import { User } from '../users/entities/user.entity';
 import { SurveyCategory } from '../surveys/entities/survey-category.entity';
 import { SchoolRecord } from '../surveys/entities/school-record.entity';
 import { School } from '../schools/entities/school.entity';
 import { GeoLocation } from '../geo-locations/entities/geo-location.entity';
+import { DcSchool } from '../data-collection/entities/dc-school.entity';
+import { DcTeacherIndividual } from '../data-collection/entities/dc-teacher-individual.entity';
+import { DcAlumni } from '../data-collection/entities/dc-alumni.entity';
+import { DcPedagogicalAchievement } from '../data-collection/entities/dc-pedagogical-achievement.entity';
+import { DcCocurricular } from '../data-collection/entities/dc-cocurricular.entity';
+import { DcStudentsPerformance } from '../data-collection/entities/dc-students-performance.entity';
+import { DcStudentPerformance } from '../data-collection/entities/dc-student-performance.entity';
+import { DcActivityParticipation } from '../data-collection/entities/dc-activity-participation.entity';
+import { DcEventParticipation } from '../data-collection/entities/dc-event-participation.entity';
+import { DcFeeStructure } from '../data-collection/entities/dc-fee-structure.entity';
 
 export type RecycleBinEntityType =
   | 'survey'
@@ -14,7 +24,16 @@ export type RecycleBinEntityType =
   | 'category'
   | 'school-record'
   | 'school'
-  | 'geo-location';
+  | 'geo-location'
+  | 'dc-alumni'
+  | 'dc-teacher-individual'
+  | 'dc-pedagogical-achievement'
+  | 'dc-cocurricular'
+  | 'dc-students-performance'
+  | 'dc-student-performance'
+  | 'dc-activity-participation'
+  | 'dc-event-participation'
+  | 'dc-fee-structure';
 
 // Enum object used for runtime validation via ParseEnumPipe
 export const RECYCLE_BIN_ENTITY_TYPES = {
@@ -24,6 +43,15 @@ export const RECYCLE_BIN_ENTITY_TYPES = {
   SCHOOL_RECORD: 'school-record',
   SCHOOL: 'school',
   GEO_LOCATION: 'geo-location',
+  DC_ALUMNI: 'dc-alumni',
+  DC_TEACHER_INDIVIDUAL: 'dc-teacher-individual',
+  DC_PEDAGOGICAL_ACHIEVEMENT: 'dc-pedagogical-achievement',
+  DC_COCURRICULAR: 'dc-cocurricular',
+  DC_STUDENTS_PERFORMANCE: 'dc-students-performance',
+  DC_STUDENT_PERFORMANCE: 'dc-student-performance',
+  DC_ACTIVITY_PARTICIPATION: 'dc-activity-participation',
+  DC_EVENT_PARTICIPATION: 'dc-event-participation',
+  DC_FEE_STRUCTURE: 'dc-fee-structure',
 } as const;
 
 @Injectable()
@@ -41,11 +69,65 @@ export class RecycleBinService {
     private schoolsRepo: Repository<School>,
     @InjectRepository(GeoLocation)
     private geoLocationsRepo: Repository<GeoLocation>,
+    @InjectRepository(DcTeacherIndividual)
+    private dcTeacherIndividualsRepo: Repository<DcTeacherIndividual>,
+    @InjectRepository(DcAlumni)
+    private dcAlumniRepo: Repository<DcAlumni>,
+    @InjectRepository(DcPedagogicalAchievement)
+    private dcPedagogicalAchievementsRepo: Repository<DcPedagogicalAchievement>,
+    @InjectRepository(DcCocurricular)
+    private dcCocurricularRepo: Repository<DcCocurricular>,
+    @InjectRepository(DcStudentsPerformance)
+    private dcStudentsPerformanceRepo: Repository<DcStudentsPerformance>,
+    @InjectRepository(DcStudentPerformance)
+    private dcStudentPerformanceRepo: Repository<DcStudentPerformance>,
+    @InjectRepository(DcActivityParticipation)
+    private dcActivityParticipationRepo: Repository<DcActivityParticipation>,
+    @InjectRepository(DcEventParticipation)
+    private dcEventParticipationRepo: Repository<DcEventParticipation>,
+    @InjectRepository(DcFeeStructure)
+    private dcFeeStructureRepo: Repository<DcFeeStructure>,
+    @InjectRepository(DcSchool)
+    private dcSchoolsRepo: Repository<DcSchool>,
   ) {}
 
+  /**
+   * Resolve DcSchool names for DC rows in one batched query — the recycle bin
+   * lists every deleted item, so per-row joins would be wasteful.
+   */
+  private async resolveSchoolNames<T extends { schoolId: string }>(
+    records: T[],
+  ): Promise<Map<string, string>> {
+    const ids = [...new Set(records.map((r) => r.schoolId))];
+    const map = new Map<string, string>();
+    if (!ids.length) return map;
+    const schools = await this.dcSchoolsRepo.find({
+      withDeleted: true,
+      where: { id: In(ids) },
+      select: ['id', 'name'],
+    });
+    for (const s of schools) map.set(s.id, s.name);
+    return map;
+  }
+
   async findAllDeleted() {
-    const [surveys, users, categories, schoolRecords, schools, geoLocations] =
-      await Promise.all([
+    const [
+      surveys,
+      users,
+      categories,
+      schoolRecords,
+      schools,
+      geoLocations,
+      teacherIndividuals,
+      alumni,
+      pedagogicalAchievements,
+      cocurriculars,
+      studentsPerformances,
+      studentPerformances,
+      activityParticipations,
+      eventParticipations,
+      feeStructures,
+    ] = await Promise.all([
         this.surveysRepo.find({
           withDeleted: true,
           where: { deletedAt: Not(IsNull()) },
@@ -75,7 +157,61 @@ export class RecycleBinService {
           where: { deletedAt: Not(IsNull()) },
           select: ['id', 'name', 'type', 'deletedAt', 'createdAt'],
         }),
+        this.dcTeacherIndividualsRepo.find({
+          withDeleted: true,
+          where: { deletedAt: Not(IsNull()) },
+          select: ['id', 'schoolId', 'academicYear', 'name', 'designation', 'deletedAt', 'createdAt'],
+        }),
+        this.dcAlumniRepo.find({
+          withDeleted: true,
+          where: { deletedAt: Not(IsNull()) },
+          select: ['id', 'schoolId', 'academicYear', 'alumniName', 'graduationYear', 'deletedAt', 'createdAt'],
+        }),
+        this.dcPedagogicalAchievementsRepo.find({
+          withDeleted: true,
+          where: { deletedAt: Not(IsNull()) },
+          select: ['id', 'schoolId', 'year', 'kgScholarship', 'primaryScholarship', 'jrScholarship', 'sscScholarship', 'othersScholarship', 'deletedAt', 'createdAt'],
+        }),
+        this.dcCocurricularRepo.find({
+          withDeleted: true,
+          where: { deletedAt: Not(IsNull()) },
+          select: ['id', 'schoolId', 'academicYear', 'month', 'grade', 'deletedAt', 'createdAt'],
+        }),
+        this.dcStudentsPerformanceRepo.find({
+          withDeleted: true,
+          where: { deletedAt: Not(IsNull()) },
+          select: ['id', 'schoolId', 'academicYear', 'grade', 'examName', 'numberOfStudents', 'deletedAt', 'createdAt'],
+        }),
+        this.dcStudentPerformanceRepo.find({
+          withDeleted: true,
+          where: { deletedAt: Not(IsNull()) },
+          select: ['id', 'schoolId', 'academicYear', 'formKey', 'grade', 'evaluationPeriod', 'numberOfStudents', 'appearedPercent', 'deletedAt', 'createdAt'],
+        }),
+        this.dcActivityParticipationRepo.find({
+          withDeleted: true,
+          where: { deletedAt: Not(IsNull()) },
+          select: ['id', 'schoolId', 'item', 'year', 'month', 'grade', 'activityName', 'conductedCount', 'participationRate', 'deletedAt', 'createdAt'],
+        }),
+        this.dcEventParticipationRepo.find({
+          withDeleted: true,
+          where: { deletedAt: Not(IsNull()) },
+          select: ['id', 'schoolId', 'academicYear', 'eventName', 'awardLevel', 'totalAwarded', 'deletedAt', 'createdAt'],
+        }),
+        this.dcFeeStructureRepo.find({
+          withDeleted: true,
+          where: { deletedAt: Not(IsNull()) },
+          select: ['id', 'schoolId', 'academicYear', 'month', 'grade', 'admissionFee', 'tuitionFee', 'sessionFee', 'assessmentFee', 'sportsFee', 'syllabusFee', 'admissionForm', 'testimonialFee', 'othersFee', 'transportFee', 'deletedAt', 'createdAt'],
+        }),
       ]);
+
+    // Batch-resolve school names for all DC record types.
+    const schoolNames = new Map<string, string>();
+    const dcGroups: { schoolId: string }[][] = [teacherIndividuals, alumni, pedagogicalAchievements, cocurriculars, studentsPerformances, studentPerformances, activityParticipations, eventParticipations, feeStructures];
+    for (const group of dcGroups) {
+      for (const [id, name] of await this.resolveSchoolNames(group)) {
+        schoolNames.set(id, name);
+      }
+    }
 
     return {
       surveys: surveys.map((s) => ({
@@ -107,6 +243,60 @@ export class RecycleBinService {
         ...g,
         entityType: 'geo-location' as const,
         displayName: g.name,
+      })),
+      teacherIndividuals: teacherIndividuals.map((t) => ({
+        ...t,
+        entityType: 'dc-teacher-individual' as const,
+        schoolName: schoolNames.get(t.schoolId),
+        displayName: `${t.name} (${t.academicYear})`,
+      })),
+      dcAlumni: alumni.map((a) => ({
+        ...a,
+        entityType: 'dc-alumni' as const,
+        schoolName: schoolNames.get(a.schoolId),
+        displayName: a.alumniName,
+      })),
+      dcPedagogicalAchievements: pedagogicalAchievements.map((p) => ({
+        ...p,
+        entityType: 'dc-pedagogical-achievement' as const,
+        schoolName: schoolNames.get(p.schoolId),
+        displayName: `Scholarship/Achievement ${p.year}`,
+      })),
+      dcCocurricular: cocurriculars.map((c) => ({
+        ...c,
+        entityType: 'dc-cocurricular' as const,
+        schoolName: schoolNames.get(c.schoolId),
+        displayName: `${c.grade} — ${c.month} ${c.academicYear}`,
+      })),
+      dcStudentsPerformances: studentsPerformances.map((sp) => ({
+        ...sp,
+        entityType: 'dc-students-performance' as const,
+        schoolName: schoolNames.get(sp.schoolId),
+        displayName: `${sp.grade} — ${sp.examName} ${sp.academicYear}`,
+      })),
+      dcStudentPerformances: studentPerformances.map((sp) => ({
+        ...sp,
+        entityType: 'dc-student-performance' as const,
+        schoolName: schoolNames.get(sp.schoolId),
+        displayName: `${sp.formKey.toUpperCase()} — ${sp.grade} (${sp.evaluationPeriod} ${sp.academicYear})`,
+      })),
+      dcActivityParticipations: activityParticipations.map((ap) => ({
+        ...ap,
+        entityType: 'dc-activity-participation' as const,
+        schoolName: schoolNames.get(ap.schoolId),
+        displayName: `${ap.item} — ${ap.grade}, ${ap.month} ${ap.year}`,
+      })),
+      dcEventParticipations: eventParticipations.map((ep) => ({
+        ...ep,
+        entityType: 'dc-event-participation' as const,
+        schoolName: schoolNames.get(ep.schoolId),
+        displayName: ep.eventName,
+      })),
+      dcFeeStructures: feeStructures.map((f) => ({
+        ...f,
+        entityType: 'dc-fee-structure' as const,
+        schoolName: schoolNames.get(f.schoolId),
+        displayName: `${f.grade} — ${f.month} ${f.academicYear}`,
       })),
     };
   }
@@ -201,6 +391,24 @@ export class RecycleBinService {
         return this.schoolsRepo;
       case 'geo-location':
         return this.geoLocationsRepo;
+      case 'dc-teacher-individual':
+        return this.dcTeacherIndividualsRepo;
+      case 'dc-alumni':
+        return this.dcAlumniRepo;
+      case 'dc-pedagogical-achievement':
+        return this.dcPedagogicalAchievementsRepo;
+      case 'dc-cocurricular':
+        return this.dcCocurricularRepo;
+      case 'dc-students-performance':
+        return this.dcStudentsPerformanceRepo;
+      case 'dc-student-performance':
+        return this.dcStudentPerformanceRepo;
+      case 'dc-activity-participation':
+        return this.dcActivityParticipationRepo;
+      case 'dc-event-participation':
+        return this.dcEventParticipationRepo;
+      case 'dc-fee-structure':
+        return this.dcFeeStructureRepo;
       default:
         throw new BadRequestException(`Unknown entity type: ${entityType}`);
     }
