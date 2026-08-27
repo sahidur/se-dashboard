@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // Routes that are accessible without authentication
-const PUBLIC_PATHS = new Set([
-  '/auth/login',
-  '/auth/forgot-password',
-]);
+const PUBLIC_PATHS = new Set(['/auth/login']);
 
 // Static asset paths that should never be blocked
 const STATIC_PREFIXES = ['/_next', '/favicon', '/icons', '/images'];

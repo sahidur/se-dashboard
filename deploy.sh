@@ -216,6 +216,10 @@ APP_ENV=production
 # Trust the nginx reverse proxy in front of us so rate limiting and audit logs
 # see the real client IP instead of 127.0.0.1.
 TRUST_PROXY=${TRUST_PROXY}
+# Session cookie Secure flag. In production behind TLS, cookies should only be
+# sent over HTTPS. The backend auto-enables this when APP_ENV=production, but
+# an explicit value removes any ambiguity.
+COOKIE_SECURE=true
 # ── Database (DigitalOcean Managed PostgreSQL) ───────────────────────────────
 DB_HOST=${DB_HOST}
 DB_PORT=${DB_PORT}
@@ -224,6 +228,9 @@ DB_PASSWORD=${DB_PASSWORD}
 DB_DATABASE=${DB_DATABASE}
 DB_SCHEMA=${DB_SCHEMA}
 DB_SSL=${DB_SSL}
+# Secure by default: TLS without certificate validation is still MITM-able.
+# DigitalOcean managed DBs need this set to false (their CA is not in the
+# default trust store). Set to true only when your host trusts the DB CA.
 DB_SSL_REJECT_UNAUTHORIZED=${DB_SSL_REJECT_UNAUTHORIZED}
 
 # ── JWT ───────────────────────────────────────────────────────────────────────

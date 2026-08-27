@@ -163,8 +163,9 @@ export class UsersController {
   async addSchools(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: AddSchoolsDto,
+    @CurrentUser('id') actorId: string,
   ) {
-    return this.usersService.addSchools(id, body.schoolIds || []);
+    return this.usersService.addSchools(id, body.schoolIds || [], actorId);
   }
 
   @Delete(':id/schools/:schoolId')
@@ -173,8 +174,9 @@ export class UsersController {
   async removeSchool(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @CurrentUser('id') actorId: string,
   ) {
-    return this.usersService.removeSchool(id, schoolId);
+    return this.usersService.removeSchool(id, schoolId, actorId);
   }
 
   @Delete(':id')

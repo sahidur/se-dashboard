@@ -6,6 +6,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -20,9 +21,100 @@ export class AuthService {
     private configService: ConfigService,
   ) {}
 
+  // ===================== Brute-force / enumeration defences =====================
+
+  /** Consecutive failed passwords allowed per account before a temporary lockout. */
+  private static readonly MAX_FAILED_ATTEMPTS = 5;
+  /** How long an account stays locked after hitting the failure threshold. */
+  private static readonly LOCKOUT_MS = 15 * 60 * 1000;
+  /** Cap on tracked identities so attackers can't grow the map unboundedly. */
+  private static readonly MAX_TRACKED_IDENTITIES = 10_000;
+
+  /** Keyed by normalised email: { consecutiveFailures, lockedUntil }. */
+  private failedLogins = new Map<string, { count: number; lockedUntil: number }>();
+
+  /**
+   * Lazily-created dummy bcrypt hash. When the login email doesn't exist we
+   * still run a full cost-12 compare against this hash so both paths take
+   * ~the same wall time — otherwise the fast "unknown user" path leaks which
+   * emails have accounts (timing-based account enumeration).
+   */
+  private dummyHash: string | null = null;
+
+  private async timingSafeDummyCompare(password: string): Promise<void> {
+    if (!this.dummyHash) {
+      this.dummyHash = await bcrypt.hash(randomBytes(24).toString('hex'), 12);
+    }
+    await bcrypt.compare(password, this.dummyHash);
+  }
+
+  private normalizeEmailKey(email: string): string {
+    return email.trim().toLowerCase();
+  }
+
+  /**
+   * During an active lockout every attempt is rejected uniformly ("Invalid
+   * credentials") so the lockout itself cannot be used as an account-
+   * existence oracle. Legitimate users locked out by an attacker must wait
+   * out the window or ask an admin to reset their password.
+   */
+  private async enforceLockout(key: string, password: string): Promise<void> {
+    const entry = this.failedLogins.get(key);
+    if (entry?.lockedUntil && entry.lockedUntil > Date.now()) {
+      await this.timingSafeDummyCompare(password);
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    // Lockout expired: reset the counter so a fresh attack starts from zero.
+    if (entry?.lockedUntil && entry.lockedUntil <= Date.now()) {
+      this.failedLogins.delete(key);
+    }
+  }
+
+  private recordFailedLogin(key: string): void {
+    // Bound memory usage under identity-spraying attacks.
+    if (
+      !this.failedLogins.has(key) &&
+      this.failedLogins.size >= AuthService.MAX_TRACKED_IDENTITIES
+    ) {
+      const now = Date.now();
+      for (const [k, v] of this.failedLogins) {
+        if (v.lockedUntil <= now && v.lockedUntil !== 0) {
+          this.failedLogins.delete(k);
+          if (this.failedLogins.size < AuthService.MAX_TRACKED_IDENTITIES) break;
+        }
+      }
+      if (this.failedLogins.size >= AuthService.MAX_TRACKED_IDENTITIES) {
+        const oldest = this.failedLogins.keys().next().value;
+        if (oldest !== undefined) this.failedLogins.delete(oldest);
+      }
+    }
+
+    const entry = this.failedLogins.get(key) ?? { count: 0, lockedUntil: 0 };
+    if (entry.lockedUntil && entry.lockedUntil <= Date.now()) {
+      entry.count = 0;
+      entry.lockedUntil = 0;
+    }
+    entry.count += 1;
+    if (entry.count >= AuthService.MAX_FAILED_ATTEMPTS) {
+      entry.lockedUntil = Date.now() + AuthService.LOCKOUT_MS;
+    }
+    this.failedLogins.set(key, entry);
+  }
+
+  private clearFailedLogins(key: string): void {
+    this.failedLogins.delete(key);
+  }
+
   async login(loginDto: LoginDto) {
+    const key = this.normalizeEmailKey(loginDto.email);
+
+    await this.enforceLockout(key, loginDto.password);
+
     const user = await this.usersService.findOneByEmail(loginDto.email);
     if (!user) {
+      // Unknown email: burn the same bcrypt time as a real compare so
+      // response latency doesn't disclose whether the account exists.
+      await this.timingSafeDummyCompare(loginDto.password);
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -31,8 +123,11 @@ export class AuthService {
       user.password,
     );
     if (!isPasswordValid) {
+      this.recordFailedLogin(key);
       throw new UnauthorizedException('Invalid credentials');
     }
+
+    this.clearFailedLogins(key);
 
     if (!user.isActive) {
       throw new UnauthorizedException('Account is deactivated');

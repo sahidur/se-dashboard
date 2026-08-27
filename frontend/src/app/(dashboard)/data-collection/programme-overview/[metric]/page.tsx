@@ -291,9 +291,16 @@ function triggerDownload(content: string, mime: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+// CSV formula-injection defence: spreadsheet apps execute cells starting
+// with = + - @ or tab/CR as formulas (=WEBSERVICE(...) can exfiltrate data).
+// Prefix them so they are treated as text; genuine negative numbers pass.
+const sanitizeCsvCell = (v: string): string => {
+  if (/^[-=+@\t\r]/.test(v) && !/^-\d+(\.\d+)?$/.test(v)) return `'${v}`;
+  return v;
+};
 const escapeCsv = (v: string | number) => {
-  const s = String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  const safe = sanitizeCsvCell(String(v));
+  return /[",\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 };
 
 const escapeHtml = (v: string | number) =>

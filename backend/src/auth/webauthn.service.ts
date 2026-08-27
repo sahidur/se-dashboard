@@ -8,7 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { randomUUID } from 'crypto';
+import { randomUUID, randomBytes } from 'crypto';
 import {
   generateRegistrationOptions,
   verifyRegistrationResponse,
@@ -108,7 +108,9 @@ export class WebAuthnService {
       authenticatorSelection: {
         // Prefer syncable, discoverable passkeys but allow security keys too.
         residentKey: 'preferred',
-        userVerification: 'preferred',
+        // Passkeys replace the password here, so the ceremony must prove the
+        // *user* (biometric/PIN), not merely possession of an unlocked device.
+        userVerification: 'required',
       },
       // ES256 (-7) and RS256 (-257) cover virtually all authenticators.
       supportedAlgorithmIDs: [-7, -257],
@@ -137,7 +139,7 @@ export class WebAuthnService {
         expectedChallenge: stored.challenge,
         expectedOrigin: this.origins,
         expectedRPID: this.rpID,
-        requireUserVerification: false,
+        requireUserVerification: true,
       });
     } catch (err) {
       this.logger.warn(`Passkey registration verification failed: ${err}`);
@@ -189,20 +191,32 @@ export class WebAuthnService {
 
     if (email) {
       const user = await this.usersService.findOneByEmail(email);
+      let realPasskeys: Passkey[] = [];
       if (user) {
-        const passkeys = await this.passkeyRepository.find({
+        realPasskeys = await this.passkeyRepository.find({
           where: { userId: user.id },
         });
-        allowCredentials = passkeys.map((p) => ({
-          id: p.credentialId,
-          transports: (p.transports as AuthenticatorTransportFuture[]) ?? undefined,
-        }));
       }
+      // Anti-enumeration: for unknown emails (or accounts without passkeys),
+      // return plausible decoy credential IDs instead of omitting the field.
+      // The response shape is identical, so an attacker cannot tell from
+      // this public endpoint whether the email has passkeys. Assertions
+      // against decoy IDs fail verification ("Unrecognised passkey").
+      allowCredentials = realPasskeys.length
+        ? realPasskeys.map((p) => ({
+            id: p.credentialId,
+            transports:
+              (p.transports as AuthenticatorTransportFuture[]) ?? undefined,
+          }))
+        : [
+            { id: isoBase64URL.fromBuffer(randomBytes(32)) },
+            { id: isoBase64URL.fromBuffer(randomBytes(32)) },
+          ];
     }
 
     const options = await generateAuthenticationOptions({
       rpID: this.rpID,
-      userVerification: 'preferred',
+      userVerification: 'required',
       // Omit allowCredentials entirely for a usernameless / discoverable flow.
       allowCredentials: allowCredentials?.length ? allowCredentials : undefined,
     });
@@ -237,7 +251,7 @@ export class WebAuthnService {
         expectedChallenge: stored.challenge,
         expectedOrigin: this.origins,
         expectedRPID: this.rpID,
-        requireUserVerification: false,
+        requireUserVerification: true,
         credential: {
           id: passkey.credentialId,
           publicKey: isoBase64URL.toBuffer(passkey.publicKey),

@@ -17,6 +17,7 @@ import { SchoolRecord } from './entities/school-record.entity';
 import { SurveyCategory } from './entities/survey-category.entity';
 import { CreateSurveyDto } from './dto/create-survey.dto';
 import { UpdateSurveyDto } from './dto/update-survey.dto';
+import { UpdateSurveyCategoryDto } from './dto/update-survey-category.dto';
 import { SubmitSurveyResponseDto } from './dto/submit-response.dto';
 import { UsersService } from '../users/users.service';
 
@@ -84,6 +85,26 @@ export class SurveysService {
     if (await this.hasPermission(userId, 'surveys', 'read')) return;
     // Same "not found" as a missing survey so existence is not disclosed.
     throw new NotFoundException('Survey not found');
+  }
+
+  /**
+   * Write guard for survey-management endpoints (edit, status change, delete,
+   * assignments, copy). The creator always may; otherwise only admin-tier
+   * roles (Super Admin/Admin). Peer Survey Creators must not be able to
+   * tamper with each other's forms — the coarse surveys:update permission
+   * alone is not sufficient for object-level access.
+   */
+  private async assertSurveyWriteAccess(
+    survey: Survey,
+    userId: string,
+  ): Promise<void> {
+    if (survey.createdById === userId) return;
+    const fullUser = await this.usersService.findOneById(userId);
+    const roles = fullUser?.roles?.map((r) => r.name) ?? [];
+    if (this.isAdminRole(roles)) return;
+    throw new ForbiddenException(
+      'You can only modify surveys you created',
+    );
   }
 
   /**
@@ -362,6 +383,7 @@ export class SurveysService {
   async update(
     id: string,
     updateSurveyDto: UpdateSurveyDto,
+    actorId?: string,
   ): Promise<Survey> {
     const survey = await this.surveysRepository.findOne({
       where: { id },
@@ -369,6 +391,10 @@ export class SurveysService {
     });
     if (!survey) {
       throw new NotFoundException('Survey not found');
+    }
+    // Ownership guard: only the creator or admin-tier roles may edit.
+    if (actorId) {
+      await this.assertSurveyWriteAccess(survey, actorId);
     }
 
     // Only drafts can have fields/sections edited
@@ -493,6 +519,10 @@ export class SurveysService {
     if (!survey) {
       throw new NotFoundException('Survey not found');
     }
+    // Ownership guard: only the creator or admin-tier roles may publish/close.
+    if (userId) {
+      await this.assertSurveyWriteAccess(survey, userId);
+    }
 
     const validTransitions: Record<SurveyStatus, SurveyStatus[]> = {
       [SurveyStatus.DRAFT]: [SurveyStatus.PUBLISHED],
@@ -539,10 +569,14 @@ export class SurveysService {
 
   // ===================== Delete (Soft) =====================
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string, actorId?: string): Promise<void> {
     const survey = await this.surveysRepository.findOne({ where: { id } });
     if (!survey) {
       throw new NotFoundException('Survey not found');
+    }
+    // Ownership guard: only the creator or admin-tier roles may delete.
+    if (actorId) {
+      await this.assertSurveyWriteAccess(survey, actorId);
     }
 
     if (survey.wasPublished) {
@@ -564,12 +598,18 @@ export class SurveysService {
       schoolId?: string;
       excludeUserIds?: string[];
     },
+    actorId?: string,
   ): Promise<SurveyAssignment> {
     const survey = await this.surveysRepository.findOne({
       where: { id: surveyId },
     });
     if (!survey) {
       throw new NotFoundException('Survey not found');
+    }
+    // Ownership guard: assignments control who can respond — only the
+    // creator or admin-tier roles may change them.
+    if (actorId) {
+      await this.assertSurveyWriteAccess(survey, actorId);
     }
     const entity = this.assignmentsRepository.create({
       surveyId,
@@ -590,12 +630,16 @@ export class SurveysService {
       schoolId?: string;
       excludeUserIds?: string[];
     }>,
+    actorId?: string,
   ): Promise<SurveyAssignment[]> {
     const survey = await this.surveysRepository.findOne({
       where: { id: surveyId },
     });
     if (!survey) {
       throw new NotFoundException('Survey not found');
+    }
+    if (actorId) {
+      await this.assertSurveyWriteAccess(survey, actorId);
     }
 
     const entities = assignments.map((a) =>
@@ -610,12 +654,17 @@ export class SurveysService {
     return this.assignmentsRepository.save(entities);
   }
 
-  async removeAssignment(assignmentId: string): Promise<void> {
+  async removeAssignment(assignmentId: string, actorId?: string): Promise<void> {
     const assignment = await this.assignmentsRepository.findOne({
       where: { id: assignmentId },
+      relations: ['survey'],
     });
     if (!assignment) {
       throw new NotFoundException('Assignment not found');
+    }
+    // Ownership guard via the parent survey (assignment itself has no owner).
+    if (actorId && assignment.survey) {
+      await this.assertSurveyWriteAccess(assignment.survey, actorId);
     }
     await this.assignmentsRepository.remove(assignment);
   }
@@ -631,6 +680,9 @@ export class SurveysService {
 
   async copySurvey(id: string, userId: string): Promise<Survey> {
     const original = await this.findOne(id);
+    // Copying duplicates the full structure — require write access on the
+    // source so one creator cannot clone another's unpublished forms.
+    await this.assertSurveyWriteAccess(original, userId);
 
     const newSurvey = this.surveysRepository.create({
       title: `${original.title} (Copy)`,
@@ -1080,7 +1132,7 @@ export class SurveysService {
 
   async updateCategory(
     id: string,
-    data: { name?: string; description?: string; sortOrder?: number; isActive?: boolean },
+    data: UpdateSurveyCategoryDto,
   ): Promise<SurveyCategory> {
     const category = await this.categoryRepository.findOne({ where: { id } });
     if (!category) {
@@ -1182,16 +1234,33 @@ export class SurveysService {
     });
   }
 
-  // Transfer school record ownership (Super Admin only)
+  // Transfer school record ownership
   async transferSchoolRecordOwnership(
     recordId: string,
     newOwnerId: string,
+    actorId?: string,
   ): Promise<SchoolRecord> {
     const record = await this.schoolRecordRepository.findOne({
       where: { id: recordId },
     });
     if (!record) {
       throw new NotFoundException('School record not found');
+    }
+    // Only the current owner or admin-tier roles may transfer ownership.
+    if (actorId && record.createdById !== actorId) {
+      const fullUser = await this.usersService.findOneById(actorId);
+      const roles = fullUser?.roles?.map((r) => r.name) ?? [];
+      if (!this.isAdminRole(roles)) {
+        throw new ForbiddenException(
+          'Only the record owner or an administrator can transfer ownership',
+        );
+      }
+    }
+    // The target must be a real, active account — otherwise records could be
+    // silently handed to a deleted/nonexistent user id.
+    const target = await this.usersService.findActiveUserById(newOwnerId);
+    if (!target) {
+      throw new BadRequestException('Target owner not found or deactivated');
     }
     record.createdById = newOwnerId;
     return this.schoolRecordRepository.save(record);

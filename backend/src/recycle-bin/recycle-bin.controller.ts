@@ -13,6 +13,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AccessGuard } from '../auth/guards/access.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
 import { RecycleBinService, RecycleBinEntityType, RECYCLE_BIN_ENTITY_TYPES } from './recycle-bin.service';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 @ApiTags('Recycle Bin')
 @ApiBearerAuth()
@@ -34,8 +35,10 @@ export class RecycleBinController {
   async restore(
     @Param('entityType', new ParseEnumPipe(RECYCLE_BIN_ENTITY_TYPES)) entityType: RecycleBinEntityType,
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') actorId: string,
   ) {
-    return this.recycleBinService.restore(entityType, id);
+    // actorId enables the privilege-hierarchy guard for user entities.
+    return this.recycleBinService.restore(entityType, id, actorId);
   }
 
   @Delete(':entityType/:id')
@@ -44,7 +47,8 @@ export class RecycleBinController {
   async permanentDelete(
     @Param('entityType', new ParseEnumPipe(RECYCLE_BIN_ENTITY_TYPES)) entityType: RecycleBinEntityType,
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') actorId: string,
   ) {
-    return this.recycleBinService.permanentDelete(entityType, id);
+    return this.recycleBinService.permanentDelete(entityType, id, actorId);
   }
 }

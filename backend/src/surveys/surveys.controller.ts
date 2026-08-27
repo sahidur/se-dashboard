@@ -24,6 +24,7 @@ import { CreateSurveyDto } from './dto/create-survey.dto';
 import { UpdateSurveyDto } from './dto/update-survey.dto';
 import { SubmitSurveyResponseDto } from './dto/submit-response.dto';
 import { CreateSurveyAssignmentDto } from './dto/create-survey.dto';
+import { UpdateSurveyCategoryDto } from './dto/update-survey-category.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AccessGuard } from '../auth/guards/access.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
@@ -100,13 +101,9 @@ export class SurveysController {
   @ApiOperation({ summary: 'Update a survey category' })
   async updateCategory(
     @Param('categoryId', ParseUUIDPipe) categoryId: string,
-    @Body()
-    body: {
-      name?: string;
-      description?: string;
-      sortOrder?: number;
-      isActive?: boolean;
-    },
+    // Typed DTO so ValidationPipe whitelisting applies — prevents mass
+    // assignment of arbitrary entity columns.
+    @Body() body: UpdateSurveyCategoryDto,
   ) {
     return this.surveysService.updateCategory(categoryId, body);
   }
@@ -171,10 +168,12 @@ export class SurveysController {
   async transferSchoolRecordOwnership(
     @Param('recordId', ParseUUIDPipe) recordId: string,
     @Body('newOwnerId', ParseUUIDPipe) newOwnerId: string,
+    @CurrentUser('id') userId: string,
   ) {
     return this.surveysService.transferSchoolRecordOwnership(
       recordId,
       newOwnerId,
+      userId,
     );
   }
 
@@ -242,8 +241,10 @@ export class SurveysController {
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateSurveyDto: UpdateSurveyDto,
+    @CurrentUser('id') userId: string,
   ) {
-    return this.surveysService.update(id, updateSurveyDto);
+    // userId enables the ownership guard in the service.
+    return this.surveysService.update(id, updateSurveyDto, userId);
   }
 
   @Patch(':id/status')
@@ -281,8 +282,9 @@ export class SurveysController {
   async addAssignment(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateSurveyAssignmentDto,
+    @CurrentUser('id') userId: string,
   ) {
-    return this.surveysService.addAssignment(id, dto);
+    return this.surveysService.addAssignment(id, dto, userId);
   }
 
   @Post(':id/assignments/bulk')
@@ -291,8 +293,9 @@ export class SurveysController {
   async addBulkAssignments(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: { assignments: CreateSurveyAssignmentDto[] },
+    @CurrentUser('id') userId: string,
   ) {
-    return this.surveysService.addBulkAssignments(id, body.assignments);
+    return this.surveysService.addBulkAssignments(id, body.assignments, userId);
   }
 
   @Delete('assignments/:assignmentId')
@@ -300,16 +303,17 @@ export class SurveysController {
   @ApiOperation({ summary: 'Remove an assignment' })
   async removeAssignment(
     @Param('assignmentId', ParseUUIDPipe) assignmentId: string,
+    @CurrentUser('id') userId: string,
   ) {
-    await this.surveysService.removeAssignment(assignmentId);
+    await this.surveysService.removeAssignment(assignmentId, userId);
     return { message: 'Assignment removed' };
   }
 
   @Delete(':id')
   @Permissions({ module: 'surveys', action: 'delete' })
   @ApiOperation({ summary: 'Delete a survey (never if was published)' })
-  async remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.surveysService.remove(id);
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('id') userId: string) {
+    return this.surveysService.remove(id, userId);
   }
 
   // =========== Survey Responses ===========

@@ -31,6 +31,9 @@ export class RolesService {
     isSuperAdmin: boolean;
     best: number;
     heldRoleIds: Set<string>;
+    /** Granted permission keys: `${module}:${action}:${resource ?? ''}`
+     * (empty resource segment = wildcard/umbrella grant). */
+    permissionKeys: Set<string>;
   } | null> {
     if (!actorId) return null;
     const actor = await this.usersService.findOneById(actorId);
@@ -44,6 +47,13 @@ export class RolesService {
       isSuperAdmin,
       best,
       heldRoleIds: new Set((actor.roles || []).map((r) => r.id)),
+      permissionKeys: new Set(
+        (actor.roles || []).flatMap((r) =>
+          (r.permissions || []).map(
+            (p) => `${p.module}:${p.action}:${p.resource ?? ''}`,
+          ),
+        ),
+      ),
     };
   }
 
@@ -56,6 +66,31 @@ export class RolesService {
     if (hierarchy < actor.best) {
       throw new ForbiddenException(
         'You cannot create roles with more privileges than your own',
+      );
+    }
+  }
+
+  /**
+   * "You cannot give what you don't have": a non-Super-Admin may only embed
+   * permissions into a created/edited role that they themselves hold — either
+   * the exact resource-scoped grant or an umbrella (resource-less) grant on
+   * the same module+action. Without this, an Admin could mint a same-level
+   * role carrying arbitrary permissions (e.g. users:delete) and self-assign
+   * it, escalating to Super-Admin-equivalent power without ever holding it.
+   */
+  private assertPermissionsWithinActorGrants(
+    actor: Awaited<ReturnType<RolesService['actorPower']>>,
+    perms: Array<{ module: string; action: string; resource?: string | null }>,
+  ): void {
+    if (!actor || actor.isSuperAdmin || !perms.length) return;
+    const holds = (
+      p: { module: string; action: string; resource?: string | null },
+    ) =>
+      actor.permissionKeys.has(`${p.module}:${p.action}:${p.resource ?? ''}`) ||
+      actor.permissionKeys.has(`${p.module}:${p.action}:`);
+    if (!perms.every(holds)) {
+      throw new ForbiddenException(
+        'You cannot grant permissions you do not hold yourself',
       );
     }
   }
@@ -91,7 +126,14 @@ export class RolesService {
     }
 
     const hierarchy = createRoleDto.hierarchy || 0;
-    this.assertCanCreateRole(await this.actorPower(actorId), hierarchy);
+    const actor = await this.actorPower(actorId);
+    this.assertCanCreateRole(actor, hierarchy);
+    // Escalation guard: the new role may only carry permissions the actor
+    // already holds themselves.
+    this.assertPermissionsWithinActorGrants(
+      actor,
+      createRoleDto.permissions ?? [],
+    );
 
     const role = this.rolesRepository.create({
       name: createRoleDto.name,
@@ -183,6 +225,9 @@ export class RolesService {
     });
 
     if (updateRoleDto.permissions) {
+      // Escalation guard: the rewritten permission set may only contain
+      // permissions the actor already holds themselves.
+      this.assertPermissionsWithinActorGrants(actor, updateRoleDto.permissions);
       // Remove existing permissions
       await this.permissionsRepository.delete({ roleId: id });
 

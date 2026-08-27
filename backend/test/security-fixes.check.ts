@@ -6,7 +6,7 @@
  * data. Execute with:
  *   npx ts-node -r tsconfig-paths/register test/security-fixes.check.ts
  */
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { UsersService } from '../src/users/users.service';
 import { SurveysService } from '../src/surveys/surveys.service';
 import { RolesService } from '../src/roles/roles.service';
@@ -56,6 +56,19 @@ function expectNotFound(p: Promise<any>) {
   );
 }
 
+function expectBadRequest(p: Promise<any>) {
+  return p.then(
+    () => {
+      throw new Error('expected BadRequestException, got success');
+    },
+    (e) => {
+      if (!(e instanceof BadRequestException)) {
+        throw new Error(`expected BadRequestException, got ${e?.constructor?.name}: ${e?.message}`);
+      }
+    },
+  );
+}
+
 // ── Fixtures ────────────────────────────────────────────────────────────────
 const SUPER_ADMIN_ROLE = { id: 'role-super', name: 'Super Admin', hierarchy: 0, permissions: [] as any[] };
 const ADMIN_ROLE = { id: 'role-admin', name: 'Admin', hierarchy: 1, permissions: [] as any[] };
@@ -79,13 +92,27 @@ async function usersTests() {
   const teacherTarget = mkTarget('u-target-teacher', [TEACHER_ROLE]);
 
   let assignedRoles: any[] | null = null;
+  const FINANCE_ROLE = {
+    id: 'role-finance',
+    name: 'Finance',
+    hierarchy: 5,
+    permissions: [{ module: 'finance', action: 'read', resource: null }] as any[],
+  };
+  const allRoles = [SUPER_ADMIN_ROLE, ADMIN_ROLE, TEACHER_ROLE, FINANCE_ROLE];
   const rolesRepo = {
     findBy: async (criteria: any) => {
       const ids = criteria.id as any;
       const wanted: string[] = Array.isArray(ids) ? ids : ids?.value ?? [];
-      return [SUPER_ADMIN_ROLE, ADMIN_ROLE, TEACHER_ROLE].filter((r) =>
-        wanted.includes(r.id),
-      );
+      return allRoles.filter((r) => wanted.includes(r.id));
+    },
+    // TypeORM find({ where: { id: In(ids) }, relations: ['permissions'] }) —
+    // used by findRolesWithPermissions for the permission-subset guard.
+    find: async (opts: any) => {
+      const ids = opts?.where?.id as any;
+      const wanted: string[] = Array.isArray(ids) ? ids : ids?.value ?? [];
+      return allRoles
+        .filter((r) => wanted.includes(r.id))
+        .map((r) => ({ ...r, permissions: r.permissions ?? [] }));
     },
   };
   const usersRepo: any = {
@@ -138,6 +165,18 @@ async function usersTests() {
       expectForbidden(
         svc.assignRoles('u-target-teacher', ['role-super'], 'u-admin'),
       ),
+  );
+  await check(
+    'Admin CANNOT assign a role carrying permissions beyond its own (subset guard)',
+    () =>
+      expectForbidden(
+        svc.assignRoles('u-target-teacher', ['role-finance'], 'u-admin'),
+      ),
+  );
+  await check(
+    'Super Admin CAN assign a role carrying any permissions',
+    () =>
+      svc.assignRoles('u-target-teacher', ['role-finance'], 'u-super'),
   );
   await check(
     'Admin CAN grant the Teacher role',
@@ -209,10 +248,36 @@ async function rolesTests() {
   };
   const permsRepo = { create: (x: any) => x, save: async (x: any) => x, delete: async () => undefined };
 
+  // An Admin-tier actor holding exactly ONE form-scoped permission.
+  const permAdminUser = {
+    id: 'u-perm-admin',
+    isActive: true,
+    roles: [
+      {
+        name: 'Admin',
+        hierarchy: 1,
+        permissions: [{ module: 'data-collection', action: 'create', resource: 'basic-info' }],
+      },
+    ],
+  };
+  const umbrellaAdminUser = {
+    id: 'u-umbrella-admin',
+    isActive: true,
+    roles: [
+      {
+        name: 'Admin',
+        hierarchy: 1,
+        permissions: [{ module: 'surveys', action: 'update', resource: null }],
+      },
+    ],
+  };
+
   const usersSvcMock = {
     findOneById: async (id: string) => {
       if (id === 'u-admin') return adminUser;
       if (id === 'u-super') return superAdminUser;
+      if (id === 'u-perm-admin') return permAdminUser;
+      if (id === 'u-umbrella-admin') return umbrellaAdminUser;
       return null;
     },
   } as any;
@@ -229,6 +294,57 @@ async function rolesTests() {
   await check(
     'Admin CAN create a role below own level',
     () => svc.create({ name: 'Helper', hierarchy: 5 } as any, 'u-admin'),
+  );
+  await check(
+    'Admin CANNOT mint a same-level role carrying permissions it does not hold',
+    () =>
+      expectForbidden(
+        svc.create(
+          {
+            name: 'Evil Peer',
+            hierarchy: 1,
+            permissions: [{ module: 'users', action: 'delete' }],
+          } as any,
+          'u-perm-admin',
+        ),
+      ),
+  );
+  await check(
+    'Admin CAN mint a same-level role carrying only held permissions',
+    () =>
+      svc.create(
+        {
+          name: 'Peer Helper',
+          hierarchy: 1,
+          permissions: [
+            { module: 'data-collection', action: 'create', resource: 'basic-info' },
+          ],
+        } as any,
+        'u-perm-admin',
+      ),
+  );
+  await check(
+    'Umbrella holder CAN mint a role granting a scoped subset of its grant',
+    () =>
+      svc.create(
+        {
+          name: 'Survey Editor',
+          hierarchy: 1,
+          permissions: [{ module: 'surveys', action: 'update', resource: 'alumni' }],
+        } as any,
+        'u-umbrella-admin',
+      ),
+  );
+  await check(
+    'Admin CANNOT rewrite a lower role to include permissions it does not hold',
+    () =>
+      expectForbidden(
+        svc.update(
+          'role-viewer',
+          { permissions: [{ module: 'activity-logs', action: 'read' }] } as any,
+          'u-perm-admin',
+        ),
+      ),
   );
   await check(
     'Admin CANNOT modify the Super Admin role',
@@ -485,19 +601,61 @@ async function uploadsTests() {
     },
   );
   await check(
-    'unsigned legacy URLs allowed by default, rejected when flag disabled',
+    'unsigned legacy URLs rejected by default, allowed only with explicit grace flag',
     () => {
-      const permissive = makeSvc({ JWT_SECRET: 'x'.repeat(64) });
-      if (!permissive.verifyLocalRequest('uploads/a.jpg', undefined, undefined)) {
-        throw new Error('legacy unsigned URL should be allowed during migration');
-      }
-      const strict = makeSvc({
-        JWT_SECRET: 'x'.repeat(64),
-        UPLOADS_ALLOW_UNSIGNED: 'false',
-      });
+      // Secure-by-default: unsigned URLs are NOT accepted unless
+      // UPLOADS_ALLOW_UNSIGNED=true is explicitly set (migration grace).
+      const strict = makeSvc({ JWT_SECRET: 'x'.repeat(64) });
       if (strict.verifyLocalRequest('uploads/a.jpg', undefined, undefined)) {
-        throw new Error('unsigned URL should be rejected when grace disabled');
+        throw new Error('unsigned URL should be rejected by default');
       }
+      const permissive = makeSvc({
+        JWT_SECRET: 'x'.repeat(64),
+        UPLOADS_ALLOW_UNSIGNED: 'true',
+      });
+      if (!permissive.verifyLocalRequest('uploads/a.jpg', undefined, undefined)) {
+        throw new Error('legacy unsigned URL should be allowed when grace flag set');
+      }
+    },
+  );
+  await check(
+    'upload whose bytes do not match the declared type is rejected (magic bytes)',
+    () => {
+      const svc = makeSvc({ JWT_SECRET: 'x'.repeat(64) });
+      const htmlAsPng = {
+        buffer: Buffer.from('<html><script>alert(1)</script></html>'),
+        mimetype: 'image/png',
+        originalname: 'payload.png',
+      } as any;
+      return expectBadRequest(svc.uploadFile(htmlAsPng, 'sec-test'));
+    },
+  );
+  await check(
+    'empty upload is rejected',
+    () => {
+      const svc = makeSvc({ JWT_SECRET: 'x'.repeat(64) });
+      const emptyPng = { buffer: Buffer.alloc(0), mimetype: 'image/png' } as any;
+      return expectBadRequest(svc.uploadFile(emptyPng, 'sec-test'));
+    },
+  );
+  await check(
+    'upload matching its declared type passes byte validation',
+    () => {
+      const svc = makeSvc({ JWT_SECRET: 'x'.repeat(64) });
+      const pngHeader = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      const realPng = {
+        buffer: Buffer.concat([pngHeader, Buffer.from('payload-but-valid-header')]),
+        mimetype: 'image/png',
+        originalname: 'ok.png',
+      } as any;
+      return svc.uploadFile(realPng, 'sec-test').then((r: { url: string; key: string }) => {
+        if (!r.url.startsWith('/api/uploads/sec-test/')) {
+          throw new Error(`unexpected url shape: ${r.url}`);
+        }
+        if (!r.key.endsWith('.png')) {
+          throw Error(`stored extension not derived server-side: ${r.key}`);
+        }
+      });
     },
   );
 }
@@ -582,6 +740,82 @@ async function pinTests() {
   );
 }
 
+async function accessGuardTests() {
+  console.log('\n[AccessGuard] per-resource permission scoping');
+
+  const { AccessGuard } = require('../src/auth/guards/access.guard');
+  const { PERMISSIONS_KEY } = require('../src/common/decorators/permissions.decorator');
+
+  // The actor holds data-collection:create scoped to ONE form only.
+  const scopedGrantUser = {
+    id: 'u-scoped',
+    roles: [
+      {
+        name: 'Scoped Collector',
+        permissions: [{ module: 'data-collection', action: 'create', resource: 'basic-info' }],
+      },
+    ],
+  };
+  const umbrellaGrantUser = {
+    id: 'u-umbrella',
+    roles: [
+      {
+        name: 'Full Collector',
+        permissions: [{ module: 'data-collection', action: 'create', resource: null }],
+      },
+    ],
+  };
+
+  const usersSvcMock = {
+    findOneById: async (id: string) => {
+      if (id === 'u-scoped') return scopedGrantUser;
+      if (id === 'u-umbrella') return umbrellaGrantUser;
+      return null;
+    },
+  } as any;
+
+  const makeGuard = (required: any[]) => {
+    const reflector = {
+      getAllAndOverride: (key: string) =>
+        key === PERMISSIONS_KEY ? required : undefined,
+    };
+    return new AccessGuard(reflector as any, usersSvcMock);
+  };
+
+  const run = (guard: any, user: { id: string }) =>
+    guard.canActivate({
+      switchToHttp: () => ({ getRequest: () => ({ user }) }),
+      getHandler: () => 'handler',
+      getClass: () => 'class',
+    } as any);
+
+  const basicInfoOnly = [{ module: 'data-collection', action: 'create', resource: 'basic-info' }];
+  const revenueForm = [{ module: 'data-collection', action: 'create', resource: 'revenue' }];
+
+  await check(
+    'form-scoped grant SATISFIES its own form requirement',
+    () => run(makeGuard(basicInfoOnly), { id: 'u-scoped' }).then((ok: boolean) => {
+      if (!ok) throw new Error('own-form grant denied');
+    }),
+  );
+  await check(
+    'form-scoped grant does NOT satisfy another form requirement (bypass fixed)',
+    () =>
+      run(makeGuard(revenueForm), { id: 'u-scoped' }).then(
+        (ok: boolean) => {
+          if (ok) throw new Error('cross-form bypass still possible');
+        },
+        () => undefined,
+      ),
+  );
+  await check(
+    'resource-less (umbrella) grant satisfies a specific form requirement',
+    () => run(makeGuard(revenueForm), { id: 'u-umbrella' }).then((ok: boolean) => {
+      if (!ok) throw new Error('umbrella grant wrongly denied');
+    }),
+  );
+}
+
 async function cookieTests() {
   console.log('\n[JwtStrategy] cookie extractor');
 
@@ -609,6 +843,7 @@ async function cookieTests() {
   await uploadsTests();
   await pinTests();
   await cookieTests();
+  await accessGuardTests();
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 })();

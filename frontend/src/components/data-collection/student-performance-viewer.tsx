@@ -33,7 +33,17 @@ function triggerDownload(content: string, mime: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-const escapeCsv = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+// CSV formula-injection defence: spreadsheet apps execute cells starting
+// with = + - @ or tab/CR as formulas (=WEBSERVICE(...) can exfiltrate data).
+// Prefix them so they are treated as text; genuine negative numbers pass.
+const sanitizeCsvCell = (v: string): string => {
+  if (/^[-=+@\t\r]/.test(v) && !/^-\d+(\.\d+)?$/.test(v)) return `'${v}`;
+  return v;
+};
+const escapeCsv = (v: string) => {
+  const safe = sanitizeCsvCell(v);
+  return /[",\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+};
 const escapeHtml = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 const round2 = (n: number) => Math.round(n * 100) / 100;

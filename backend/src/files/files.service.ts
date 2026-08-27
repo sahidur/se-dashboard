@@ -32,6 +32,53 @@ const ALLOWED_MIME_EXTENSIONS: Record<string, string> = {
   'text/csv': '.csv',
 };
 
+/**
+ * Binary signatures ("magic bytes") for allowed types where a reliable
+ * signature exists. Multer's `file.mimetype` is whatever the CLIENT declared
+ * in the multipart header, so without this check anyone could upload an
+ * arbitrary payload (HTML, EXE, ZIP polyglot) labelled `image/png`.
+ * `text/csv` has no meaningful signature and is exempt.
+ */
+const MIME_MAGIC_BYTES: Record<
+  string,
+  Array<{ offset: number; bytes: number[] }>
+> = {
+  'image/jpeg': [{ offset: 0, bytes: [0xff, 0xd8, 0xff] }],
+  'image/png': [
+    {
+      offset: 0,
+      bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+    },
+  ],
+  'image/gif': [
+    { offset: 0, bytes: [...'GIF87a'].map((c) => c.charCodeAt(0)) },
+    { offset: 0, bytes: [...'GIF89a'].map((c) => c.charCodeAt(0)) },
+  ],
+  // RIFF container with WEBP form marker at offset 8.
+  'image/webp': [
+    { offset: 0, bytes: [...'RIFF'].map((c) => c.charCodeAt(0)) },
+    { offset: 8, bytes: [...'WEBP'].map((c) => c.charCodeAt(0)) },
+  ],
+  'application/pdf': [
+    { offset: 0, bytes: [...'%PDF-'].map((c) => c.charCodeAt(0)) },
+  ],
+  // XLSX is a ZIP container (OOXML); legacy XLS is the OLE2 compound format.
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': [
+    { offset: 0, bytes: [0x50, 0x4b, 0x03, 0x04] },
+    { offset: 0, bytes: [0x50, 0x4b, 0x05, 0x06] },
+    { offset: 0, bytes: [0x50, 0x4b, 0x07, 0x08] },
+  ],
+  'application/vnd.ms-excel': [
+    { offset: 0, bytes: [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1] },
+  ],
+};
+
+/** Every extension this app may store/serve (single source of truth). */
+export const SAFE_SERVE_EXTENSIONS = new Set([
+  ...Object.values(ALLOWED_MIME_EXTENSIONS),
+  '.jpeg',
+]);
+
 @Injectable()
 export class FilesService {
   private readonly logger = new Logger(FilesService.name);
@@ -51,6 +98,14 @@ export class FilesService {
     this.bucket = this.configService.get('S3_BUCKET', 'dev-shomadhanhobe-resources');
     this.folder = this.configService.get('S3_FOLDER', 'bep-se');
     this.localUploadDir = path.join(process.cwd(), 'uploads');
+
+    if (this.allowsUnsignedUrls()) {
+      this.logger.warn(
+        'UPLOADS_ALLOW_UNSIGNED=true — unsigned upload URLs are accepted ' +
+          '(legacy migration grace). Disable it in production: possession of ' +
+          'any URL then grants permanent anonymous access.',
+      );
+    }
 
     // If S3 keys are not configured, use local storage
     if (!accessKey || !secretKey) {
@@ -85,6 +140,9 @@ export class FilesService {
     if (!ALLOWED_MIME_EXTENSIONS[file.mimetype]) {
       throw new BadRequestException(`File type '${file.mimetype}' is not allowed`);
     }
+    // Validate the actual bytes match the declared type (client-controlled
+    // mimetype alone is attacker-chosen).
+    this.assertMagicBytes(file);
     if (this.useLocal) {
       return this.uploadFileLocal(file, subfolder);
     }
@@ -94,6 +152,34 @@ export class FilesService {
   /** Safe, server-controlled extension for a validated upload. */
   private extensionFor(file: Express.Multer.File): string {
     return ALLOWED_MIME_EXTENSIONS[file.mimetype];
+  }
+
+  /**
+   * Content-type for storage, derived server-side from the allowlist map —
+   * never from the client-declared header beyond the already-validated key.
+   */
+  private contentTypeFor(file: Express.Multer.File): string {
+    return file.mimetype;
+  }
+
+  /** Reject files whose leading bytes don't match the declared type. */
+  private assertMagicBytes(file: Express.Multer.File): void {
+    const signatures = MIME_MAGIC_BYTES[file.mimetype];
+    if (!signatures?.length) return; // e.g. text/csv
+    const buf = file.buffer;
+    if (!buf || buf.length === 0) {
+      throw new BadRequestException('Uploaded file is empty');
+    }
+    const matches = signatures.some(
+      (sig) =>
+        sig.offset + sig.bytes.length <= buf.length &&
+        sig.bytes.every((byte, i) => buf[sig.offset + i] === byte),
+    );
+    if (!matches) {
+      throw new BadRequestException(
+        'File content does not match its declared type',
+      );
+    }
   }
 
   // ===================== Signed local upload URLs =====================
@@ -120,12 +206,19 @@ export class FilesService {
 
   /** Whether unsigned legacy URLs are still accepted (migration grace). */
   allowsUnsignedUrls(): boolean {
-    return this.configService.get('UPLOADS_ALLOW_UNSIGNED', 'true') === 'true';
+    return this.configService.get('UPLOADS_ALLOW_UNSIGNED', 'false') === 'true';
   }
 
   /** Signed, relative URL for a locally stored upload key. */
-  signUploadPath(key: string): string {
-    const exp = Math.floor(Date.now() / 1000) + this.urlTtlSeconds();
+  signUploadPath(key: string, ttlSeconds?: number): string {
+    // Requested TTL is capped by the deployment-wide signing policy.
+    const ttl = Math.min(
+      ttlSeconds && Number.isFinite(ttlSeconds) && ttlSeconds > 0
+        ? ttlSeconds
+        : Number.POSITIVE_INFINITY,
+      this.urlTtlSeconds(),
+    );
+    const exp = Math.floor(Date.now() / 1000) + (Number.isFinite(ttl) ? ttl : this.urlTtlSeconds());
     const sig = createHmac('sha256', this.uploadUrlSecret())
       .update(`${key}|${exp}`)
       .digest('base64url');
@@ -191,10 +284,17 @@ export class FilesService {
         Bucket: this.bucket,
         Key: key,
         Body: file.buffer,
-        ContentType: file.mimetype,
-        // Objects are rendered in the browser; force the declared content type
-        // and stop the browser sniffing it into something executable.
-        ContentDisposition: 'inline',
+        // Server-validated type (magic bytes checked above), not a raw echo
+        // of the client header.
+        ContentType: this.contentTypeFor(file),
+        // Images stay inline (they are rendered via <img>); documents are
+        // forced to download so nothing user-supplied renders/interprets on
+        // the bucket origin.
+        ContentDisposition: file.mimetype.startsWith('image/')
+          ? 'inline'
+          : 'attachment',
+        // Don't let shared caches retain authenticated users' uploads.
+        CacheControl: 'private, max-age=3600',
         ACL: 'public-read',
       }),
     );
@@ -235,8 +335,13 @@ export class FilesService {
 
   async getSignedUrl(key: string, expiresIn = 3600): Promise<string> {
     if (this.useLocal) {
-      void expiresIn; // TTL is governed by the shared signing policy
-      return this.signUploadPath(key);
+      // Honour the requested TTL (capped by the shared signing policy).
+      return this.signUploadPath(key, expiresIn);
+    }
+    // Confine signing to this application's prefix — same bound as deletion,
+    // so a crafted key cannot mint read links into unrelated bucket objects.
+    if (!key || key.includes('..') || !key.startsWith(`${this.folder}/`)) {
+      throw new BadRequestException('Invalid file key');
     }
     const command = new GetObjectCommand({
       Bucket: this.bucket,

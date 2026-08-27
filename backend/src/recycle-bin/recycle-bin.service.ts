@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not, IsNull } from 'typeorm';
 import { Survey } from '../surveys/entities/survey.entity';
@@ -111,7 +111,7 @@ export class RecycleBinService {
     };
   }
 
-  async restore(entityType: RecycleBinEntityType, id: string) {
+  async restore(entityType: RecycleBinEntityType, id: string, actorId?: string) {
     const repo = this.getRepository(entityType);
     const entity = await repo.findOne({
       withDeleted: true,
@@ -120,12 +120,17 @@ export class RecycleBinService {
     if (!entity || !(entity as any).deletedAt) {
       throw new NotFoundException('Deleted item not found');
     }
+    // Restoring a soft-deleted account resurrects it — same takeover risk as
+    // editing a live user, so the privilege-hierarchy rule applies.
+    if (entityType === 'user') {
+      await this.assertCanManageDeletedUser(id, actorId);
+    }
     (entity as any).deletedAt = null;
     await repo.save(entity as any);
     return { message: `${entityType} restored successfully` };
   }
 
-  async permanentDelete(entityType: RecycleBinEntityType, id: string) {
+  async permanentDelete(entityType: RecycleBinEntityType, id: string, actorId?: string) {
     const repo = this.getRepository(entityType);
     const entity = await repo.findOne({
       withDeleted: true,
@@ -136,8 +141,48 @@ export class RecycleBinService {
         'Item not found in recycle bin. Only soft-deleted items can be permanently removed.',
       );
     }
+    if (entityType === 'user') {
+      await this.assertCanManageDeletedUser(id, actorId);
+    }
     await repo.remove(entity as any);
     return { message: `${entityType} permanently deleted` };
+  }
+
+  /**
+   * Restoring/hard-deleting soft-deleted users bypasses every live-user
+   * hierarchy guard, so enforce the same rule here: a non-Super-Admin may
+   * only manage deleted users whose strongest role is weaker than their own.
+   */
+  private async assertCanManageDeletedUser(
+    targetUserId: string,
+    actorId?: string,
+  ): Promise<void> {
+    if (!actorId) return; // internal/system callers (seeding, scripts)
+    const [actor, target] = await Promise.all([
+      this.usersRepo.findOne({
+        where: { id: actorId },
+        relations: ['roles'],
+      }),
+      this.usersRepo.findOne({
+        withDeleted: true,
+        where: { id: targetUserId },
+        relations: ['roles'],
+      }),
+    ]);
+    const isSuperAdmin = (actor?.roles || []).some(
+      (r) => r.name === 'Super Admin',
+    );
+    if (!actor || isSuperAdmin) return;
+    const bestOf = (roles?: any[] | null) =>
+      Math.min(
+        ...(roles || []).map((r) => r.hierarchy ?? Number.POSITIVE_INFINITY),
+        Number.POSITIVE_INFINITY,
+      );
+    if (bestOf(target?.roles) < bestOf(actor.roles)) {
+      throw new ForbiddenException(
+        'You cannot restore or permanently delete users who have more privileges than you',
+      );
+    }
   }
 
   private getRepository(

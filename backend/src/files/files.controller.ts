@@ -24,7 +24,7 @@ import {
   ApiConsumes,
   ApiBody,
 } from '@nestjs/swagger';
-import { FilesService } from './files.service';
+import { FilesService, SAFE_SERVE_EXTENSIONS } from './files.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AccessGuard } from '../auth/guards/access.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
@@ -109,10 +109,11 @@ export class FilesController {
     if (!fs.existsSync(resolved)) {
       throw new NotFoundException('File not found');
     }
-    // Prevent serving executable content types
+    // Prevent serving executable content types — the allowlist is derived
+    // from the same source of truth as upload validation (previously .webp
+    // was uploadable but missing here, so those files could never be served).
     const ext = path.extname(resolved).toLowerCase();
-    const SAFE_EXTENSIONS = new Set(['.jpg','.jpeg','.png','.gif','.webp','.pdf','.xlsx','.xls','.csv']);
-    if (!SAFE_EXTENSIONS.has(ext)) {
+    if (!SAFE_SERVE_EXTENSIONS.has(ext)) {
       throw new BadRequestException('File type not allowed for serving');
     }
     // Same locked-down header set as the static mount in main.ts / nginx:

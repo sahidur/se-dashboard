@@ -29,8 +29,13 @@ function cookieOptions() {
   return {
     httpOnly: true,
     sameSite: 'lax' as const,
-    // HTTPS-only once deployed behind the TLS terminating proxy.
-    secure: process.env.APP_ENV === 'production',
+    // Secure can be forced via COOKIE_SECURE=true for staging/preview deploys
+    // that sit behind TLS but don't set APP_ENV=production (and explicitly
+    // disabled with COOKIE_SECURE=false for local HTTP testing). Otherwise it
+    // defaults on in production.
+    secure: process.env.COOKIE_SECURE
+      ? process.env.COOKIE_SECURE === 'true'
+      : process.env.APP_ENV === 'production',
   };
 }
 

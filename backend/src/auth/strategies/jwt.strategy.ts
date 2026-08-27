@@ -37,22 +37,27 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         cookieExtractor,
       ]),
       ignoreExpiration: false,
+      // Defensively pin the algorithm so a token signed with any other alg
+      // (e.g. "none" or an asymmetric confusion) can never verify.
+      algorithms: ['HS256'],
       secretOrKey: secret,
     });
   }
 
   async validate(payload: JwtPayload) {
-    // Re-check the DB on every request to catch deactivated accounts
-    // within the token's remaining TTL. With a 15-min expiry the DB hit
-    // is acceptable and only fetches the minimal fields needed.
+    // Re-check the DB on every request to catch deactivated accounts within
+    // the token's remaining TTL, AND read live role names from the DB: role
+    // claims baked into the JWT at login would otherwise keep a demoted or
+    // exiled admin fully privileged until the 15-minute access-token TTL
+    // expires.
     const user = await this.usersService.findActiveUserById(payload.sub);
     if (!user) {
       throw new UnauthorizedException('Account is deactivated or not found');
     }
     return {
-      id: payload.sub,
+      id: user.id,
       email: payload.email,
-      roles: payload.roles,
+      roles: (user.roles || []).map((r) => r.name),
     };
   }
 }

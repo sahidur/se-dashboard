@@ -79,11 +79,24 @@ export class AccessGuard implements CanActivate {
           );
           // OR semantics: passing granted with ANY one of the required permissions.
           permissionCheckPassed = requiredPermissions.some((required) =>
-            userPermissions.some(
-              (perm) =>
-                perm.module === required.module &&
-                perm.action === required.action,
-            ),
+            userPermissions.some((perm) => {
+              if (
+                perm.module !== required.module ||
+                perm.action !== required.action
+              ) {
+                return false;
+              }
+              // Requirement without a specific resource (e.g. umbrella
+              // "list" endpoints) is satisfied by ANY grant on module+action,
+              // wildcard or form-scoped.
+              if (!required.resource) {
+                return true;
+              }
+              // Requirement for a specific resource (e.g. a data-collection
+              // form key) needs an exact grant or a wildcard (resource-less)
+              // grant — a form-scoped grant must NOT satisfy other forms.
+              return !perm.resource || perm.resource === required.resource;
+            }),
           );
         }
       } catch {

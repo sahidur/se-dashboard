@@ -50,9 +50,10 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: https://*.digitaloceanspaces.com",
               "font-src 'self'",
-              // Allow both localhost (dev) and the production API domain (prod)
-              "connect-src 'self' http://localhost:4000 https://se.somadhanhobe.com https://*.digitaloceanspaces.com" +
-                (isDev ? ' ws://localhost:3000' : ''),
+              // Dev needs localhost API + HMR websocket; production only the
+              // real API/storage origins.
+              "connect-src 'self' https://se.somadhanhobe.com https://*.digitaloceanspaces.com" +
+                (isDev ? ' http://localhost:4000 ws://localhost:3000' : ''),
               "frame-ancestors 'none'",
               "object-src 'none'",
               "base-uri 'self'",

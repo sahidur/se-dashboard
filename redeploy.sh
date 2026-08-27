@@ -465,10 +465,25 @@ ensure_env WEBAUTHN_ORIGIN  "${DEFAULT_WEBAUTHN_ORIGIN}"
 # shared bucket for all visitors and audit logs record the wrong IP.
 ensure_env TRUST_PROXY "1"
 
+# Session cookie Secure flag. In production behind TLS, cookies should only be
+# sent over HTTPS. The backend auto-enables this when APP_ENV=production, but
+# an explicit value removes any ambiguity.
+ensure_env COOKIE_SECURE "true"
+
 # Read only by 'npm run seed', and only when admin@bep.org does not exist yet.
+# SEED_ADMIN_PASSWORD is REQUIRED — seed.ts exits with an error if it is missing
+# or still a placeholder value.
 if ! grep -q '^SEED_ADMIN_PASSWORD=' "$BACKEND_ENV_FILE"; then
-  ensure_env SEED_ADMIN_PASSWORD "$(openssl rand -base64 12 | tr -d '/+=')Aa1"
+  ensure_env SEED_ADMIN_PASSWORD "$(openssl rand -base64 18 | tr -d '/+=')Aa1"
 fi
+# Reject placeholder passwords that shipped in older .env files
+_seed_val="$(grep -E '^SEED_ADMIN_PASSWORD=' "$BACKEND_ENV_FILE" | tail -n 1 | cut -d'=' -f2- || true)"
+if [[ -n "$_seed_val" && ("$_seed_val" == *CHANGE_ME* || "$_seed_val" == *change-in-production* || "$_seed_val" == *placeholder*) ]]; then
+  _new_seed="$(openssl rand -base64 18 | tr -d '/+=')Aa1"
+  sed -i "s|^SEED_ADMIN_PASSWORD=.*|SEED_ADMIN_PASSWORD=${_new_seed}|" "$BACKEND_ENV_FILE"
+  warn "SEED_ADMIN_PASSWORD was a placeholder – auto-generated a new one"
+fi
+unset _seed_val _new_seed
 
 # ── Signed upload URLs (/api/uploads) ────────────────────────────────────────
 # Newer backends serve locally-stored uploads through HMAC-signed, expiring
@@ -512,7 +527,16 @@ for _k in JWT_SECRET JWT_REFRESH_SECRET; do
   fi
 done
 unset _k _val
-ok "Backend env reconciled and JWT secrets validated"
+
+# SEED_ADMIN_PASSWORD is required by seed.ts — it exits if missing or placeholder.
+_seed_pw="$(grep -E '^SEED_ADMIN_PASSWORD=' "$BACKEND_ENV_FILE" | tail -n 1 | cut -d'=' -f2- || true)"
+[[ -n "$_seed_pw" ]] || die "SEED_ADMIN_PASSWORD is missing from ${BACKEND_ENV_FILE}"
+if [[ "$_seed_pw" == *CHANGE_ME* || "$_seed_pw" == *change-in-production* || "$_seed_pw" == *placeholder* ]]; then
+  die "SEED_ADMIN_PASSWORD is a placeholder. Generate a real one: openssl rand -base64 18"
+fi
+unset _seed_pw
+
+ok "Backend env reconciled and secrets validated"
 
 # =============================================================================
 #  Legacy upload sweep

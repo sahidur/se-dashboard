@@ -34,9 +34,12 @@ import { AuditModule } from './common/audit/audit.module';
       useFactory: (configService: ConfigService) => {
         const dbPassword = configService.get<string>('DB_PASSWORD');
         const dbSslEnabled = configService.get<string>('DB_SSL') === 'true';
+        // Secure by default: TLS without certificate validation is still
+        // MITM-able. Only opt out explicitly (DB_SSL_REJECT_UNAUTHORIZED=false)
+        // for hosts that don't trust the managed-DB CA chain yet.
         const dbSslRejectUnauthorized =
-          configService.get<string>('DB_SSL_REJECT_UNAUTHORIZED', 'false') ===
-          'true';
+          configService.get<string>('DB_SSL_REJECT_UNAUTHORIZED', 'true') !==
+          'false';
         if (!dbPassword) {
           throw new Error('DB_PASSWORD environment variable is not set');
         }

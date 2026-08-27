@@ -41,11 +41,17 @@ export class UsersService {
    */
   private async actorPower(
     actorId?: string,
-  ): Promise<{ isSuperAdmin: boolean; best: number } | null> {
+  ): Promise<{
+    isSuperAdmin: boolean;
+    best: number;
+    /** Granted permission keys: `${module}:${action}:${resource ?? ''}`
+     * (empty resource segment = wildcard/umbrella grant). */
+    permissionKeys: Set<string>;
+  } | null> {
     if (!actorId) return null;
     const actor = await this.usersRepository.findOne({
       where: { id: actorId },
-      relations: ['roles'],
+      relations: ['roles', 'roles.permissions'],
     });
     if (!actor) return null;
     return this.userPower(actor);
@@ -54,13 +60,22 @@ export class UsersService {
   private userPower(user: Pick<User, 'roles'>): {
     isSuperAdmin: boolean;
     best: number;
+    permissionKeys: Set<string>;
   } {
     const isSuperAdmin = (user.roles || []).some((r) => r.name === 'Super Admin');
     const best = Math.min(
       ...(user.roles || []).map((r) => r.hierarchy ?? Number.POSITIVE_INFINITY),
       Number.POSITIVE_INFINITY,
     );
-    return { isSuperAdmin, best };
+    const permissionKeys = new Set(
+      (user.roles || []).flatMap((r) =>
+        ((r as any).permissions || []).map(
+          (p: { module: string; action: string; resource?: string | null }) =>
+            `${p.module}:${p.action}:${p.resource ?? ''}`,
+        ),
+      ),
+    );
+    return { isSuperAdmin, best, permissionKeys };
   }
 
   private targetBestHierarchy(roles?: Role[] | null): number {
@@ -92,7 +107,7 @@ export class UsersService {
    * the actor's own strongest role.
    */
   private assertCanAssignRoles(
-    actor: { isSuperAdmin: boolean; best: number } | null,
+    actor: Awaited<ReturnType<UsersService['actorPower']>>,
     rolesToAssign: Role[],
   ): void {
     if (!actor || actor.isSuperAdmin || !rolesToAssign.length) return;
@@ -102,6 +117,47 @@ export class UsersService {
         'You cannot assign roles with more privileges than your own',
       );
     }
+  }
+
+  /**
+   * "You cannot give what you don't have": every role being assigned must
+   * carry only permissions the actor holds themself — exact resource grant or
+   * an umbrella (resource-less) grant on the same module+action. Blocks
+   * same-hierarchy escalation where an Admin assigns a peer-level role that
+   * carries permissions beyond their own (e.g. after minting such a role or
+   * having one injected into a lower-tier role).
+   */
+  private assertRolesWithinActorGrants(
+    actor: Awaited<ReturnType<UsersService['actorPower']>>,
+    rolesToAssign: Role[],
+  ): void {
+    if (!actor || actor.isSuperAdmin || !rolesToAssign.length) return;
+    const perms = rolesToAssign.flatMap(
+      (r) =>
+        ((r as any).permissions || []) as Array<{
+          module: string;
+          action: string;
+          resource?: string | null;
+        }>,
+    );
+    if (!perms.length) return;
+    const holds = (p: { module: string; action: string; resource?: string | null }) =>
+      actor.permissionKeys.has(`${p.module}:${p.action}:${p.resource ?? ''}`) ||
+      actor.permissionKeys.has(`${p.module}:${p.action}:`);
+    if (!perms.every(holds)) {
+      throw new ForbiddenException(
+        'You cannot assign roles carrying permissions you do not hold yourself',
+      );
+    }
+  }
+
+  /** Roles must be loaded with `relations: ['permissions']` before calling. */
+  private async findRolesWithPermissions(ids: string[]): Promise<Role[]> {
+    if (!ids?.length) return [];
+    return this.rolesRepository.find({
+      where: { id: In(ids) },
+      relations: ['permissions'],
+    });
   }
 
   async logActivity(params: {
@@ -143,9 +199,12 @@ export class UsersService {
     });
 
     if (createUserDto.roleIds?.length) {
-      const roles = await this.rolesRepository.findBy({ id: In(createUserDto.roleIds) });
-      // Prevent non-Super-Admins from creating users more powerful than themselves.
-      this.assertCanAssignRoles(await this.actorPower(actorId), roles);
+      const roles = await this.findRolesWithPermissions(createUserDto.roleIds);
+      // Prevent non-Super-Admins from creating users more powerful than
+      // themselves, or granting permissions beyond their own.
+      const actor = await this.actorPower(actorId);
+      this.assertCanAssignRoles(actor, roles);
+      this.assertRolesWithinActorGrants(actor, roles);
       user.roles = roles;
     }
 
@@ -285,16 +344,20 @@ export class UsersService {
 
   /**
    * Lightweight lookup used by JwtStrategy on every request.
-   * Only fetches id and isActive to minimise the query cost.
+   * Fetches id, active flag and role names only (roles are re-read live so
+   * demotions take effect immediately instead of at next token refresh).
    * Returns null if the user does not exist or is deactivated.
    */
-  async findActiveUserById(id: string): Promise<Pick<User, 'id' | 'isActive'> | null> {
+  async findActiveUserById(
+    id: string,
+  ): Promise<(Pick<User, 'id' | 'isActive'> & { roles: Role[] }) | null> {
     const user = await this.usersRepository.findOne({
       where: { id },
       select: ['id', 'isActive'],
+      relations: ['roles'],
     });
     if (!user || !user.isActive) return null;
-    return user;
+    return user as (Pick<User, 'id' | 'isActive'> & { roles: Role[] }) | null;
   }
 
   async findOneByEmail(email: string): Promise<User | null> {
@@ -319,8 +382,9 @@ export class UsersService {
     this.assertCanManageTarget(actor, user.roles);
     let newRoles: Role[] | undefined;
     if (updateUserDto.roleIds) {
-      newRoles = await this.rolesRepository.findBy({ id: In(updateUserDto.roleIds) });
+      newRoles = await this.findRolesWithPermissions(updateUserDto.roleIds);
       this.assertCanAssignRoles(actor, newRoles);
+      this.assertRolesWithinActorGrants(actor, newRoles);
     }
 
     if (updateUserDto.email && updateUserDto.email !== user.email) {
@@ -432,14 +496,17 @@ export class UsersService {
     return query.getMany();
   }
 
-  async addSchools(userId: string, schoolIds: string[]): Promise<DcSchool[]> {
+  async addSchools(userId: string, schoolIds: string[], actorId?: string): Promise<DcSchool[]> {
     const user = await this.usersRepository.findOne({
       where: { id: userId },
-      relations: ['schools'],
+      relations: ['schools', 'roles'],
     });
     if (!user) {
       throw new NotFoundException('User not found');
     }
+    // School access widens data-collection/monitoring visibility, so treat it
+    // like any other target-user mutation: hierarchy guard applies.
+    this.assertCanManageTarget(await this.actorPower(actorId), user.roles);
     const newSchools = await this.schoolsRepository.findBy({ id: In(schoolIds) });
     const existingIds = new Set((user.schools || []).map((s) => s.id));
     const merged = [...(user.schools || [])];
@@ -454,14 +521,15 @@ export class UsersService {
     return user.schools;
   }
 
-  async removeSchool(userId: string, schoolId: string): Promise<DcSchool[]> {
+  async removeSchool(userId: string, schoolId: string, actorId?: string): Promise<DcSchool[]> {
     const user = await this.usersRepository.findOne({
       where: { id: userId },
-      relations: ['schools'],
+      relations: ['schools', 'roles'],
     });
     if (!user) {
       throw new NotFoundException('User not found');
     }
+    this.assertCanManageTarget(await this.actorPower(actorId), user.roles);
     user.schools = (user.schools || []).filter((s) => s.id !== schoolId);
     await this.usersRepository.save(user);
     return user.schools;
@@ -523,7 +591,10 @@ export class UsersService {
       action: 'RESET_PASSWORD',
       module: 'users',
       entityId: id,
+      // userId is the affected account; record who performed the reset so
+      // the log doesn't misattribute the action to the victim.
       userId: id,
+      newData: actorId ? { resetByActorId: actorId } : undefined,
     });
     return { newPassword };
   }
@@ -575,12 +646,14 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    const roles = await this.rolesRepository.findBy({ id: In(roleIds) });
+    const roles = await this.findRolesWithPermissions(roleIds);
     // Privilege escalation guard: non-Super-Admins cannot grant roles stronger
-    // than their own, nor change the roles of more powerful users.
+    // than their own, roles carrying permissions they don't hold themselves,
+    // nor change the roles of more powerful users.
     const actor = await this.actorPower(actorId);
     this.assertCanManageTarget(actor, user.roles);
     this.assertCanAssignRoles(actor, roles);
+    this.assertRolesWithinActorGrants(actor, roles);
     user.roles = roles;
     return this.usersRepository.save(user);
   }

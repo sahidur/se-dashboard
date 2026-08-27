@@ -4,6 +4,20 @@ import { RolesService } from './roles/roles.service';
 import { UsersService } from './users/users.service';
 
 async function seed() {
+  // Never seed the Super Admin with a publicly-known default password —
+  // a seeded-but-unrotated admin account is a full account takeover.
+  const seedPassword = process.env.SEED_ADMIN_PASSWORD;
+  if (
+    !seedPassword ||
+    /CHANGE_ME|change-in-production|placeholder/i.test(seedPassword)
+  ) {
+    console.error(
+      '❌ SEED_ADMIN_PASSWORD is missing or a placeholder. ' +
+        'Generate one with: openssl rand -base64 18',
+    );
+    process.exit(1);
+  }
+
   const app = await NestFactory.createApplicationContext(AppModule);
 
   try {
@@ -21,7 +35,7 @@ async function seed() {
         lastName: 'Admin',
         email: 'admin@bep.org',
         // Passed as plaintext — UsersService.create() does the hashing.
-        password: process.env.SEED_ADMIN_PASSWORD || 'ChangeMe#2024',
+        password: seedPassword,
         phone: '+8801700000000',
       });
       console.log('✅ Super Admin user created (admin@bep.org)');
