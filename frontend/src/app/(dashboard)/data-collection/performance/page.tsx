@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { SchoolSelector } from '@/components/data-collection/school-selector';
 import { TrendingUp, Save, CheckCircle2 } from 'lucide-react';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { buildYearOptions } from '@/lib/utils';
 import type { DcPerformance } from '@/types';
 
@@ -69,7 +69,7 @@ export default function PerformancePage() {
       setSaved(true); setTimeout(() => setSaved(false), 3000);
       const { data } = await api.get(`/data-collection/performance/school/${schoolId}`, { params: { academicYear } });
       if (data) setExisting(data);
-    } catch (e: any) { alert(e?.response?.data?.message || 'Error'); } finally { setSaving(false); }
+    } catch (e) { alert(getErrorMessage(e, 'Error')); } finally { setSaving(false); }
   };
 
   const numField = (label: string, key: string, step = '1') => (

@@ -19,7 +19,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { FIELD_TYPE_LABELS } from '@/lib/utils';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import type { FieldType, Survey, LinkedEntityType, SurveyCategory } from '@/types';
 
 interface FormField {
@@ -320,8 +320,8 @@ export default function EditSurveyPage() {
       };
       await api.patch(`/surveys/${id}`, payload);
       router.push(`/surveys/${id}`);
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to save survey');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to save survey'));
     } finally {
       setSaving(false);
     }

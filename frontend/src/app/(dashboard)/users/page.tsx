@@ -31,7 +31,7 @@ import {
   ImageOff,
   Power,
 } from 'lucide-react';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { useAuthStore } from '@/store/auth-store';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import type { User, Role, GeoLocation, PaginatedResponse, UserDesignation } from '@/types';
@@ -189,8 +189,8 @@ export default function UsersPage() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setFormData((prev) => ({ ...prev, profilePicture: data.url }));
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to upload profile picture');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to upload profile picture'));
     } finally {
       setUploadingPicture(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -200,7 +200,7 @@ export default function UsersPage() {
   const handleSave = async () => {
     try {
       setSaving(true);
-      const payload: Record<string, any> = {
+      const payload: Record<string, unknown> = {
         firstName: formData.firstName,
         lastName: formData.lastName,
         email: formData.email,
@@ -219,8 +219,8 @@ export default function UsersPage() {
       }
       setShowModal(false);
       queryClient.invalidateQueries({ queryKey: ['users'] });
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to save user');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to save user'));
     } finally {
       setSaving(false);
     }
@@ -231,8 +231,8 @@ export default function UsersPage() {
     try {
       await api.delete(`/users/${id}`);
       queryClient.invalidateQueries({ queryKey: ['users'] });
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to delete user');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to delete user'));
     }
   };
 
@@ -251,8 +251,8 @@ export default function UsersPage() {
       await api.patch(`/users/${statusConfirm.userId}/status`, { isActive: statusConfirm.nextActive });
       queryClient.invalidateQueries({ queryKey: ['users'] });
       setStatusConfirm({ open: false, userId: '', userName: '', nextActive: true });
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to update status');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to update status'));
     } finally {
       setStatusSaving(false);
     }
@@ -269,8 +269,8 @@ export default function UsersPage() {
       setResetLoading(true);
       const { data } = await api.post(`/users/${resetModal.userId}/reset-password`);
       setNewPassword(data.newPassword);
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to reset password');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to reset password'));
     } finally {
       setResetLoading(false);
     }

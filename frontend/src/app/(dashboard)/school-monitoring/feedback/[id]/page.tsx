@@ -11,7 +11,7 @@ import {
   ChevronLeft, School, Calendar, User as UserIcon, Clock, Pencil, Trash2,
   History, AlertTriangle, GraduationCap,
 } from 'lucide-react';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { formatDateTimeBd, formatDate, formatRelativeTime, cn, getInitials } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth-store';
 import { SubmissionView, fullName } from '@/components/school-monitoring/submission-view';
@@ -59,8 +59,8 @@ export default function MonitoringDetailPage() {
     try {
       await api.delete(`/school-monitoring/${submission.id}`);
       router.push('/school-monitoring/feedback');
-    } catch (e: any) {
-      alert(e?.response?.data?.message || 'Failed to delete.');
+    } catch (e) {
+      alert(getErrorMessage(e, 'Failed to delete.'));
       setDeleting(false);
       setConfirmDelete(false);
     }

@@ -19,7 +19,7 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import { FIELD_TYPE_LABELS } from '@/lib/utils';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import type { FieldType, LinkedEntityType, SurveyCategory } from '@/types';
 
 interface FormField {
@@ -256,8 +256,8 @@ export default function CreateSurveyPage() {
       };
       const { data } = await api.post('/surveys', payload);
       router.push(`/surveys/${data.id}`);
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to create survey');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to create survey'));
     } finally {
       setSaving(false);
     }

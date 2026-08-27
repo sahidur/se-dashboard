@@ -19,7 +19,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import type { DcSchool, GeoLocation } from '@/types';
 
 const PAGE_SIZE = 10;
@@ -245,7 +245,7 @@ export default function DcSchoolsPage() {
     if (!form.name.trim()) return;
     setSaving(true);
     try {
-      const payload: Record<string, any> = {
+      const payload: Record<string, unknown> = {
         name: form.name,
         schoolCategory: form.schoolCategory || undefined,
         schoolType: form.schoolType || undefined,
@@ -267,8 +267,8 @@ export default function DcSchoolsPage() {
       queryClient.invalidateQueries({ queryKey: ['dc-schools'] });
       setModalOpen(false);
       resetForm();
-    } catch (e: any) {
-      alert(e?.response?.data?.message || 'Error saving school');
+    } catch (e) {
+      alert(getErrorMessage(e, 'Error saving school'));
     } finally {
       setSaving(false);
     }
@@ -280,8 +280,8 @@ export default function DcSchoolsPage() {
       await api.delete(`/data-collection/schools/${deleteModal.school.id}`);
       queryClient.invalidateQueries({ queryKey: ['dc-schools'] });
       setDeleteModal({ open: false });
-    } catch (e: any) {
-      alert(e?.response?.data?.message || 'Error deleting');
+    } catch (e) {
+      alert(getErrorMessage(e, 'Error deleting'));
     }
   };
 

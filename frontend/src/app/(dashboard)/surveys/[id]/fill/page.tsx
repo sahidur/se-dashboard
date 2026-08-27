@@ -23,7 +23,7 @@ import {
   School,
   Info,
 } from 'lucide-react';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { resolveAssetUrl } from '@/lib/utils';
 import type { Survey, SurveyField, SurveySection, SurveyAnswer, GeoLocation, SchoolRecord } from '@/types';
 
@@ -32,8 +32,21 @@ interface FieldAnswer {
   textValue?: string;
   numberValue?: number;
   booleanValue?: boolean;
-  jsonValue?: any;
+  jsonValue?: unknown;
   fileUrl?: string;
+}
+
+interface AddressValue {
+  division: string;
+  district: string;
+  thana: string;
+  area: string;
+  details?: string;
+  divisionName?: string;
+  districtName?: string;
+  thanaName?: string;
+  areaName?: string;
+  [key: string]: unknown;
 }
 
 // ---------- File Upload Component ----------
@@ -79,8 +92,8 @@ function FileUploader({
         },
       });
       onChange(data.url);
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to upload file');
+    } catch (err) {
+      alert(getErrorMessage(err, 'Failed to upload file'));
       setFileName('');
     } finally {
       setUploading(false);
@@ -167,8 +180,8 @@ function CascadingAddress({
   onChange,
   error,
 }: {
-  value: any;
-  onChange: (val: any) => void;
+  value: AddressValue | null;
+  onChange: (val: AddressValue) => void;
   error?: string;
 }) {
   const [divisions, setDivisions] = useState<GeoLocation[]>([]);
@@ -440,8 +453,8 @@ export default function FillSurveyPage() {
       const { data } = await api.post('/surveys/responses', payload);
       setDraftResponseId(data.id);
       alert('Draft saved successfully!');
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to save draft');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to save draft'));
     } finally {
       setSaving(false);
     }
@@ -462,8 +475,8 @@ export default function FillSurveyPage() {
       const payload = buildPayload(false);
       await api.post('/surveys/responses', payload);
       setSubmitted(true);
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to submit response');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to submit response'));
     } finally {
       setSubmitting(false);
     }
@@ -535,7 +548,7 @@ export default function FillSurveyPage() {
           <div className={wrapperClass}>
             {label}
             <CascadingAddress
-              value={answer.jsonValue}
+              value={answer.jsonValue as AddressValue | null}
               onChange={(val) => updateAnswer(field.id, { jsonValue: val })}
               error={error}
             />
@@ -637,7 +650,7 @@ export default function FillSurveyPage() {
         );
 
       case 'multiple_choice':
-        const selectedOptions: string[] = answer.jsonValue || [];
+        const selectedOptions: string[] = (answer.jsonValue as string[]) || [];
         return (
           <div className={wrapperClass}>
             {label}
@@ -692,7 +705,7 @@ export default function FillSurveyPage() {
         );
 
       case 'multi_select_searchable':
-        const multiSelected: string[] = answer.jsonValue || [];
+        const multiSelected: string[] = (answer.jsonValue as string[]) || [];
         return (
           <div className={wrapperClass}>
             {label}
@@ -736,7 +749,7 @@ export default function FillSurveyPage() {
         );
 
       case 'location':
-        const locValue = answer.jsonValue || { lat: '', lng: '' };
+        const locValue = (answer.jsonValue as { lat: string; lng: string }) || { lat: '', lng: '' };
         return (
           <div className={wrapperClass}>
             {label}

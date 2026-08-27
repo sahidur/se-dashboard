@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import { useAuthStore, logoutAndRedirect } from '@/store/auth-store';
 
 const api = axios.create({
@@ -90,4 +90,14 @@ api.interceptors.response.use(
 );
 
 export default api;
+
+export function getErrorMessage(error: unknown, fallback = 'Operation failed'): string {
+  if (error instanceof AxiosError) {
+    return error.response?.data?.message || error.message || fallback;
+  }
+  if (error instanceof Error) {
+    return error.message || fallback;
+  }
+  return fallback;
+}
 

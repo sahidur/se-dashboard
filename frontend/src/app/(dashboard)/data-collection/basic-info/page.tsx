@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { SchoolSelector } from '@/components/data-collection/school-selector';
 import { FileText, Save, CheckCircle2 } from 'lucide-react';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { buildYearOptions } from '@/lib/utils';
 import type { DcBasicInfo } from '@/types';
 
@@ -84,8 +84,8 @@ export default function BasicInfoPage() {
       // Refresh data
       const { data } = await api.get(`/data-collection/basic-info/school/${schoolId}`, { params: { academicYear } });
       if (data) setExisting(data);
-    } catch (e: any) {
-      alert(e?.response?.data?.message || 'Error saving data');
+    } catch (e) {
+      alert(getErrorMessage(e, 'Error saving data'));
     } finally {
       setSaving(false);
     }

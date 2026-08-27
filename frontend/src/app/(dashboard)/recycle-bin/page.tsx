@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth-store';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import {
   Trash2,
   RotateCcw,
@@ -28,7 +28,7 @@ interface RecycleBinItem {
   displayName: string;
   deletedAt: string;
   createdAt: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 interface RecycleBinData {
@@ -92,8 +92,8 @@ export default function RecycleBinPage() {
     try {
       await api.patch(`/recycle-bin/${entityType}/${id}/restore`);
       await fetchData();
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Restore failed');
+    } catch (err) {
+      alert(getErrorMessage(err, 'Restore failed'));
     } finally {
       setActionLoading(null);
       setConfirmAction(null);
@@ -105,8 +105,8 @@ export default function RecycleBinPage() {
     try {
       await api.delete(`/recycle-bin/${entityType}/${id}`);
       await fetchData();
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Permanent delete failed');
+    } catch (err) {
+      alert(getErrorMessage(err, 'Permanent delete failed'));
     } finally {
       setActionLoading(null);
       setConfirmAction(null);

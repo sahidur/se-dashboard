@@ -14,7 +14,7 @@ import {
   Briefcase,
   AlertTriangle,
 } from 'lucide-react';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import type { UserDesignation } from '@/types';
 
 export default function UserDesignationsPage() {
@@ -83,8 +83,8 @@ export default function UserDesignationsPage() {
       }
       setShowModal(false);
       fetchDesignations();
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to save designation');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to save designation'));
     } finally {
       setSaving(false);
     }
@@ -95,8 +95,8 @@ export default function UserDesignationsPage() {
       await api.delete(`/user-designations/${deleteModal.id}`);
       setDeleteModal({ open: false, id: '', name: '' });
       fetchDesignations();
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to delete designation');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to delete designation'));
     }
   };
 

@@ -20,7 +20,7 @@ import {
   Building2,
   Map as MapIcon,
 } from 'lucide-react';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import type { GeoLocation, GeoLocationType } from '@/types';
 
 // Hierarchy order (top -> bottom): Area > Division > District > Thana/Upazilla.
@@ -301,8 +301,8 @@ export default function GeoLocationsPage() {
       await fetchTree();
       setShowDeleteModal(false);
       setDeletingLocation(null);
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to delete location');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to delete location'));
     } finally {
       setDeleting(false);
     }
@@ -335,8 +335,8 @@ export default function GeoLocationsPage() {
           setShowModal(false);
         }
       }
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to save location');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to save location'));
     } finally {
       setSaving(false);
     }

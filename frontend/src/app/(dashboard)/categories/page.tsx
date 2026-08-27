@@ -15,7 +15,7 @@ import {
   AlertTriangle,
   GripVertical,
 } from 'lucide-react';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import type { SurveyCategory } from '@/types';
 
 export default function CategoriesPage() {
@@ -86,8 +86,8 @@ export default function CategoriesPage() {
       }
       setShowModal(false);
       fetchCategories();
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to save category');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to save category'));
     } finally {
       setSaving(false);
     }
@@ -98,8 +98,8 @@ export default function CategoriesPage() {
       await api.delete(`/surveys/categories/${deleteModal.id}`);
       setDeleteModal({ open: false, id: '', name: '' });
       fetchCategories();
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to delete category');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to delete category'));
     }
   };
 

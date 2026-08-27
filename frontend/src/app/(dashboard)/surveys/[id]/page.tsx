@@ -30,7 +30,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { formatDate, formatDateTime, FIELD_TYPE_LABELS } from '@/lib/utils';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { useAuthStore } from '@/store/auth-store';
 import type {
   Survey,
@@ -198,8 +198,8 @@ export default function SurveyDetailPage() {
   const confirmAction = async () => {
     try {
       await confirmModal.action();
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Operation failed');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Operation failed'));
     }
     setConfirmModal((prev) => ({ ...prev, open: false }));
   };
@@ -273,8 +273,8 @@ export default function SurveyDetailPage() {
 
       fetchSurvey();
       setShowAssignModal(false);
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to add assignment');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to add assignment'));
     } finally {
       setAssignSaving(false);
     }
@@ -284,8 +284,8 @@ export default function SurveyDetailPage() {
     try {
       await api.delete(`/surveys/assignments/${assignmentId}`);
       fetchSurvey();
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to remove assignment');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to remove assignment'));
     }
   };
 

@@ -16,6 +16,7 @@ import { RecycleBinModule } from './recycle-bin/recycle-bin.module';
 import { DataCollectionModule } from './data-collection/data-collection.module';
 import { SchoolMonitoringModule } from './school-monitoring/school-monitoring.module';
 import { AuditModule } from './common/audit/audit.module';
+import { HealthModule } from './common/health/health.module';
 
 @Module({
   imports: [
@@ -97,6 +98,7 @@ import { AuditModule } from './common/audit/audit.module';
     DataCollectionModule,
     SchoolMonitoringModule,
     AuditModule,
+    HealthModule,
   ],
   providers: [
     // Apply rate limiting globally

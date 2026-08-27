@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Modal } from '@/components/ui/modal';
 import { Plus, Edit, Trash2, Shield, ChevronDown, ChevronRight } from 'lucide-react';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import type { Role } from '@/types';
 import {
   ALL_DC_FORM_RESOURCES,
@@ -126,7 +126,7 @@ export default function RolesPage() {
         role.permissions?.map((p) => ({
           module: p.module,
           action: p.action,
-          resource: (p as any).resource ?? null,
+          resource: p.resource ?? null,
         })) || [],
     });
     setShowModal(true);
@@ -178,8 +178,8 @@ export default function RolesPage() {
       }
       setShowModal(false);
       fetchRoles();
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to save role');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to save role'));
     } finally {
       setSaving(false);
     }
@@ -190,8 +190,8 @@ export default function RolesPage() {
     try {
       await api.delete(`/roles/${id}`);
       fetchRoles();
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to delete role');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to delete role'));
     }
   };
 
@@ -252,7 +252,7 @@ export default function RolesPage() {
                   )}
                   <div className="mt-3 flex flex-wrap gap-1">
                     {role.permissions?.slice(0, 6).map((perm) => {
-                      const resource = (perm as any).resource;
+                      const resource = perm.resource;
                       return (
                         <span
                           key={perm.id}

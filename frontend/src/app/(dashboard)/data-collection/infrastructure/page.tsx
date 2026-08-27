@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { SchoolSelector } from '@/components/data-collection/school-selector';
 import { Building2, Save, CheckCircle2 } from 'lucide-react';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import type { DcInfrastructure } from '@/types';
 
 export default function InfrastructurePage() {
@@ -60,8 +60,8 @@ export default function InfrastructurePage() {
       setTimeout(() => setSaved(false), 3000);
       const { data } = await api.get(`/data-collection/infrastructure/school/${schoolId}`);
       if (data) setExisting(data);
-    } catch (e: any) {
-      alert(e?.response?.data?.message || 'Error saving');
+    } catch (e) {
+      alert(getErrorMessage(e, 'Error saving'));
     } finally {
       setSaving(false);
     }

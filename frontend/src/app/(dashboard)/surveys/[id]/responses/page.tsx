@@ -17,7 +17,7 @@ import {
   Filter,
 } from 'lucide-react';
 import { formatDate, formatDateTime, FIELD_TYPE_LABELS } from '@/lib/utils';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import type { Survey, SurveyResponse as SurveyResponseType } from '@/types';
 
 export default function SurveyResponsesPage() {
@@ -49,7 +49,7 @@ export default function SurveyResponsesPage() {
   const fetchResponses = useCallback(
     async (page = 1, startDate = '', endDate = '') => {
       try {
-        const params: any = { page, limit: 20 };
+        const params: Record<string, string | number> = { page, limit: 20 };
         if (startDate) params.startDate = startDate;
         if (endDate) params.endDate = endDate;
         const { data } = await api.get(`/surveys/${id}/responses`, { params });
@@ -88,8 +88,8 @@ export default function SurveyResponsesPage() {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-    } catch (error: any) {
-      alert('Failed to export CSV');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to export CSV'));
     } finally {
       setExporting(false);
     }

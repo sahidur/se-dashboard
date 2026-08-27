@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { SchoolSelector } from '@/components/data-collection/school-selector';
 import { Award, Plus, Edit2, Trash2, X, Save, User } from 'lucide-react';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import type { DcAlumni } from '@/types';
 
 const emptyForm = {
@@ -62,7 +62,7 @@ export default function AlumniPage() {
       }
       setModal(false);
       fetchAlumni();
-    } catch (e: any) { alert(e?.response?.data?.message || 'Error'); }
+    } catch (e) { alert(getErrorMessage(e, 'Error')); }
     finally { setSaving(false); }
   };
 

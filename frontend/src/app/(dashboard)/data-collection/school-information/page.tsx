@@ -93,15 +93,15 @@ interface SchoolProfile {
   teachers: TeacherRow[];
   teacherTotals: { male: number; female: number; total: number };
   feeStructures: FeeRow[];
-  revenueBudgetTotal: Record<string, any> | null;
-  revenueActualTotal: Record<string, any> | null;
+  revenueBudgetTotal: Record<string, unknown> | null;
+  revenueActualTotal: Record<string, unknown> | null;
   pedagogicalAchievements: PedagAchievementRow[];
-  performance: Record<string, any> | null;
-  teachersDevelopment?: Record<string, any>[];
-  studentsPerformance?: Record<string, any>[];
-  activityParticipation?: Record<string, any>[];
-  eventParticipation?: Record<string, any>[];
-  cocurricular?: Record<string, any>[];
+  performance: Record<string, unknown> | null;
+  teachersDevelopment?: Record<string, unknown>[];
+  studentsPerformance?: Record<string, unknown>[];
+  activityParticipation?: Record<string, unknown>[];
+  eventParticipation?: Record<string, unknown>[];
+  cocurricular?: Record<string, unknown>[];
   alumni: AlumniRow[];
   meta: {
     categoriesWithData: number;
@@ -181,7 +181,7 @@ interface Col {
   key: string;
   label: string;
   align?: 'left' | 'right';
-  render: (row: any, idx: number) => React.ReactNode;
+  render: (row: Record<string, unknown>, idx: number) => React.ReactNode;
 }
 
 function CategoryTable({
@@ -192,7 +192,7 @@ function CategoryTable({
   accent: string;
   count?: number;
   columns: Col[];
-  rows: any[];
+  rows: Record<string, unknown>[];
   footer?: React.ReactNode[] | null;
   emptyText: string;
 }) {
@@ -226,7 +226,7 @@ function CategoryTable({
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {rows.map((row, idx) => (
-                  <tr key={row.id ?? idx} className="transition-colors hover:bg-indigo-50/30">
+                  <tr key={String((row as Record<string, unknown>).id ?? idx)} className="transition-colors hover:bg-indigo-50/30">
                     {columns.map((c) => (
                       <td
                         key={c.key}
@@ -688,7 +688,7 @@ const INDICATOR_INFO: Record<string, IndicatorInfo> = {
 };
 
 function buildStatusTables(p: SchoolProfile): StatusTableDef[] {
-  const num = (v: any) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+  const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
   const avgOf = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
   const pctStr = (v: number | null) => (v == null ? 'Not reported' : `${v.toFixed(1)}%`);
   // Signed percentage (deficit/surplus) — keeps the negative marking visible.
@@ -752,7 +752,7 @@ function buildStatusTables(p: SchoolProfile): StatusTableDef[] {
        Revenue deficit        = Collected − Planned target (negative = short) */
   const FEES = ['admissionFee', 'sessionFee', 'assessmentFee', 'sportsFee',
     'syllabusFee', 'testimonialFee', 'othersFee', 'transportFee'];
-  const sumFees = (r: Record<string, any> | null | undefined, suffix: 'Target' | 'Achievement') =>
+  const sumFees = (r: Record<string, unknown> | null | undefined, suffix: 'Target' | 'Achievement') =>
     (r ? FEES.reduce((s, f) => s + num(r[`${f}${suffix}`]), 0) : 0);
   const plannedTarget = sumFees(rbt, 'Target');
   const actualTarget = sumFees(rat, 'Target');
@@ -768,14 +768,14 @@ function buildStatusTables(p: SchoolProfile): StatusTableDef[] {
   const deficitGradePct = plannedTarget > 0 ? cap100((collected / plannedTarget) * 100) : null;
 
   /* ── Pedagogical performance ── */
-  const has = (kw: string) => acts.filter((a) => (a.item || '').toLowerCase().includes(kw));
+  const has = (kw: string) => acts.filter((a) => (String(a.item || '')).toLowerCase().includes(kw));
   const libActs = has('library');
   const labActs = has('lab');
   const cornerActs = has('corner');
   const clubActs = has('club');
   // % of students using the library/lab = average of the reported
   // participationRate across all library/lab activity records.
-  const rateOf = (list: Record<string, any>[]) => {
+  const rateOf = (list: Record<string, unknown>[]) => {
     const vals = list.map((a) => a.participationRate).filter((v) => v != null).map(num);
     return vals.length ? avgOf(vals) : null;
   };

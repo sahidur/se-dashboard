@@ -38,7 +38,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth-store';
 import { formatDate, getInitials, resolveAssetUrl } from '@/lib/utils';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import type { GeoLocation, PaginatedAuditLogs, User, UserDesignation } from '@/types';
 
 type Tab = 'overview' | 'schools' | 'activity' | 'security' | 'passkeys';
@@ -171,8 +171,8 @@ export default function ProfilePage() {
       const { data } = await api.patch('/users/me/profile', payload);
       updateUser(data);
       setEditing(false);
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to update profile');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to update profile'));
     } finally {
       setSaving(false);
     }
@@ -202,8 +202,8 @@ export default function ProfilePage() {
       }
       setPasswords({ currentPassword: '', newPassword: '', confirmPassword: '' });
       alert('Password changed successfully');
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to change password');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to change password'));
     } finally {
       setChangingPassword(false);
     }

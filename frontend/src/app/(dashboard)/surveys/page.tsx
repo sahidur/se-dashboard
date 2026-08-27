@@ -19,7 +19,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { useAuthStore } from '@/store/auth-store';
 import type { Survey, PaginatedResponse } from '@/types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -141,8 +141,8 @@ export default function SurveysPage() {
   const confirmAction = async () => {
     try {
       await confirmModal.action();
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Operation failed');
+    } catch (error) {
+      alert(getErrorMessage(error));
     }
     setConfirmModal((prev) => ({ ...prev, open: false }));
   };
