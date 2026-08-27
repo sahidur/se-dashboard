@@ -52,8 +52,10 @@ const nextConfig = {
               "font-src 'self'",
               // Dev needs localhost API + HMR websocket; production only the
               // real API/storage origins.
-              "connect-src 'self' https://se.somadhanhobe.com https://*.digitaloceanspaces.com" +
-                (isDev ? ' http://localhost:4000 ws://localhost:3000' : ''),
+              "connect-src 'self' https://*.digitaloceanspaces.com" +
+                (isDev
+                  ? ' http://localhost:4000 ws://localhost:3000'
+                  : ` ${process.env.NEXT_PUBLIC_API_URL || ''}`),
               "frame-ancestors 'none'",
               "object-src 'none'",
               "base-uri 'self'",

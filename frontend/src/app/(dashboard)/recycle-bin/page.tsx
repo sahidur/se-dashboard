@@ -72,8 +72,8 @@ export default function RecycleBinPage() {
       setLoading(true);
       const res = await api.get('/recycle-bin');
       setData(res.data);
-    } catch (err) {
-      console.error('Failed to fetch recycle bin', err);
+    } catch {
+      // Error handled by empty data state
     } finally {
       setLoading(false);
     }

@@ -94,8 +94,8 @@ export default function RolesPage() {
       setLoading(true);
       const { data } = await api.get<Role[]>('/roles');
       setRoles(data);
-    } catch (error) {
-      console.error('Failed to fetch roles:', error);
+    } catch {
+      // Error handled by empty roles state
     } finally {
       setLoading(false);
     }

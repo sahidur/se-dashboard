@@ -130,7 +130,7 @@ export class AuthService {
     this.clearFailedLogins(key);
 
     if (!user.isActive) {
-      throw new UnauthorizedException('Account is deactivated');
+      throw new UnauthorizedException('Invalid credentials');
     }
 
     return this.issueSession(user, 'password');
@@ -169,7 +169,6 @@ export class AuthService {
         profilePicture: fullUser.profilePicture,
         isActive: fullUser.isActive,
         lastLoginAt: fullUser.lastLoginAt,
-        pin: fullUser.pin,
         designation: fullUser.designation,
         base: fullUser.base,
         geoLocationId: fullUser.geoLocationId,

@@ -57,6 +57,7 @@ async function seed() {
     console.log('\n🎉 Database seeding completed!');
   } catch (error) {
     console.error('❌ Error seeding database:', error);
+    process.exitCode = 1;
   } finally {
     await app.close();
   }

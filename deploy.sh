@@ -289,6 +289,7 @@ ok "Environment files written and locked (chmod 600)"
 # Ensure uploads directory exists inside backend
 mkdir -p "${APP_DIR}/backend/uploads"
 chown -R "$APP_USER":"$APP_USER" "${APP_DIR}/backend/uploads"
+chmod 750 "${APP_DIR}/backend/uploads"
 
 # =============================================================================
 #  Step 6 – Install dependencies & build
@@ -903,9 +904,9 @@ echo -e "  ${BOLD}SSL renewal${NC} : automatic via certbot.timer"
 echo -e "    Test with:  certbot renew --dry-run"
 echo ""
 echo -e "  ${BOLD}Seeding${NC}: roles, permissions and admin@bep.org were seeded automatically."
-echo -e "    Login: admin@bep.org / ${SEED_ADMIN_PASSWORD}"
+echo -e "    Login: admin@bep.org"
+echo -e "    ${YELLOW}The seed admin password was printed above during secret collection.${NC}"
 echo -e "    ${YELLOW}Change this password immediately after the first login.${NC}"
-echo -e "    (Password applies only if the account was created by this run.)"
 echo ""
 echo -e "  ${BOLD}Database maintenance${NC} (dev deps are pruned – use the compiled scripts):"
 echo -e "    cd ${APP_DIR}/backend && sudo -u ${APP_USER} npm run schema:check   # dry run"
