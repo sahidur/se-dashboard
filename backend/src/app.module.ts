@@ -57,11 +57,12 @@ import { AuditModule } from './common/audit/audit.module';
           try {
             const caCert = readFileSync(resolve(caCertPath), 'utf-8');
             sslOptions.ca = caCert;
-          } catch {
-            // If the file cannot be read, fall back to the default trust store
-            // (rejectUnauthorized=true will still enforce CA validation).
+            console.log(`[DB] Loaded CA certificate from ${caCertPath}`);
+          } catch (err) {
+            console.warn(`[DB] Could not read CA cert at ${caCertPath}: ${(err as Error).message}`);
           }
         }
+        console.log(`[DB] SSL enabled=${dbSslEnabled}, rejectUnauthorized=${dbSslRejectUnauthorized}, host=${configService.get<string>('DB_HOST')}`);
 
         return {
           type: 'postgres' as const,

@@ -474,6 +474,16 @@ ensure_env COOKIE_SECURE "true"
 # DB_SSL=true and the DB provider uses a self-signed CA (e.g. DigitalOcean).
 ensure_env DB_CA_CERT "ca-certificate.crt"
 
+# DB_SSL_REJECT_UNAUTHORIZED must be explicitly set. The backend defaults to
+# 'true' (secure by default) when this key is absent, which breaks connections
+# to managed DBs using self-signed CAs. 'false' is correct for DigitalOcean
+# managed PostgreSQL.
+if grep -q '^DB_SSL=true' "$BACKEND_ENV_FILE" && \
+   ! grep -q '^DB_SSL_REJECT_UNAUTHORIZED=' "$BACKEND_ENV_FILE"; then
+  echo 'DB_SSL_REJECT_UNAUTHORIZED=false' >> "$BACKEND_ENV_FILE"
+  ok "Added DB_SSL_REJECT_UNAUTHORIZED=false (required for managed DB with SSL)"
+fi
+
 # Read only by 'npm run seed', and only when admin@bep.org does not exist yet.
 # SEED_ADMIN_PASSWORD is REQUIRED — seed.ts exits with an error if it is missing
 # or still a placeholder value.
