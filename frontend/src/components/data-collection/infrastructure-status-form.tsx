@@ -143,7 +143,7 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
     async function load() {
       try {
         const [dashRes, infraRes] = await Promise.all([
-          api.get(`/data-collection/schools/${schoolId}/dashboard`),
+          api.get(`/data-collection/schools/${schoolId}/dashboard`).catch(() => ({ data: { school: null } })),
           api.get(`/data-collection/infrastructure/school/${schoolId}`).catch(() => ({ data: null })),
         ]);
         setSchool(dashRes.data.school);
@@ -154,13 +154,13 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
           setSavedRecord(loaded);
         }
       } catch {
-        router.push('/data-collection/schools');
+        setError('Failed to load school data. Please try again.');
       } finally {
         setLoading(false);
       }
     }
     load();
-  }, [schoolId, router]);
+  }, [schoolId]);
 
   // Overlay the user's private draft (if any) once initial data has loaded.
   useEffect(() => {
