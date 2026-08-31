@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { DataTable, type TableColumn } from '@/components/ui/data-table';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
+import { ExportButtons } from '@/components/data-collection/export-buttons';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
 import { useAuthStore } from '@/store/auth-store';
@@ -524,6 +525,22 @@ export function ActivityParticipationForm({ schoolId }: Props) {
             searchable
             searchPlaceholder="Search records..."
             title="Activity Participation Records"
+            headerExtra={
+              <ExportButtons
+                payload={{
+                  filename: 'activity-participation',
+                  headers: ['Item', 'Year', 'Month', 'Grade', 'Activity/Books', 'Conducted'],
+                  rows: records.map((r) => [
+                    r.item,
+                    r.year,
+                    r.month,
+                    getGradeDisplayName(r.grade, school?.schoolCategory),
+                    r.activityName,
+                    r.conductedCount,
+                  ]),
+                }}
+              />
+            }
             emptyMessage="No activity participation records yet."
             emptyIcon={<Library size={40} className="mb-3 opacity-20" />}
             actions={(rec) => (

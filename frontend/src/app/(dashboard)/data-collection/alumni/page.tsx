@@ -79,7 +79,7 @@ export default function AlumniPage() {
   return (
     <>
       <Header title="Alumni Information" subtitle="Manage alumni records for your schools" />
-      <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+      <div className="p-4 sm:p-6 lg:p-8">
         <SchoolSelector value={schoolId} onChange={(id) => setSchoolId(id)} className="mb-6" />
 
         {!schoolId ? (

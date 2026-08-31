@@ -309,6 +309,8 @@ export class CreateTeacherIndividualDto {
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(100) assessmentScore?: number;
 }
 
+export class UpdateTeacherIndividualDto extends PartialType(CreateTeacherIndividualDto) {}
+
 // ===================== Teachers Development (per month) =====================
 
 export class UpsertTeachersDevelopmentDto {

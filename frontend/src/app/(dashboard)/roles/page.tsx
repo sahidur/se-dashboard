@@ -1,93 +1,56 @@
 'use client';
 
-import { useEffect, useState, useCallback, Fragment } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Modal } from '@/components/ui/modal';
-import { Plus, Edit, Trash2, Shield, ChevronDown, ChevronRight } from 'lucide-react';
-import api, { getErrorMessage } from '@/lib/api';
-import type { Role } from '@/types';
 import {
-  ALL_DC_FORM_RESOURCES,
-  groupDcFormResources,
-} from '@/lib/data-collection-forms';
+  Plus,
+  Edit3,
+  Trash2,
+  Shield,
+  ShieldAlert,
+  Layers,
+  KeyRound,
+  Crown,
+} from 'lucide-react';
+import api, { getErrorMessage } from '@/lib/api';
+import { useAuthStore } from '@/store/auth-store';
+import { RoleEditorModal, type RoleFormData } from '@/components/roles/role-editor-modal';
+import { cn } from '@/lib/utils';
+import type { Role } from '@/types';
 
-const MODULE_GROUPS: { label: string; modules: { key: string; label: string; description?: string }[] }[] = [
-  {
-    label: 'General',
-    modules: [{ key: 'dashboard', label: 'Dashboard' }],
-  },
-  {
-    label: 'Data Collection',
-    modules: [
-      { key: 'programme-overview', label: 'Programme Overview', description: 'Aggregated programme-wide stats page' },
-      { key: 'school-information', label: 'School Information', description: 'Browse all schools + school profile view' },
-      { key: 'data-collection', label: 'Data Collection (all forms)', description: 'Wildcard switch covering every form. Tick specific forms below instead to grant access per form.' },
-      { key: 'data-collection-edit', label: 'Edit Submitted Data', description: 'Only the "Update" checkbox matters here. Without it, this role can still create new data-collection records but cannot modify one that has already been submitted.' },
-    ],
-  },
-  {
-    label: 'School Monitoring',
-    modules: [
-      { key: 'school-monitoring', label: 'School Monitoring', description: 'Submit and view observation feedback for assigned schools (Combined / Quality / Operations checklists).' },
-      { key: 'school-monitoring-edit', label: 'Edit / Delete Monitoring', description: 'Only "Update" and "Delete" matter. Submissions are immutable to their author — this permission lets a role edit or delete any submitted monitoring feedback.' },
-    ],
-  },
-  {
-    label: 'Users & Roles',
-    modules: [
-      { key: 'users', label: 'Users' },
-      { key: 'roles', label: 'Roles' },
-      { key: 'user-designations', label: 'User Designations', description: 'Designation labels assignable to users, managed under Admin Tools' },
-    ],
-  },
-  {
-    label: 'Surveys',
-    modules: [
-      { key: 'surveys', label: 'Surveys' },
-      { key: 'assigned-surveys', label: 'Assigned Surveys', description: 'Only "Read" is used — assigned surveys are visible or hidden' },
-      { key: 'school-records', label: 'School Records', description: 'Survey targeting/response records for schools (Read/Update only)' },
-    ],
-  },
-  {
-    label: 'Admin Tools',
-    modules: [
-      { key: 'admin-tools', label: 'Admin Tools (menu group)', description: 'Controls whether the Admin Tools menu group is shown at all' },
-      { key: 'categories', label: 'Categories', description: 'Survey category tags, managed under Admin Tools' },
-      { key: 'geo-locations', label: 'Geo Locations' },
-      { key: 'activity-logs', label: 'Activity Logs', description: 'System-wide audit/activity log viewer' },
-      { key: 'recycle-bin', label: 'Recycle Bin', description: 'Restore/delete purged records (Read/Update/Delete only)' },
-    ],
-  },
-];
+// ── Card glow (soft ambient ring around each card) ──────────────────────
+const CARD_GLOW =
+  'shadow-[0_0_28px_-6px_rgba(209,0,116,0.18)] hover:shadow-[0_0_36px_-4px_rgba(209,0,116,0.3)]';
 
-const ACTIONS = ['create', 'read', 'update', 'delete'] as const;
+const ACTION_CHIP: Record<string, string> = {
+  create: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
+  read: 'bg-sky-50 text-sky-700 ring-sky-600/20',
+  update: 'bg-amber-50 text-amber-700 ring-amber-600/20',
+  delete: 'bg-rose-50 text-rose-700 ring-rose-600/20',
+};
 
-interface PermissionEntry {
-  module: string;
-  action: string;
-  resource?: string | null;
-}
-
-const DC_FORM_GROUPS = groupDcFormResources();
-
+const EMPTY_FORM: RoleFormData = {
+  name: '',
+  description: '',
+  hierarchy: 0,
+  permissions: [],
+};
 
 export default function RolesPage() {
+  const { user } = useAuthStore();
+
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showDelete, setShowDelete] = useState<Role | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [saving, setSaving] = useState(false);
-  const [dcFormsExpanded, setDcFormsExpanded] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    hierarchy: 0,
-    permissions: [] as PermissionEntry[],
-  });
+  const [formError, setFormError] = useState<string | null>(null);
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const [formData, setFormData] = useState<RoleFormData>(EMPTY_FORM);
 
   const fetchRoles = useCallback(async () => {
     try {
@@ -107,17 +70,14 @@ export default function RolesPage() {
 
   const openCreateModal = () => {
     setEditingRole(null);
-    setFormData({
-      name: '',
-      description: '',
-      hierarchy: 0,
-      permissions: [],
-    });
+    setFormError(null);
+    setFormData(EMPTY_FORM);
     setShowModal(true);
   };
 
   const openEditModal = (role: Role) => {
     setEditingRole(role);
+    setFormError(null);
     setFormData({
       name: role.name,
       description: role.description || '',
@@ -132,45 +92,10 @@ export default function RolesPage() {
     setShowModal(true);
   };
 
-  // Resource-scoped key so form-level grants don't collide with the wildcard
-  // row of the same module.
-  const permKey = (module: string, action: string, resource?: string | null) =>
-    `${module}::${resource ?? ''}::${action}`;
-
-  const togglePermission = (
-    module: string,
-    action: string,
-    resource?: string | null,
-  ) => {
-    setFormData((prev) => {
-      const key = permKey(module, action, resource);
-      return {
-        ...prev,
-        permissions: prev.permissions.some(
-          (p) => permKey(p.module, p.action, p.resource) === key,
-        )
-          ? prev.permissions.filter(
-              (p) => permKey(p.module, p.action, p.resource) !== key,
-            )
-          : [...prev.permissions, { module, action, resource: resource ?? null }],
-      };
-    });
-  };
-
-  const hasPermission = (
-    module: string,
-    action: string,
-    resource?: string | null,
-  ) => {
-    const key = permKey(module, action, resource);
-    return formData.permissions.some(
-      (p) => permKey(p.module, p.action, p.resource) === key,
-    );
-  };
-
   const handleSave = async () => {
     try {
       setSaving(true);
+      setFormError(null);
       if (editingRole) {
         await api.patch(`/roles/${editingRole.id}`, formData);
       } else {
@@ -179,271 +104,260 @@ export default function RolesPage() {
       setShowModal(false);
       fetchRoles();
     } catch (error) {
-      alert(getErrorMessage(error, 'Failed to save role'));
+      setFormError(getErrorMessage(error, 'Failed to save role'));
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this role?')) return;
+  const handleDelete = async () => {
+    if (!showDelete) return;
     try {
-      await api.delete(`/roles/${id}`);
+      setDeleting(true);
+      await api.delete(`/roles/${showDelete.id}`);
+      setShowDelete(null);
       fetchRoles();
     } catch (error) {
-      alert(getErrorMessage(error, 'Failed to delete role'));
+      setFormError(getErrorMessage(error, 'Failed to delete role'));
+      setShowDelete(null);
+    } finally {
+      setDeleting(false);
     }
   };
+
+  const toggleCard = (id: string) =>
+    setExpandedCards((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  // ── Stats ────────────────────────────────────────────────────────────
+  const totalGrants = roles.reduce((n, r) => n + (r.permissions?.length || 0), 0);
+  const modulesCovered = new Set(
+    roles.flatMap((r) => (r.permissions || []).map((p) => p.module)),
+  ).size;
+  const topRole = roles.find((r) => r.hierarchy === Math.min(...roles.map((x) => x.hierarchy)));
+
+  const stats = [
+    { label: 'Total Roles', value: roles.length, icon: Layers },
+    { label: 'Permission Grants', value: totalGrants, icon: KeyRound },
+    { label: 'Modules Covered', value: modulesCovered, icon: Shield },
+    { label: 'Top Authority', value: topRole?.name || '—', icon: Crown, isText: true },
+  ];
 
   return (
     <>
       <Header
         title="Role Management"
-        subtitle={`${roles.length} roles configured`}
+        subtitle={`${roles.length} roles · ${totalGrants} permission grants configured`}
         actions={
           <Button onClick={openCreateModal} size="sm">
             <Plus size={16} className="mr-1" /> Add Role
           </Button>
         }
       />
-      <div className="page-container">
+      <div className="page-container space-y-6">
+        {/* Summary cards — neutral with a soft glow all around */}
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {stats.map((s, i) => (
+            <div
+              key={s.label}
+              className={cn(
+                'group relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 transition-all duration-300 animate-fadeIn hover:-translate-y-0.5',
+                CARD_GLOW,
+              )}
+              style={{ animationDelay: `${i * 80}ms` }}
+            >
+              <s.icon size={18} className="mb-2 text-gray-400 transition-colors group-hover:text-brand-500" />
+              <p
+                className={cn(
+                  'font-bold leading-tight text-gray-900',
+                  s.isText ? 'truncate text-sm' : 'text-3xl',
+                )}
+                title={s.isText ? String(s.value) : undefined}
+              >
+                {s.value}
+              </p>
+              <p className="mt-1 text-[11px] font-medium text-gray-400">{s.label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Role cards */}
         {loading ? (
           <div className="flex h-64 items-center justify-center">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
           </div>
+        ) : roles.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-gray-200 py-20 text-gray-400 animate-fadeIn">
+            <Shield size={40} className="mb-3 opacity-40" />
+            <p className="font-medium">No roles configured yet</p>
+            <Button onClick={openCreateModal} size="sm" className="mt-4">
+              <Plus size={14} className="mr-1" /> Create your first role
+            </Button>
+          </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {roles.map((role, idx) => (
-              <div
-                key={role.id}
-                className="group animate-fadeIn overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-all duration-300 hover:shadow-md hover:-translate-y-0.5"
-                style={{ animationDelay: `${idx * 50}ms` }}
-              >
-                <div className="p-5">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600 transition-colors group-hover:bg-brand-100">
-                        <Shield size={20} />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-gray-900">{role.name}</h3>
-                        <p className="text-xs text-gray-400">Level {role.hierarchy}</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => openEditModal(role)}
-                        className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-brand-600"
-                      >
-                        <Edit size={14} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(role.id)}
-                        className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-                  {role.description && (
-                    <p className="mt-2 text-sm text-gray-500">
-                      {role.description}
-                    </p>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {roles.map((role, idx) => {
+              const perms = role.permissions || [];
+              const expanded = expandedCards.has(role.id);
+              const visiblePerms = expanded ? perms : perms.slice(0, 8);
+              return (
+                <div
+                  key={role.id}
+                  className={cn(
+                    'group relative overflow-hidden rounded-2xl border border-gray-200 bg-white transition-all duration-300 animate-fadeIn hover:-translate-y-0.5',
+                    CARD_GLOW,
                   )}
-                  <div className="mt-3 flex flex-wrap gap-1">
-                    {role.permissions?.slice(0, 6).map((perm) => {
-                      const resource = perm.resource;
-                      return (
-                        <span
-                          key={perm.id}
-                          className="rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600"
+                  style={{ animationDelay: `${idx * 60}ms` }}
+                >
+                  <div className="p-5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gray-100 text-gray-500 transition-colors duration-300 group-hover:bg-brand-50 group-hover:text-brand-600">
+                          <Shield size={20} />
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="truncate font-bold text-gray-900">{role.name}</h3>
+                          <span className="mt-0.5 inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                            Level {role.hierarchy}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
+                        <button
+                          onClick={() => openEditModal(role)}
+                          title="Edit role"
+                          className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-brand-50 hover:text-brand-600"
                         >
-                          {perm.module}
-                          {resource ? `·${resource}` : ''}:{perm.action}
-                        </span>
-                      );
-                    })}
-                    {(role.permissions?.length || 0) > 6 && (
-                      <span className="rounded-md bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-600">
-                        +{(role.permissions?.length || 0) - 6} more
-                      </span>
+                          <Edit3 size={15} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setFormError(null);
+                            setShowDelete(role);
+                          }}
+                          title="Delete role"
+                          className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {role.description && (
+                      <p className="mt-3 line-clamp-2 text-sm leading-relaxed text-gray-500">
+                        {role.description}
+                      </p>
                     )}
-                    {(!role.permissions || role.permissions.length === 0) && (
-                      <span className="text-xs text-gray-400">
-                        No permissions set
-                      </span>
-                    )}
+
+                    {/* permission chips */}
+                    <div className="mt-4 space-y-1.5">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                        {perms.length} permission grant{perms.length === 1 ? '' : 's'}
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {visiblePerms.map((perm) => (
+                          <span
+                            key={perm.id}
+                            title={`${perm.module}${perm.resource ? `:${perm.resource}` : ''} — ${perm.action}`}
+                            className={cn(
+                              'rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset transition-transform hover:scale-105',
+                              ACTION_CHIP[perm.action] ||
+                                'bg-gray-50 text-gray-600 ring-gray-500/20',
+                            )}
+                          >
+                            {perm.module}
+                            {perm.resource ? `·${perm.resource}` : ''}
+                            <span className="ml-1 opacity-60">{perm.action[0].toUpperCase()}</span>
+                          </span>
+                        ))}
+                        {perms.length === 0 && (
+                          <span className="text-xs italic text-gray-400">
+                            No permissions set
+                          </span>
+                        )}
+                      </div>
+                      {perms.length > 8 && (
+                        <button
+                          onClick={() => toggleCard(role.id)}
+                          className="text-[11px] font-semibold text-brand-600 transition-colors hover:text-brand-700"
+                        >
+                          {expanded ? 'Show less' : `+${perms.length - 8} more…`}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
 
-      {/* Create/Edit Modal */}
-      <Modal
+      {/* Create / Edit — remounted on each open so internal state resets */}
+      <RoleEditorModal
+        key={`editor-${showModal}-${editingRole?.id ?? 'new'}`}
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        title={editingRole ? 'Edit Role' : 'Create Role'}
-        className="max-w-2xl"
+        saving={saving}
+        editingRole={editingRole ? { id: editingRole.id, name: editingRole.name } : null}
+        formData={formData}
+        onChange={setFormData}
+        onSave={handleSave}
+        error={formError}
+      />
+
+      {/* Delete confirmation */}
+      <Modal
+        isOpen={!!showDelete}
+        onClose={() => setShowDelete(null)}
+        title="Delete Role"
+        className="max-w-md"
       >
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Input
-              label="Role Name"
-              value={formData.name}
-              onChange={(e) =>
-                setFormData({ ...formData, name: e.target.value })
-              }
-            />
-            <Input
-              label="Hierarchy (lower = higher authority)"
-              type="number"
-              value={formData.hierarchy}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  hierarchy: parseInt(e.target.value) || 0,
-                })
-              }
-            />
-          </div>
-          <Input
-            label="Description"
-            value={formData.description}
-            onChange={(e) =>
-              setFormData({ ...formData, description: e.target.value })
-            }
-          />
-
-          {/* Permissions Matrix */}
-          <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700">
-              Permissions
-            </label>
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
-              <table className="min-w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-2 py-2 text-left text-xs font-medium uppercase text-gray-500 sm:px-4">
-                      Module
-                    </th>
-                    {ACTIONS.map((action) => (
-                      <th
-                        key={action}
-                        className="w-10 px-2 py-2 text-center text-xs font-medium uppercase text-gray-500 sm:px-4"
-                      >
-                        {action}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {MODULE_GROUPS.map((group) => (
-                    <Fragment key={group.label}>
-                      <tr className="bg-gray-50/70">
-                        <td
-                          colSpan={ACTIONS.length + 1}
-                          className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400 sm:px-4"
-                        >
-                          {group.label}
-                        </td>
-                      </tr>
-                      {group.modules.map((module) => (
-                        <Fragment key={module.key}>
-                          <tr>
-                            <td className="px-2 py-2 text-sm font-medium text-gray-700 sm:px-4">
-                              {module.key === 'data-collection' ? (
-                                <button
-                                  type="button"
-                                  onClick={() => setDcFormsExpanded((v) => !v)}
-                                  className="flex items-center gap-1 text-left font-medium text-gray-700 hover:text-brand-700"
-                                >
-                                  {dcFormsExpanded ? (
-                                    <ChevronDown size={14} className="shrink-0 text-gray-400" />
-                                  ) : (
-                                    <ChevronRight size={14} className="shrink-0 text-gray-400" />
-                                  )}
-                                  {module.label}
-                                </button>
-                              ) : (
-                                module.label
-                              )}
-                              {module.description && (
-                                <p className="hidden text-xs font-normal text-gray-400 sm:block">
-                                  {module.description}
-                                </p>
-                              )}
-                            </td>
-                            {ACTIONS.map((action) => (
-                              <td key={action} className="px-2 py-2 text-center sm:px-4">
-                                <input
-                                  type="checkbox"
-                                  checked={hasPermission(module.key, action)}
-                                  onChange={() => togglePermission(module.key, action)}
-                                  className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                                />
-                              </td>
-                            ))}
-                          </tr>
-                          {module.key === 'data-collection' && dcFormsExpanded && (
-                            Object.entries(DC_FORM_GROUPS).map(([groupName, forms]) => (
-                              <Fragment key={groupName}>
-                                <tr className="bg-indigo-50/40">
-                                  <td
-                                    colSpan={ACTIONS.length + 1}
-                                    className="px-6 py-1 text-[11px] font-semibold uppercase tracking-wide text-indigo-400 sm:px-8"
-                                  >
-                                    {groupName}
-                                  </td>
-                                </tr>
-                                {forms.map((form) => (
-                                  <tr key={form.resource} className="bg-white">
-                                    <td className="px-6 py-1.5 pl-10 text-xs font-medium text-gray-600 sm:px-8 sm:pl-12">
-                                      {form.label}
-                                      {form.description && (
-                                        <p className="hidden text-[11px] font-normal text-gray-400 sm:block">
-                                          {form.description}
-                                        </p>
-                                      )}
-                                    </td>
-                                    {ACTIONS.map((action) => (
-                                      <td key={action} className="px-2 py-1.5 text-center sm:px-4">
-                                        <input
-                                          type="checkbox"
-                                          checked={hasPermission('data-collection', action, form.resource)}
-                                          onChange={() =>
-                                            togglePermission('data-collection', action, form.resource)
-                                          }
-                                          className="h-3.5 w-3.5 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                                        />
-                                      </td>
-                                    ))}
-                                  </tr>
-                                ))}
-                              </Fragment>
-                            ))
-                          )}
-                        </Fragment>
-                      ))}
-                    </Fragment>
-                  ))}
-                </tbody>
-
-              </table>
+        {showDelete && (
+          <div className="space-y-4">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 ring-1 ring-rose-200">
+                <ShieldAlert size={22} />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">
+                  You are about to permanently delete{' '}
+                  <span className="font-bold text-gray-900">“{showDelete.name}”</span>{' '}
+                  and its{' '}
+                  <span className="font-bold text-rose-600">
+                    {showDelete.permissions?.length || 0}
+                  </span>{' '}
+                  permission grant{(showDelete.permissions?.length || 0) === 1 ? '' : 's'}.
+                  Users assigned to this role will lose the associated access.
+                </p>
+                <p className="mt-2 text-xs font-medium text-gray-400">
+                  This action will be recorded in the audit trail.
+                </p>
+              </div>
+            </div>
+            {formError && (
+              <div className="animate-shake rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+                {formError}
+              </div>
+            )}
+            <div className="flex justify-end gap-3 pt-1">
+              <Button variant="outline" onClick={() => setShowDelete(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                loading={deleting}
+              >
+                <Trash2 size={14} className="mr-1" /> Delete Role
+              </Button>
             </div>
           </div>
-
-          <div className="flex justify-end gap-3 pt-4">
-            <Button variant="outline" onClick={() => setShowModal(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSave} loading={saving}>
-              {editingRole ? 'Update' : 'Create'}
-            </Button>
-          </div>
-        </div>
+        )}
       </Modal>
     </>
   );

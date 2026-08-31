@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Save, CheckCircle2, MapPin, BookOpen, School, AlertCircle,
-  Monitor, Users, Columns3, ScanLine, Armchair, Wrench,
+  Monitor, Users, Columns3, ScanLine, Armchair, Wrench, Pencil, Trash2, RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,8 +12,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
+import { ExportButtons } from '@/components/data-collection/export-buttons';
 import { useFormDraft } from '@/hooks/use-form-draft';
-import api from '@/lib/api';
+import { useAuthStore } from '@/store/auth-store';
+import api, { getErrorMessage } from '@/lib/api';
 import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
 import type { DcSchool } from '@/types';
 
@@ -115,6 +117,60 @@ export function ClassroomStatusForm({ schoolId }: Props) {
   const draft = useFormDraft<FormState>('classroom-status', schoolId);
   const [tab, setTab] = useState<'entry' | 'data'>('entry');
   const [savedRecord, setSavedRecord] = useState<FormState | null>(null);
+  const [savedRecordId, setSavedRecordId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const canEditSubmitted = useAuthStore((s) => s.hasPermission('data-collection-edit', 'update'));
+  const canDeleteSubmitted = useAuthStore((s) => s.hasPermission('data-collection', 'delete', 'infrastructure'));
+  const [editDenied, setEditDenied] = useState(false);
+  const [notice, setNotice] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+
+  // "Edit" on the View Data tab: the existing record is already loaded into
+  // the form, so switching back to the entry tab is the edit action.
+  const handleEditRecord = () => {
+    if (!canEditSubmitted) { setEditDenied(true); return; }
+    setEditDenied(false);
+    setTab('entry');
+  };
+
+  // "Delete" removes the entire yearly record. The shared entity also stores
+  // the Infrastructure Status form's data for the same year, so both are
+  // cleared — the confirm message makes that explicit.
+  const handleDeleteRecord = async () => {
+    if (!canDeleteSubmitted) {
+      setNotice({ type: 'error', msg: 'You do not have permission to delete submitted data.' });
+      return;
+    }
+    if (!savedRecordId) return;
+    if (!window.confirm(
+      'Delete this year\'s Infrastructure & Classroom record? This also clears the Infrastructure Status form for the same year. The record will be moved to the recycle bin.',
+    )) return;
+    setDeleting(true);
+    setNotice(null);
+    try {
+      await api.delete(`/data-collection/infrastructure/${savedRecordId}`);
+      setSavedRecord(null);
+      setSavedRecordId(null);
+      setNotice({ type: 'success', msg: 'Record deleted and moved to recycle bin.' });
+    } catch (err: unknown) {
+      setNotice({ type: 'error', msg: getErrorMessage(err, 'Failed to delete the record.') });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // View Data tab export: one Field/Value row per data point of the record.
+  const exportPayload = savedRecord
+    ? {
+        filename: 'classroom-status',
+        headers: ['Field', 'Value'],
+        rows: [
+          ['Academic Year', savedRecord.academicYear || ''],
+          ...COUNT_FIELDS.map(({ key, label }) => [label, String(savedRecord[key as keyof FormState] ?? 0)]),
+          ['Classroom with New Designed Furniture', savedRecord.classroomNewFurniture ? 'Yes' : 'No'],
+          ['Renovation Required', savedRecord.classroomRenovationRequired ? 'Yes' : 'No'],
+        ] as (string | number | null | undefined)[][],
+      }
+    : null;
 
   useEffect(() => {
     async function load() {
@@ -129,6 +185,7 @@ export function ClassroomStatusForm({ schoolId }: Props) {
           const loaded = mapRecord(d);
           setForm(loaded);
           setSavedRecord(loaded);
+          setSavedRecordId(d.id);
         }
       } catch (err: any) {
         const msg = err?.response?.data?.message || err?.message || 'Unknown error';
@@ -168,7 +225,7 @@ export function ClassroomStatusForm({ schoolId }: Props) {
     setForm((prev) => ({ ...prev, academicYear: y }));
     setError('');
     setFieldErrors((prev) => { const n = { ...prev }; delete n.academicYear; return n; });
-    if (!y) { setSavedRecord(null); return; }
+    if (!y) { setSavedRecord(null); setSavedRecordId(null); return; }
     setLoadingYear(true);
     try {
       const { data } = await api.get(`/data-collection/infrastructure/school/${schoolId}?academicYear=${y}`);
@@ -176,13 +233,16 @@ export function ClassroomStatusForm({ schoolId }: Props) {
         const loaded = { ...mapRecord(data), academicYear: y };
         setForm(loaded);
         setSavedRecord(loaded);
+        setSavedRecordId(data.id);
       } else {
         setForm({ ...defaultState, academicYear: y });
         setSavedRecord(null);
+        setSavedRecordId(null);
       }
     } catch {
       setForm({ ...defaultState, academicYear: y });
       setSavedRecord(null);
+      setSavedRecordId(null);
     } finally {
       setLoadingYear(false);
     }
@@ -224,7 +284,7 @@ export function ClassroomStatusForm({ schoolId }: Props) {
     setError('');
     setFieldErrors({});
     try {
-      await api.post('/data-collection/infrastructure', {
+      const { data: saved } = await api.post('/data-collection/infrastructure', {
         schoolId,
         academicYear: Number(form.academicYear),
         digitallyEquippedClassrooms: form.digitallyEquippedClassrooms,
@@ -236,6 +296,7 @@ export function ClassroomStatusForm({ schoolId }: Props) {
       });
       await draft.clearDraft();
       setSavedRecord(form);
+      setSavedRecordId(saved?.id ?? null);
       setSaved(true);
     } catch (err: unknown) {
       const anyErr = err as { response?: { data?: { message?: string } } };
@@ -439,9 +500,40 @@ export function ClassroomStatusForm({ schoolId }: Props) {
       {tab === 'data' && (
         <Card className="overflow-hidden border-0 shadow-sm">
           <CardHeader className="pb-3 pt-5 px-5">
-            <CardTitle className="text-base font-semibold text-gray-800">Submitted Classroom Data</CardTitle>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <CardTitle className="text-base font-semibold text-gray-800">Submitted Classroom Data</CardTitle>
+              {savedRecord && (
+                <div className="flex flex-wrap items-center gap-2">
+                  {exportPayload && <ExportButtons payload={exportPayload} />}
+                  <Button variant="outline" size="sm" onClick={handleEditRecord} className="gap-1.5">
+                    <Pencil size={14} /> Edit This Data
+                  </Button>
+                  <Button
+                    variant="outline" size="sm"
+                    onClick={handleDeleteRecord}
+                    disabled={deleting}
+                    className="gap-1.5 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                  >
+                    {deleting
+                      ? <RefreshCw size={14} className="animate-spin" />
+                      : <Trash2 size={14} />}
+                    Delete
+                  </Button>
+                </div>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="px-5 pb-5">
+            {(editDenied || notice) && (
+              <div className={`mb-4 flex items-center gap-2 rounded-xl border px-4 py-3 text-sm animate-in fade-in slide-in-from-top-1 ${
+                editDenied || notice?.type === 'error'
+                  ? 'border-red-200 bg-red-50 text-red-700'
+                  : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+              }`}>
+                <AlertCircle size={16} className="shrink-0" />
+                {editDenied ? 'You do not have permission to edit submitted data.' : notice?.msg}
+              </div>
+            )}
             {!savedRecord ? (
               <div className="flex flex-col items-center justify-center py-14 text-gray-400">
                 <Columns3 size={40} className="mb-3 opacity-20" />

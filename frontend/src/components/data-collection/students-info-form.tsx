@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Save, CheckCircle2, AlertCircle, Users, School,
-  MapPin, BookOpen, ChevronDown, RefreshCw, X,
+  MapPin, BookOpen, ChevronDown, RefreshCw, X, Pencil, Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,9 +13,11 @@ import { Label } from '@/components/ui/label';
 import { DataTable, type TableColumn } from '@/components/ui/data-table';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
+import { ExportButtons } from '@/components/data-collection/export-buttons';
 import { useFormDraft } from '@/hooks/use-form-draft';
+import { useAuthStore } from '@/store/auth-store';
 import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { buildYearOptions, isValidAcademicYear, gradeEquals, displayGradeLabel } from '@/lib/utils';
 import type { DcSchool, DcStudentsInfo } from '@/types';
 
@@ -107,6 +109,9 @@ export function StudentsInfoForm({ schoolId }: Props) {
   const [tab, setTab] = useState<'entry' | 'data'>('entry');
   const [allRecords, setAllRecords] = useState<DcStudentsInfo[]>([]);
   const [loadingAll, setLoadingAll] = useState(true);
+  const canEditSubmitted = useAuthStore((s) => s.hasPermission('data-collection-edit', 'update'));
+  const canDeleteSubmitted = useAuthStore((s) => s.hasPermission('data-collection', 'delete', 'students'));
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const showToast = useCallback((type: 'success' | 'error', msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -134,6 +139,24 @@ export function StudentsInfoForm({ schoolId }: Props) {
   }, [schoolId, showToast]);
 
   useEffect(() => { loadAllRecords(); }, [loadAllRecords]);
+
+  const handleDeleteRecord = async (r: DcStudentsInfo) => {
+    if (!canDeleteSubmitted) {
+      showToast('error', 'You do not have permission to delete submitted data');
+      return;
+    }
+    if (!window.confirm(`Delete the ${r.month} — ${displayGradeLabel(r.grade)} ${r.academicYear} record? It will be moved to the recycle bin.`)) return;
+    setDeletingId(r.id);
+    try {
+      await api.delete(`/data-collection/students/${r.id}`);
+      showToast('success', 'Record deleted and moved to recycle bin');
+      await loadAllRecords();
+    } catch (err: unknown) {
+      showToast('error', getErrorMessage(err, 'Failed to delete the record.'));
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   /* Overlay the user's private draft (if any) once initial load has finished. */
   useEffect(() => {
@@ -223,6 +246,37 @@ export function StudentsInfoForm({ schoolId }: Props) {
     setFieldErrors((p) => { const n = { ...p }; delete n.grade; return n; });
     setSuccessMsg('');
     if (month) loadEntry(academicYear, month, g);
+  };
+
+  /* ── Edit an existing record from the View Data table ── */
+  const handleEditRecord = (r: DcStudentsInfo) => {
+    if (!canEditSubmitted) {
+      showToast('error', 'You do not have permission to edit submitted data');
+      return;
+    }
+    const y = String(r.academicYear ?? '');
+    // Records may store grades under mixed spellings ("1"/"g1"/"Grade 1") —
+    // normalize back to the option value used by the selector.
+    const g = GRADES.find((opt) => gradeEquals(opt.value, r.grade))?.value ?? r.grade;
+    setAcademicYear(y);
+    setMonth(r.month);
+    setGrade(g);
+    setForm({
+      boys: r.boys,
+      girls: r.girls,
+      personsWithDisability: r.personsWithDisability,
+      ethnic: r.ethnic,
+      attendanceRate: Number(r.attendanceRate),
+      dropoutRate: Number(r.dropoutRate),
+      replacedStudentsRate: Number(r.replacedStudentsRate ?? 0),
+      retentionRate: Number(r.retentionRate ?? 0),
+      remedialSupport: r.remedialSupport,
+    });
+    setIsEditing(true);
+    setError('');
+    setSuccessMsg('');
+    setFieldErrors({});
+    setTab('entry');
   };
 
   const total = form.boys + form.girls;
@@ -602,10 +656,57 @@ export function StudentsInfoForm({ schoolId }: Props) {
         title="All Students Info Records"
         titleIcon={<Users size={18} />}
         badge={<span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-700">{allRecords.length}</span>}
+        headerExtra={
+          <ExportButtons
+            payload={{
+              filename: 'students-information',
+              headers: ['Academic Year', 'Month', 'Grade', 'Boys', 'Girls', 'Total', 'PwD', 'Ethnic', 'Attendance %', 'Dropout %', 'Replaced %', 'Retention %', 'Remedial', 'Submitted By'],
+              rows: allRecords.map((r) => [
+                r.academicYear,
+                r.month,
+                displayGradeLabel(r.grade, school?.schoolCategory),
+                r.boys,
+                r.girls,
+                r.total,
+                r.personsWithDisability,
+                r.ethnic,
+                Number(r.attendanceRate).toFixed(1),
+                Number(r.dropoutRate).toFixed(1),
+                Number(r.replacedStudentsRate ?? 0).toFixed(1),
+                Number(r.retentionRate ?? 0).toFixed(1),
+                r.remedialSupport,
+                r.createdBy ? `${r.createdBy.firstName} ${r.createdBy.lastName}` : '',
+              ]),
+            }}
+          />
+        }
         emptyMessage="No student info records yet."
         emptyIcon={<Users size={40} className="mb-3 opacity-20" />}
         onRefresh={loadAllRecords}
         refreshing={loadingAll}
+        actions={(r) => (
+          <div className="flex items-center justify-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => handleEditRecord(r)}
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 bg-white text-violet-500 hover:border-violet-300 hover:bg-violet-50 transition-colors"
+              title="Edit"
+            >
+              <Pencil size={12} />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDeleteRecord(r)}
+              disabled={deletingId === r.id}
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 bg-white text-red-400 hover:border-red-300 hover:bg-red-50 transition-colors disabled:opacity-50"
+              title="Delete"
+            >
+              {deletingId === r.id
+                ? <RefreshCw size={12} className="animate-spin" />
+                : <Trash2 size={12} />}
+            </button>
+          </div>
+        )}
       />
     )}
     </div>

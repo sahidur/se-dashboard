@@ -28,6 +28,9 @@ import {
   CalendarCheck,
   Medal,
   Banknote,
+  HardHat,
+  Wallet,
+  CalendarDays,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -69,6 +72,13 @@ const entityConfig: Record<
   'dc-activity-participation': { label: 'Activity Participation', icon: CalendarCheck, color: 'text-violet-600', bgColor: 'bg-violet-50' },
   'dc-event-participation': { label: 'Event Participation', icon: Medal, color: 'text-pink-600', bgColor: 'bg-pink-50' },
   'dc-fee-structure': { label: 'Fee Structure', icon: Banknote, color: 'text-lime-600', bgColor: 'bg-lime-50' },
+  'dc-infrastructure': { label: 'Infrastructure & Classroom', icon: HardHat, color: 'text-emerald-600', bgColor: 'bg-emerald-50' },
+  'dc-students-info': { label: 'Students Information', icon: GraduationCap, color: 'text-violet-600', bgColor: 'bg-violet-50' },
+  'dc-teachers-development': { label: 'Teachers Development', icon: Presentation, color: 'text-rose-600', bgColor: 'bg-rose-50' },
+  'dc-revenue-budget-total': { label: 'Planned Revenue (Total)', icon: Wallet, color: 'text-orange-600', bgColor: 'bg-orange-50' },
+  'dc-revenue-budget-monthly': { label: 'Planned Revenue (Monthly)', icon: CalendarDays, color: 'text-amber-600', bgColor: 'bg-amber-50' },
+  'dc-revenue-actual-total': { label: 'Actual Revenue (Total)', icon: Wallet, color: 'text-yellow-600', bgColor: 'bg-yellow-50' },
+  'dc-revenue-actual-monthly': { label: 'Actual Revenue (Monthly)', icon: CalendarDays, color: 'text-yellow-600', bgColor: 'bg-yellow-50' },
 };
 
 const DC_ENTITY_TYPES = [
@@ -81,6 +91,13 @@ const DC_ENTITY_TYPES = [
   'dc-activity-participation',
   'dc-event-participation',
   'dc-fee-structure',
+  'dc-infrastructure',
+  'dc-students-info',
+  'dc-teachers-development',
+  'dc-revenue-budget-total',
+  'dc-revenue-budget-monthly',
+  'dc-revenue-actual-total',
+  'dc-revenue-actual-monthly',
 ] as const;
 
 const ITEM_META_KEYS = [
@@ -228,6 +245,36 @@ const getItemLabels = (
         ),
       };
     }
+    case 'dc-infrastructure':
+      return {
+        title:
+          firstTxt(item.campusStatus) || 'Infrastructure & Classroom record',
+        meta: joinTxt(baseMeta(), item.roomTotal ? `Total Rooms ${item.roomTotal}` : ''),
+      };
+    case 'dc-students-info':
+      return {
+        title: firstTxt(item.grade) || 'Students Information record',
+        meta: joinTxt(baseMeta(), item.total ? `Total ${item.total}` : ''),
+      };
+    case 'dc-teachers-development':
+      return {
+        title: firstTxt(item.month) || 'Development record',
+        meta: baseMeta(),
+      };
+    case 'dc-revenue-budget-total':
+      return { title: 'Planned Revenue Collection (Total)', meta: baseMeta() };
+    case 'dc-revenue-budget-monthly':
+      return {
+        title: firstTxt(item.month) || 'Planned Revenue Collection (Monthly)',
+        meta: joinTxt(baseMeta(), item.collectionPct ? `${item.collectionPct}% collected` : ''),
+      };
+    case 'dc-revenue-actual-total':
+      return { title: 'Actual Revenue Collection (Total)', meta: baseMeta() };
+    case 'dc-revenue-actual-monthly':
+      return {
+        title: firstTxt(item.month) || 'Actual Revenue Collection (Monthly)',
+        meta: joinTxt(baseMeta(), item.collectionPct ? `${item.collectionPct}% collected` : ''),
+      };
     default:
       return {
         title: txt(item.displayName) || genericFallback(item),

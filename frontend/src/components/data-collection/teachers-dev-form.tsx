@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Save, CheckCircle2, AlertCircle, BookOpen, School,
-  MapPin, Users, RefreshCw, X, ChevronDown,
+  MapPin, Users, RefreshCw, X, ChevronDown, Pencil, Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,8 +14,10 @@ import { Badge } from '@/components/ui/badge';
 import { DataTable, type TableColumn } from '@/components/ui/data-table';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
+import { ExportButtons } from '@/components/data-collection/export-buttons';
 import { useFormDraft } from '@/hooks/use-form-draft';
-import api from '@/lib/api';
+import { useAuthStore } from '@/store/auth-store';
+import api, { getErrorMessage } from '@/lib/api';
 import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
 import type { DcSchool, DcTeachersDevelopment, HeadTeacherLeadership } from '@/types';
 
@@ -103,6 +105,9 @@ export function TeachersDevForm({ schoolId }: Props) {
   const draft = useFormDraft<{ academicYear: string; month: string; form: FormState }>('teachers-development', schoolId);
   const draftAppliedRef = useRef(false);
   const [tab, setTab] = useState<'entry' | 'data'>('entry');
+  const canEditSubmitted = useAuthStore((s) => s.hasPermission('data-collection-edit', 'update'));
+  const canDeleteSubmitted = useAuthStore((s) => s.hasPermission('data-collection', 'delete', 'teachers-development'));
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const showToast = useCallback((type: 'success' | 'error', msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -218,6 +223,32 @@ export function TeachersDevForm({ schoolId }: Props) {
     setMonth(r.month);
     setTab('entry');
     loadEntry(y, r.month);
+  };
+
+  const handleEditRecord = (r: DcTeachersDevelopment) => {
+    if (!canEditSubmitted) {
+      showToast('error', 'You do not have permission to edit submitted data');
+      return;
+    }
+    handleRecordClick(r);
+  };
+
+  const handleDeleteRecord = async (r: DcTeachersDevelopment) => {
+    if (!canDeleteSubmitted) {
+      showToast('error', 'You do not have permission to delete submitted data');
+      return;
+    }
+    if (!window.confirm(`Delete the ${r.month} ${r.academicYear} development record? It will be moved to the recycle bin.`)) return;
+    setDeletingId(r.id);
+    try {
+      await api.delete(`/data-collection/teachers/development/${r.id}`);
+      showToast('success', 'Record deleted and moved to recycle bin');
+      await loadAllRecords();
+    } catch (err: unknown) {
+      showToast('error', getErrorMessage(err, 'Failed to delete the record.'));
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const setField = (k: keyof Omit<FormState, 'headTeacherLeadership'>, v: number) =>
@@ -546,6 +577,29 @@ export function TeachersDevForm({ schoolId }: Props) {
         onRefresh={loadAllRecords}
         refreshing={loadingAll}
         onRowClick={(r) => handleRecordClick(r)}
+        actions={(r) => (
+          <div className="flex items-center justify-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => handleEditRecord(r)}
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 bg-white text-rose-500 hover:border-rose-300 hover:bg-rose-50 transition-colors"
+              title="Edit"
+            >
+              <Pencil size={12} />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDeleteRecord(r)}
+              disabled={deletingId === r.id}
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 bg-white text-red-400 hover:border-red-300 hover:bg-red-50 transition-colors disabled:opacity-50"
+              title="Delete"
+            >
+              {deletingId === r.id
+                ? <RefreshCw size={12} className="animate-spin" />
+                : <Trash2 size={12} />}
+            </button>
+          </div>
+        )}
         rowClassName={(r) =>
           month === r.month && Number(academicYear) === Number(r.academicYear) ? 'ring-inset ring-2 ring-rose-300' : ''
         }
@@ -555,7 +609,26 @@ export function TeachersDevForm({ schoolId }: Props) {
           </div>
         ) : undefined}
         headerExtra={
-          <p className="text-xs text-gray-400">Click any row to load that month&apos;s data into the form for editing.</p>
+          <ExportButtons
+            payload={{
+              filename: 'teachers-development',
+              headers: ['Academic Year', 'Month', 'Online Ref.', 'Offline Ref.', 'Dev. Forum', 'Basic Train.', 'Subject Train.', 'Leadership', 'Others', 'Total', 'Updated At'],
+              rows: allRecords.map((r) => [
+                r.academicYear,
+                r.month,
+                r.onlineRefresher,
+                r.offlineRefresher,
+                r.developmentForum,
+                r.basicTraining,
+                r.subjectBasedTraining,
+                r.leadershipTraining,
+                r.others,
+                r.onlineRefresher + r.offlineRefresher + r.developmentForum
+                  + r.basicTraining + r.subjectBasedTraining + r.leadershipTraining + r.others,
+                r.updatedAt ? formatDateTime(r.updatedAt) : '',
+              ]),
+            }}
+          />
         }
       />
       )}

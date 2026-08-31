@@ -19,6 +19,13 @@ import { DcStudentPerformance } from '../data-collection/entities/dc-student-per
 import { DcActivityParticipation } from '../data-collection/entities/dc-activity-participation.entity';
 import { DcEventParticipation } from '../data-collection/entities/dc-event-participation.entity';
 import { DcFeeStructure } from '../data-collection/entities/dc-fee-structure.entity';
+import { DcInfrastructure } from '../data-collection/entities/dc-infrastructure.entity';
+import { DcStudentsInfo } from '../data-collection/entities/dc-students-info.entity';
+import { DcTeachersDevelopment } from '../data-collection/entities/dc-teachers-development.entity';
+import { DcRevenueBudgetTotal } from '../data-collection/entities/dc-revenue-budget-total.entity';
+import { DcRevenueBudgetMonthly } from '../data-collection/entities/dc-revenue-budget-monthly.entity';
+import { DcRevenueActualTotal } from '../data-collection/entities/dc-revenue-actual-total.entity';
+import { DcRevenueActualMonthly } from '../data-collection/entities/dc-revenue-actual-monthly.entity';
 import { DcSchool } from '../data-collection/entities/dc-school.entity';
 import { UsersModule } from '../users/users.module';
 
@@ -43,6 +50,13 @@ import { UsersModule } from '../users/users.module';
       DcActivityParticipation,
       DcEventParticipation,
       DcFeeStructure,
+      DcInfrastructure,
+      DcStudentsInfo,
+      DcTeachersDevelopment,
+      DcRevenueBudgetTotal,
+      DcRevenueBudgetMonthly,
+      DcRevenueActualTotal,
+      DcRevenueActualMonthly,
     ]),
     UsersModule,
   ],

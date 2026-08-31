@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { DataTable, type TableColumn } from '@/components/ui/data-table';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
+import { ExportButtons, exportPayloadFromColumns } from '@/components/data-collection/export-buttons';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import api, { getErrorMessage } from '@/lib/api';
@@ -537,6 +538,19 @@ export function AlumniForm({ schoolId }: Props) {
         emptyIcon={<UserCheck size={40} className="mb-3 opacity-20" />}
         onRefresh={loadRecords}
         refreshing={loadingRecords}
+        headerExtra={
+          <ExportButtons
+            payload={exportPayloadFromColumns(
+              alumniColumns,
+              records,
+              'alumni-information',
+              {
+                createdAt: (v) =>
+                  v ? new Date(String(v)).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '',
+              },
+            )}
+          />
+        }
         actions={(r) => (
           <div className="flex items-center justify-center gap-1.5">
             <button

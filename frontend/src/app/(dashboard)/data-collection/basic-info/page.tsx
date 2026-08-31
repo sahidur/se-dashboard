@@ -107,7 +107,7 @@ export default function BasicInfoPage() {
   return (
     <>
       <Header title="Basic Information" subtitle="School-wise basic information form" />
-      <div className="p-4 sm:p-6 max-w-4xl mx-auto">
+      <div className="p-4 sm:p-6 lg:p-8">
         <SchoolSelector value={schoolId} onChange={(id) => setSchoolId(id)} className="mb-6" />
 
         {!schoolId ? (

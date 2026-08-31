@@ -38,11 +38,10 @@ interface FormMeta {
   component: React.ComponentType<any>;
   title: string;
   subtitle: string;
-  maxWidth?: string;
 }
 
-function makeMeta(component: FormMeta['component'], title: string, subtitle: string, maxWidth = 'max-w-4xl'): FormMeta {
-  return { component, title, subtitle, maxWidth };
+function makeMeta(component: FormMeta['component'], title: string, subtitle: string): FormMeta {
+  return { component, title, subtitle };
 }
 
 const SLUG_MAP: Record<string, FormMeta> = {
@@ -51,17 +50,17 @@ const SLUG_MAP: Record<string, FormMeta> = {
   'students-information': makeMeta(StudentsInfoForm, "Students' Information", 'Monthly enrollment by grade'),
   'teachers-information': makeMeta(TeachersInfoForm, "Teachers' Information", 'Individual teacher records'),
   'teachers-development': makeMeta(TeachersDevForm, "Teachers' Development", 'Monthly training & development data'),
-  'fee-structure-primary': makeMeta(FeeStructureForm, 'Fee Structure (Primary)', 'Monthly fee structure per grade', 'max-w-5xl'),
-  'revenue-budget-total': makeMeta(RevenueTotalForm, 'Planned Revenue Collection - Total', 'Yearly budget targets and achievements per fee category', 'max-w-5xl'),
-  'revenue-budget-monthly': makeMeta(RevenueMonthlyForm, 'Planned Revenue Collection - Monthly', 'Monthly tuition fee budget and collection tracking', 'max-w-5xl'),
-  'revenue-actual-total': makeMeta(RevenueTotalForm, 'Actual Revenue Collection - Total', 'Yearly actual student revenue targets and achievements', 'max-w-5xl'),
-  'revenue-actual-monthly': makeMeta(RevenueMonthlyForm, 'Actual Revenue Collection - Monthly', 'Monthly actual student revenue tracking', 'max-w-5xl'),
-  'alumni-information': makeMeta(AlumniForm, 'Alumni Information', 'School alumni records', 'max-w-5xl'),
-  'pedagogical-achievements': makeMeta(PedagogicalAchievementsForm, "School's Pedagogical Achievements", 'Annual scholarship and achievement records', 'max-w-5xl'),
-  'co-curricular-activities': makeMeta(CocurricularForm, 'Participation in Co-curricular Activities', 'Monthly activity participation by grade', 'max-w-5xl'),
-  'students-performance': makeMeta(StudentsPerformanceForm, "Students' Academic Performance", 'Exam-wise grade results and progress indicators', 'max-w-5xl'),
-  'activity-participation': makeMeta(ActivityParticipationForm, "Students' Participation in Corner/Club/Library/Lab Activities", 'Monthly activity participation by grade with photo evidence', 'max-w-5xl'),
-  'event-participation': makeMeta(EventParticipationForm, "School's Participation in Different Events", 'Events, award levels and students awarded', 'max-w-5xl'),
+  'fee-structure-primary': makeMeta(FeeStructureForm, 'Fee Structure (Primary)', 'Monthly fee structure per grade'),
+  'revenue-budget-total': makeMeta(RevenueTotalForm, 'Planned Revenue Collection - Total', 'Yearly budget targets and achievements per fee category'),
+  'revenue-budget-monthly': makeMeta(RevenueMonthlyForm, 'Planned Revenue Collection - Monthly', 'Monthly tuition fee budget and collection tracking'),
+  'revenue-actual-total': makeMeta(RevenueTotalForm, 'Actual Revenue Collection - Total', 'Yearly actual student revenue targets and achievements'),
+  'revenue-actual-monthly': makeMeta(RevenueMonthlyForm, 'Actual Revenue Collection - Monthly', 'Monthly actual student revenue tracking'),
+  'alumni-information': makeMeta(AlumniForm, 'Alumni Information', 'School alumni records'),
+  'pedagogical-achievements': makeMeta(PedagogicalAchievementsForm, "School's Pedagogical Achievements", 'Annual scholarship and achievement records'),
+  'co-curricular-activities': makeMeta(CocurricularForm, 'Participation in Co-curricular Activities', 'Monthly activity participation by grade'),
+  'students-performance': makeMeta(StudentsPerformanceForm, "Students' Academic Performance", 'Exam-wise grade results and progress indicators'),
+  'activity-participation': makeMeta(ActivityParticipationForm, "Students' Participation in Corner/Club/Library/Lab Activities", 'Monthly activity participation by grade with photo evidence'),
+  'event-participation': makeMeta(EventParticipationForm, "School's Participation in Different Events", 'Events, award levels and students awarded'),
 };
 
 /* ─── Revenue mode helper ───────────────────── */
@@ -459,7 +458,7 @@ export default function DemoFormPage() {
             </Button>
           }
         />
-        <div className={`p-4 sm:p-6 ${meta?.maxWidth ?? 'max-w-6xl'} mx-auto`}>
+        <div className="p-4 sm:p-6 lg:p-8">
           <Suspense fallback={
             <div className="flex items-center justify-center py-32">
               <div className="h-12 w-12 animate-spin rounded-full border-4 border-brand-200 border-t-brand-600" />
@@ -515,7 +514,7 @@ export default function DemoFormPage() {
         }
       />
 
-      <div className="p-4 sm:p-6 max-w-4xl mx-auto">
+      <div className="p-4 sm:p-6 lg:p-8">
         {/* Color bar header */}
         <div className={`mb-6 rounded-xl bg-gradient-to-r ${config.color} p-6 text-white shadow-lg`}>
           <h1 className="text-2xl font-bold">{config.title}</h1>

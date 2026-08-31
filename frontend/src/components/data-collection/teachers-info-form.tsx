@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Save, CheckCircle2, AlertCircle, Users, School, MapPin,
-  BookOpen, Trash2, X, Plus, RefreshCw, TableProperties, ChevronDown,
+  BookOpen, Trash2, X, Plus, RefreshCw, TableProperties, ChevronDown, Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { DataTable, type TableColumn } from '@/components/ui/data-table';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
+import { ExportButtons, exportPayloadFromColumns } from '@/components/data-collection/export-buttons';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import api, { getErrorMessage } from '@/lib/api';
@@ -120,6 +121,7 @@ function MultiSelect({ options, selected, onChange, otherValue, onOtherChange, l
 export function TeachersInfoForm({ schoolId }: Props) {
   const router = useRouter();
   const canDeleteSubmitted = useAuthStore((s) => s.hasPermission('data-collection', 'delete', 'teachers-individual'));
+  const canEditSubmitted = useAuthStore((s) => s.hasPermission('data-collection-edit', 'update'));
   const [school, setSchool] = useState<DcSchool | null>(null);
   const [form, setForm] = useState<FormState>(BLANK_FORM);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -131,6 +133,8 @@ export function TeachersInfoForm({ schoolId }: Props) {
   const [loadingRecords, setLoadingRecords] = useState(true);
   const [tab, setTab] = useState<'entry' | 'data'>('entry');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
   const draft = useFormDraft<FormState>('teachers-info-entry', schoolId);
   const draftAppliedRef = useRef(false);
 
@@ -219,6 +223,53 @@ export function TeachersInfoForm({ schoolId }: Props) {
     return parts.join(',');
   };
 
+  /* Parse a stored comma-separated list back into chips + "Others" text. */
+  const parseList = (raw: string | undefined, known: string[]): { selected: string[]; other: string } => {
+    const items = (raw ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    const knownSet = new Set(known.filter((k) => k !== 'Others'));
+    const selected: string[] = [];
+    const customs: string[] = [];
+    items.forEach((i) => (knownSet.has(i) ? selected.push(i) : customs.push(i)));
+    if (items.includes('Others') || customs.length > 0) selected.push('Others');
+    return { selected, other: customs.join(', ') };
+  };
+
+  /* Load an existing record into the form for editing */
+  const handleEdit = (r: DcTeacherIndividual) => {
+    if (!canEditSubmitted) {
+      showToast('error', 'You do not have permission to edit submitted data');
+      return;
+    }
+    const subjects = parseList(r.subjectExpertise, SUBJECT_OPTIONS);
+    const trainings = parseList(r.trainingReceived, TRAINING_OPTIONS);
+    setForm({
+      academicYear: r.academicYear != null ? String(r.academicYear) : '',
+      name: r.name,
+      designation: r.designation,
+      gender: r.gender,
+      educationalQualification: r.educationalQualification,
+      experienceYears: Number(r.experienceYears ?? 0),
+      subjectExpertise: subjects.selected,
+      subjectOther: subjects.other,
+      trainingReceived: trainings.selected,
+      trainingOther: trainings.other,
+      assessmentScore: r.assessmentScore != null ? Number(r.assessmentScore) : '',
+    });
+    setEditingId(r.id);
+    setEditingName(r.name);
+    setError('');
+    setFieldErrors({});
+    setTab('entry');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setEditingName('');
+    setForm(BLANK_FORM);
+    setFieldErrors({});
+    setError('');
+  };
+
   /* Submit */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -226,8 +277,7 @@ export function TeachersInfoForm({ schoolId }: Props) {
     setSaving(true);
     setError('');
     try {
-      await api.post('/data-collection/teachers/individual', {
-        schoolId,
+      const payload = {
         academicYear: Number(form.academicYear),
         name: form.name.trim(),
         designation: form.designation,
@@ -237,8 +287,17 @@ export function TeachersInfoForm({ schoolId }: Props) {
         subjectExpertise: buildList(form.subjectExpertise, form.subjectOther) || undefined,
         trainingReceived: buildList(form.trainingReceived, form.trainingOther) || undefined,
         assessmentScore: form.assessmentScore !== '' ? Number(form.assessmentScore) : undefined,
-      });
-      showToast('success', `${form.name.trim()} added successfully!`);
+      };
+      if (editingId) {
+        await api.patch(`/data-collection/teachers/individual/${editingId}`, payload);
+      } else {
+        await api.post('/data-collection/teachers/individual', { schoolId, ...payload });
+      }
+      showToast('success', editingId
+        ? `${form.name.trim()} updated successfully!`
+        : `${form.name.trim()} added successfully!`);
+      setEditingId(null);
+      setEditingName('');
       setForm(BLANK_FORM);
       await draft.clearDraft();
       await loadRecords();
@@ -378,9 +437,17 @@ export function TeachersInfoForm({ schoolId }: Props) {
       <form onSubmit={handleSubmit}>
         <Card className="overflow-hidden border-0 shadow-sm">
           <CardHeader className="pb-3 pt-5 px-5">
-            <CardTitle className="text-base font-semibold text-gray-800 flex items-center gap-2">
-              <Plus size={17} className="text-pink-600" /> Add Teacher Record
-            </CardTitle>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <CardTitle className="text-base font-semibold text-gray-800 flex items-center gap-2">
+                {editingId ? <Pencil size={17} className="text-pink-600" /> : <Plus size={17} className="text-pink-600" />}
+                {editingId ? `Edit Teacher Record — ${editingName}` : 'Add Teacher Record'}
+              </CardTitle>
+              {editingId && (
+                <Button variant="outline" size="sm" onClick={handleCancelEdit} className="gap-1.5">
+                  <X size={14} /> Cancel Edit
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="px-5 pb-5 space-y-5">
 
@@ -549,7 +616,7 @@ export function TeachersInfoForm({ schoolId }: Props) {
                 submitting={saving}
                 onSaveDraft={handleSaveDraft}
                 onClearDraft={handleClearDraft}
-                submitLabel="Add Teacher"
+                submitLabel={editingId ? 'Update Teacher' : 'Add Teacher'}
                 submittingLabel="Saving..."
               />
             </div>
@@ -570,22 +637,42 @@ export function TeachersInfoForm({ schoolId }: Props) {
         badge={<span className="rounded-full bg-pink-100 px-2 py-0.5 text-xs font-bold text-pink-700">{records.length}</span>}
         emptyMessage="No teacher records yet. Add the first one above."
         emptyIcon={<Users size={40} className="mb-3 opacity-30" />}
+        headerExtra={
+          <ExportButtons
+            payload={exportPayloadFromColumns(teacherInfoColumns, records, 'teachers-information', {
+              experienceYears: (v) => Number(v ?? 0).toFixed(1),
+              assessmentScore: (v) => (v == null ? '' : Number(v).toFixed(0)),
+              createdAt: (v) =>
+                v ? new Date(String(v)).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '',
+            })}
+          />
+        }
         onRefresh={loadRecords}
         refreshing={loadingRecords}
         actions={(r) => (
-          <button
-            type="button"
-            onClick={() => {
-              if (!canDeleteSubmitted) { showToast('error', 'You do not have permission to delete submitted data'); return; }
-              handleDelete(r.id, r.name);
-            }}
-            disabled={deletingId === r.id}
-            className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50"
-          >
-            {deletingId === r.id
-              ? <RefreshCw size={14} className="animate-spin" />
-              : <Trash2 size={14} />}
-          </button>
+          <div className="flex items-center justify-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => handleEdit(r)}
+              className="rounded-lg p-1.5 text-gray-400 hover:bg-pink-50 hover:text-pink-600 transition-colors"
+              title="Edit"
+            >
+              <Pencil size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!canDeleteSubmitted) { showToast('error', 'You do not have permission to delete submitted data'); return; }
+                handleDelete(r.id, r.name);
+              }}
+              disabled={deletingId === r.id}
+              className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50"
+            >
+              {deletingId === r.id
+                ? <RefreshCw size={14} className="animate-spin" />
+                : <Trash2 size={14} />}
+            </button>
+          </div>
         )}
       />
       )}

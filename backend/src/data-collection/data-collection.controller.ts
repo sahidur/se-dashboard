@@ -22,7 +22,8 @@ import {
   UpsertInfrastructureDto,
   UpsertStudentsInfoDto,
   UpsertTeachersInfoDto,
-  CreateTeacherIndividualDto,
+   CreateTeacherIndividualDto,
+   UpdateTeacherIndividualDto,
   UpsertTeachersDevelopmentDto,
   UpsertRevenueDto,
   UpsertFeeStructureDto,
@@ -156,6 +157,18 @@ export class DataCollectionController {
     return this.service.getInfrastructure(schoolId, userId, roles, academicYear ? Number(academicYear) : undefined);
   }
 
+  // The infrastructure row also holds the Classroom Status form's data for
+  // the same academic year — deleting it clears both.
+  @Delete('infrastructure/:id')
+  @Permissions({ module: 'data-collection', action: 'delete', resource: 'infrastructure' })
+  deleteInfrastructure(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.deleteInfrastructure(id, userId, roles);
+  }
+
   // ===================== Students Info =====================
 
   @Post('students')
@@ -176,6 +189,16 @@ export class DataCollectionController {
     @CurrentUser('roles') roles: string[],
   ) {
     return this.service.getStudentsInfo(schoolId, userId, roles);
+  }
+
+  @Delete('students/:id')
+  @Permissions({ module: 'data-collection', action: 'delete', resource: 'students' })
+  deleteStudentsInfo(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.deleteStudentsInfo(id, userId, roles);
   }
 
   // ===================== Teachers Info (legacy aggregate) =====================
@@ -222,6 +245,17 @@ export class DataCollectionController {
     return this.service.getTeacherIndividuals(schoolId, userId, roles);
   }
 
+  @Patch('teachers/individual/:id')
+  @Permissions({ module: 'data-collection', action: 'update', resource: 'teachers-individual' })
+  updateTeacherIndividual(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateTeacherIndividualDto,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.updateTeacherIndividual(id, dto, userId, roles);
+  }
+
   @Delete('teachers/individual/:id')
   @Permissions({ module: 'data-collection', action: 'delete', resource: 'teachers-individual' })
   deleteTeacherIndividual(
@@ -252,6 +286,16 @@ export class DataCollectionController {
     @CurrentUser('roles') roles: string[],
   ) {
     return this.service.getTeachersDevelopment(schoolId, userId, roles);
+  }
+
+  @Delete('teachers/development/:id')
+  @Permissions({ module: 'data-collection', action: 'delete', resource: 'teachers-development' })
+  deleteTeachersDevelopment(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.deleteTeachersDevelopment(id, userId, roles);
   }
 
   // ===================== Revenue =====================
@@ -408,6 +452,16 @@ export class DataCollectionController {
     return this.service.getRevenueBudgetTotal(schoolId, userId, roles, academicYear ? Number(academicYear) : undefined);
   }
 
+  @Delete('revenue/budget/total/:id')
+  @Permissions({ module: 'data-collection', action: 'delete', resource: 'revenue-budget-total' })
+  deleteRevenueBudgetTotal(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.deleteRevenueBudgetTotal(id, userId, roles);
+  }
+
   // ===================== Revenue Budget Monthly =====================
 
   @Post('revenue/budget/monthly')
@@ -428,6 +482,16 @@ export class DataCollectionController {
     @CurrentUser('roles') roles: string[],
   ) {
     return this.service.getRevenueBudgetMonthly(schoolId, userId, roles);
+  }
+
+  @Delete('revenue/budget/monthly/:id')
+  @Permissions({ module: 'data-collection', action: 'delete', resource: 'revenue-budget-monthly' })
+  deleteRevenueBudgetMonthly(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.deleteRevenueBudgetMonthly(id, userId, roles);
   }
 
   // ===================== Revenue Actual Total =====================
@@ -453,6 +517,16 @@ export class DataCollectionController {
     return this.service.getRevenueActualTotal(schoolId, userId, roles, academicYear ? Number(academicYear) : undefined);
   }
 
+  @Delete('revenue/actual/total/:id')
+  @Permissions({ module: 'data-collection', action: 'delete', resource: 'revenue-actual-total' })
+  deleteRevenueActualTotal(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.deleteRevenueActualTotal(id, userId, roles);
+  }
+
   // ===================== Revenue Actual Monthly =====================
 
   @Post('revenue/actual/monthly')
@@ -473,6 +547,16 @@ export class DataCollectionController {
     @CurrentUser('roles') roles: string[],
   ) {
     return this.service.getRevenueActualMonthly(schoolId, userId, roles);
+  }
+
+  @Delete('revenue/actual/monthly/:id')
+  @Permissions({ module: 'data-collection', action: 'delete', resource: 'revenue-actual-monthly' })
+  deleteRevenueActualMonthly(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.deleteRevenueActualMonthly(id, userId, roles);
   }
 
   // ===================== Pedagogical Achievements =====================

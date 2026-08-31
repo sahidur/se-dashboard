@@ -27,8 +27,11 @@ export class AuditController {
     { module: 'activity-logs', action: 'read' },
   )
   @ApiOperation({ summary: 'System-wide activity log (admin)' })
-  findAll(@Query() query: QueryAuditLogDto) {
-    return this.auditService.findAll(query);
+  findAll(
+    @Query() query: QueryAuditLogDto,
+    @CurrentUser('id') actorId: string,
+  ) {
+    return this.auditService.findAll(query, actorId);
   }
 
   @Get('me')
@@ -43,7 +46,7 @@ export class AuditController {
   @Get('me/stats')
   @ApiOperation({ summary: "Current user's activity stats" })
   myStats(@CurrentUser('id') userId: string) {
-    return this.auditService.getStats(userId);
+    return this.auditService.getStats(userId, userId);
   }
 
   @Get('categories')
@@ -52,8 +55,8 @@ export class AuditController {
     { module: 'activity-logs', action: 'read' },
   )
   @ApiOperation({ summary: 'Distinct activity categories (admin)' })
-  categories() {
-    return this.auditService.getCategories();
+  categories(@CurrentUser('id') actorId: string) {
+    return this.auditService.getCategories(actorId);
   }
 
   @Get('stats')
@@ -62,8 +65,8 @@ export class AuditController {
     { module: 'activity-logs', action: 'read' },
   )
   @ApiOperation({ summary: 'System-wide activity stats (admin)' })
-  stats() {
-    return this.auditService.getStats();
+  stats(@CurrentUser('id') actorId: string) {
+    return this.auditService.getStats(actorId);
   }
 
   @Get('user/:id')

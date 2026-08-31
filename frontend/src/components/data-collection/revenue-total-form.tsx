@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Save, CheckCircle2, AlertCircle, Banknote, School,
-  MapPin, Users, RefreshCw, X, TrendingUp,
+  MapPin, Users, RefreshCw, X, TrendingUp, Pencil, Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,8 +13,10 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
+import { ExportButtons } from '@/components/data-collection/export-buttons';
 import { useFormDraft } from '@/hooks/use-form-draft';
-import api from '@/lib/api';
+import { useAuthStore } from '@/store/auth-store';
+import api, { getErrorMessage } from '@/lib/api';
 import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
 import type { DcSchool, DcRevenueTotalRecord } from '@/types';
 
@@ -90,6 +92,41 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
   const [record, setRecord] = useState<DcRevenueTotalRecord | null>(null);
   const draft = useFormDraft<{ academicYear: string; form: RevenueFormState }>(`revenue-total-${mode}`, schoolId);
   const [tab, setTab] = useState<'entry' | 'data'>('entry');
+  const canEditSubmitted = useAuthStore((s) => s.hasPermission('data-collection-edit', 'update'));
+  const canDeleteSubmitted = useAuthStore((s) =>
+    s.hasPermission('data-collection', 'delete', mode === 'budget' ? 'revenue-budget-total' : 'revenue-actual-total'));
+  const [editDenied, setEditDenied] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // "Edit" on the View Data tab: the record shown is already loaded into the
+  // form for the selected year, so switching back to the entry tab is the
+  // edit action.
+  const handleEditRecord = () => {
+    if (!canEditSubmitted) { setEditDenied(true); return; }
+    setEditDenied(false);
+    setTab('entry');
+  };
+
+  const handleDeleteRecord = async () => {
+    if (!canDeleteSubmitted) {
+      showToast('error', 'You do not have permission to delete submitted data');
+      return;
+    }
+    if (!record?.id) return;
+    if (!window.confirm('Delete this yearly revenue record? It will be moved to the recycle bin.')) return;
+    setDeleting(true);
+    try {
+      await api.delete(`${endpoint}/${record.id}`);
+      showToast('success', 'Record deleted and moved to recycle bin');
+      setRecord(null);
+      setIsEditing(false);
+      setForm(buildBlank());
+    } catch (err: unknown) {
+      showToast('error', getErrorMessage(err, 'Failed to delete the record.'));
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const endpoint = mode === 'budget' ? '/data-collection/revenue/budget/total' : '/data-collection/revenue/actual/total';
   const getEndpoint = `${endpoint}/school/${schoolId}`;
@@ -433,11 +470,73 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
       {tab === 'data' && (
         <Card className="overflow-hidden border-0 shadow-sm">
           <CardHeader className="pb-3 pt-5 px-5">
-            <CardTitle className="text-base font-semibold text-gray-800">
-              {mode === 'budget' ? 'Planned' : 'Actual'} Revenue Collection - Total (Yearly) — Submitted Data
-            </CardTitle>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <CardTitle className="text-base font-semibold text-gray-800">
+                {mode === 'budget' ? 'Planned' : 'Actual'} Revenue Collection - Total (Yearly) — Submitted Data
+              </CardTitle>
+              {record && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <ExportButtons
+                    payload={(() => {
+                      const rec = record as unknown as Record<string, number>;
+                      const rows = FEE_ROWS.map(({ key, label }) => {
+                        const target = Number(rec[`${key}Target`]) || 0;
+                        const achievement = Number(rec[`${key}Achievement`]) || 0;
+                        return [
+                          label,
+                          target,
+                          achievement,
+                          mode === 'budget' ? formatAmount(target - achievement) : calcDuesPct(target, achievement),
+                          calcPct(target, achievement),
+                        ];
+                      });
+                      const totalTarget = FEE_ROWS.reduce((s, { key }) => s + (Number(rec[`${key}Target`]) || 0), 0);
+                      const totalAchievement = FEE_ROWS.reduce((s, { key }) => s + (Number(rec[`${key}Achievement`]) || 0), 0);
+                      rows.push([
+                        'Total',
+                        formatAmount(totalTarget),
+                        formatAmount(totalAchievement),
+                        mode === 'budget' ? formatAmount(totalTarget - totalAchievement) : calcDuesPct(totalTarget, totalAchievement),
+                        calcPct(totalTarget, totalAchievement),
+                      ]);
+                      return {
+                        filename: mode === 'budget' ? 'revenue-budget-total' : 'revenue-actual-total',
+                        headers: [
+                          'Area of Revenue Collection',
+                          `${mode === 'budget' ? 'Planned' : 'Actual'} Revenue Target - BDT`,
+                          'Actual Collected Revenue - BDT',
+                          mode === 'budget' ? 'Revenue Deficit - BDT' : 'Outstanding Dues %',
+                          '% Collection',
+                        ],
+                        rows,
+                      };
+                    })()}
+                  />
+                  <Button variant="outline" size="sm" onClick={handleEditRecord} className="gap-1.5">
+                    <Pencil size={14} /> Edit This Data
+                  </Button>
+                  <Button
+                    variant="outline" size="sm"
+                    onClick={handleDeleteRecord}
+                    disabled={deleting}
+                    className="gap-1.5 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                  >
+                    {deleting
+                      ? <RefreshCw size={14} className="animate-spin" />
+                      : <Trash2 size={14} />}
+                    Delete
+                  </Button>
+                </div>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="px-5 pb-5">
+            {editDenied && (
+              <div className="mb-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 animate-in fade-in slide-in-from-top-1">
+                <AlertCircle size={16} className="shrink-0" />
+                You do not have permission to edit submitted data.
+              </div>
+            )}
             {!record ? (
               <div className="flex flex-col items-center justify-center py-14 text-gray-400">
                 <Banknote size={40} className="mb-3 opacity-20" />

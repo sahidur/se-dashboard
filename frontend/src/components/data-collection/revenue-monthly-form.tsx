@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Save, CheckCircle2, AlertCircle, CalendarDays, School,
-  MapPin, RefreshCw, X, ChevronDown,
+  MapPin, RefreshCw, X, ChevronDown, Pencil, Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,8 +14,10 @@ import { Badge } from '@/components/ui/badge';
 import { DataTable, type TableColumn } from '@/components/ui/data-table';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
+import { ExportButtons } from '@/components/data-collection/export-buttons';
 import { useFormDraft } from '@/hooks/use-form-draft';
-import api from '@/lib/api';
+import { useAuthStore } from '@/store/auth-store';
+import api, { getErrorMessage } from '@/lib/api';
 import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
 import type { DcSchool, DcRevenueMonthlyRecord } from '@/types';
 
@@ -65,6 +67,10 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
   const draftAppliedRef = useRef(false);
   const skipPrefillRef = useRef(false);
   const [tab, setTab] = useState<'entry' | 'data'>('entry');
+  const canEditSubmitted = useAuthStore((s) => s.hasPermission('data-collection-edit', 'update'));
+  const canDeleteSubmitted = useAuthStore((s) =>
+    s.hasPermission('data-collection', 'delete', mode === 'budget' ? 'revenue-budget-monthly' : 'revenue-actual-monthly'));
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const endpoint = mode === 'budget' ? '/data-collection/revenue/budget/monthly' : '/data-collection/revenue/actual/monthly';
   const getEndpoint = `${endpoint}/school/${schoolId}`;
@@ -98,6 +104,24 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
   }, [getEndpoint, showToast]);
 
   useEffect(() => { loadRecords(); }, [loadRecords]);
+
+  const handleDeleteRecord = async (r: DcRevenueMonthlyRecord) => {
+    if (!canDeleteSubmitted) {
+      showToast('error', 'You do not have permission to delete submitted data');
+      return;
+    }
+    if (!window.confirm(`Delete the ${r.month} ${r.academicYear} record? It will be moved to the recycle bin.`)) return;
+    setDeletingId(r.id);
+    try {
+      await api.delete(`${endpoint}/${r.id}`);
+      showToast('success', 'Record deleted and moved to recycle bin');
+      await loadRecords();
+    } catch (err: unknown) {
+      showToast('error', getErrorMessage(err, 'Failed to delete the record.'));
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   /* Pre-fill form when academic year + month are selected and data exists */
   useEffect(() => {
@@ -434,9 +458,62 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
           rowClassName={(r) =>
             month === r.month && Number(academicYear) === Number(r.academicYear) ? 'ring-inset ring-2 ring-orange-300' : ''
           }
-          headerExtra={
-            <p className="text-xs text-gray-400">Click a row to load it into the form for editing.</p>
-          }
+          actions={(r) => (
+            <div className="flex items-center justify-center gap-1.5">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!canEditSubmitted) { showToast('error', 'You do not have permission to edit submitted data'); return; }
+                  setAcademicYear(String(r.academicYear ?? ''));
+                  setMonth(r.month);
+                  setTab('entry');
+                }}
+                className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 bg-white text-orange-500 hover:border-orange-300 hover:bg-orange-50 transition-colors"
+                title="Edit"
+              >
+                <Pencil size={12} />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); handleDeleteRecord(r); }}
+                disabled={deletingId === r.id}
+                className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 bg-white text-red-400 hover:border-red-300 hover:bg-red-50 transition-colors disabled:opacity-50"
+                title="Delete"
+              >
+                {deletingId === r.id
+                  ? <RefreshCw size={12} className="animate-spin" />
+                  : <Trash2 size={12} />}
+              </button>
+            </div>
+          )}
+        headerExtra={
+          <ExportButtons
+            payload={{
+              filename: mode === 'budget' ? 'revenue-budget-monthly' : 'revenue-actual-monthly',
+              headers: [
+                'Academic Year', 'Month',
+                `${mode === 'budget' ? 'Planned' : 'Actual'} Revenue Target (BDT)`,
+                'Actual Collected Revenue (BDT)',
+                mode === 'budget' ? 'Revenue Deficit (BDT)' : 'Outstanding Dues %',
+                '% Collection', 'Updated',
+              ],
+              rows: sortedRecords.map((r) => {
+                const target = Number(r.tuitionFeeTarget);
+                const achieved = Number(r.tuitionFeeAchievement);
+                return [
+                  r.academicYear,
+                  r.month,
+                  target,
+                  achieved,
+                  mode === 'budget' ? target - achieved : calcDuesPct(target, achieved),
+                  `${calcPct(target, achieved).toFixed(1)}%`,
+                  r.updatedAt ? formatDateTime(r.updatedAt) : '',
+                ];
+              }),
+            }}
+          />
+        }
         />
       )}
     </div>

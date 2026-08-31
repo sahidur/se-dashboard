@@ -11,6 +11,7 @@ import {
   LayoutGrid, ListChecks, Rows3, RotateCcw, Search, XCircle,
 } from 'lucide-react';
 import api from '@/lib/api';
+import { buildCsv, buildExcelHtml, downloadContent } from '@/components/data-collection/export-buttons';
 import { displayGradeLabel, gradeSortIndex, resolveAssetUrl } from '@/lib/utils';
 import type { FormCatalogItem, FormCategory } from './form-catalog';
 
@@ -145,32 +146,7 @@ function formatValue(v: unknown, kind: FieldKind, key?: string): string {
   return String(v);
 }
 
-/* ─── Export helpers ────────────────────────────────────── */
-
-function triggerDownload(content: string, mime: string, filename: string) {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-// CSV formula-injection defence: spreadsheet apps execute cells starting
-// with = + - @ or tab/CR as formulas (=WEBSERVICE(...) can exfiltrate data).
-// Prefix them so they are treated as text; genuine negative numbers pass.
-const sanitizeCsvCell = (v: string): string => {
-  if (/^[-=+@\t\r]/.test(v) && !/^-\d+(\.\d+)?$/.test(v)) return `'${v}`;
-  return v;
-};
-const escapeCsv = (v: string) => {
-  const safe = sanitizeCsvCell(v);
-  return /[",\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
-};
-const escapeHtml = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+/* ─── Export helpers (shared, disclaimer-aware) ─────────── */
 
 /* ─── Small presentational pieces ───────────────────────── */
 
@@ -358,20 +334,19 @@ export function FormDataViewer({ schoolId, category, form, fileBase }: Props) {
     filtered.map((r, i) => [String(i + 1), ...exportColumns.map((c) => formatValue(r[c], kinds[c], c))]);
 
   const exportCsv = () => {
-    const lines = [exportHeaders.map(escapeCsv).join(',')];
-    exportBody().forEach((cells) => lines.push(cells.map(escapeCsv).join(',')));
-    triggerDownload('\uFEFF' + lines.join('\n'), 'text/csv;charset=utf-8;', `${fileBase}.csv`);
+    downloadContent(
+      buildCsv({ filename: fileBase, headers: exportHeaders, rows: exportBody() }),
+      'text/csv;charset=utf-8;',
+      `${fileBase}.csv`,
+    );
   };
 
   const exportExcel = () => {
-    const head = exportHeaders.map((h) => `<th>${escapeHtml(h)}</th>`).join('');
-    const body = exportBody()
-      .map((cells) => `<tr>${cells.map((v) => `<td>${escapeHtml(v)}</td>`).join('')}</tr>`)
-      .join('');
-    const html =
-      `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8" /></head>`
-      + `<body><table border="1"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></body></html>`;
-    triggerDownload(html, 'application/vnd.ms-excel;charset=utf-8;', `${fileBase}.xls`);
+    downloadContent(
+      buildExcelHtml({ filename: fileBase, headers: exportHeaders, rows: exportBody() }),
+      'application/vnd.ms-excel;charset=utf-8;',
+      `${fileBase}.xls`,
+    );
   };
 
   /* ── Render ── */

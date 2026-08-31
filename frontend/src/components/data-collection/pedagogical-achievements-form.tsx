@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { DataTable, type TableColumn } from '@/components/ui/data-table';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
+import { ExportButtons, exportPayloadFromColumns } from '@/components/data-collection/export-buttons';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
@@ -476,6 +477,20 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
           title="Recorded Achievements"
           titleIcon={<Trophy size={18} />}
           badge={<Badge variant="default" className="ml-2">{records.length}</Badge>}
+          headerExtra={
+            <ExportButtons
+              payload={exportPayloadFromColumns(achievementColumns, records, 'pedagogical-achievements', {
+                kgScholarship: (v, rec) => `${Number(v)} of ${Number((rec as any).kgParticipated ?? 0)}`,
+                primaryScholarship: (v, rec) => `${Number(v)} of ${Number((rec as any).primaryParticipated ?? 0)}`,
+                jrScholarship: (v, rec) => `${Number(v)} of ${Number((rec as any).jrParticipated ?? 0)}`,
+                sscScholarship: (v, rec) => `${Number(v)} of ${Number((rec as any).sscParticipated ?? 0)}`,
+                othersScholarship: (v, rec) => `${Number(v)} of ${Number((rec as any).othersParticipated ?? 0)}`,
+                total: (_v, rec) =>
+                  Number(rec.kgScholarship) + Number(rec.primaryScholarship) + Number(rec.jrScholarship)
+                  + Number(rec.sscScholarship) + Number(rec.othersScholarship),
+              })}
+            />
+          }
           emptyMessage="No achievement records yet."
           emptyIcon={<Trophy size={40} className="mb-3 opacity-20" />}
           actions={(rec) => (

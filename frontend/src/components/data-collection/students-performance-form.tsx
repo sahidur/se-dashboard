@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { DataTable, type TableColumn } from '@/components/ui/data-table';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
+import { ExportButtons } from '@/components/data-collection/export-buttons';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
 import { useAuthStore } from '@/store/auth-store';
@@ -505,6 +506,21 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
             searchable
             searchPlaceholder="Search records..."
             title="Submitted Records"
+            headerExtra={
+              <ExportButtons
+                payload={{
+                  filename: 'students-academic-performance',
+                  headers: ['Academic Year', 'Grade', 'Exam', 'Students', ...GRADE_FIELDS.map((f) => f.label)],
+                  rows: sortedRecords.map((rec) => [
+                    rec.academicYear,
+                    getGradeDisplayName(rec.grade, school?.schoolCategory),
+                    rec.examName,
+                    rec.numberOfStudents,
+                    ...GRADE_FIELDS.map((f) => rec[f.key as keyof DcStudentsPerformance] ?? 0),
+                  ]),
+                }}
+              />
+            }
             emptyMessage="No performance records yet."
             emptyIcon={<GraduationCap size={40} className="mb-3 opacity-20" />}
             actions={(rec) => (

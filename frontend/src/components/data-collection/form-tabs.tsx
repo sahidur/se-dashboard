@@ -22,7 +22,7 @@ export function FormTabs({
   active,
   onChange,
   entryLabel = 'Fill Form',
-  dataLabel = 'View Submitted Data',
+  dataLabel = 'View Data',
   dataCount,
   className = '',
 }: FormTabsProps) {

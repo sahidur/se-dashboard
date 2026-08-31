@@ -70,6 +70,21 @@ export class AuditSubscriber implements EntitySubscriberInterface {
     );
   }
 
+  /**
+   * Role/Permission entities are NOT auto-logged here. They are recorded
+   * explicitly by RolesService with human-readable permission diffs instead
+   * (the automatic snapshots would only contain permission ids). They remain
+   * visible exclusively to Super Admins via the audit-log viewer.
+   */
+  private isPrivilegedEntity(metadata?: EntityMetadata): boolean {
+    return (
+      metadata?.name === 'Role' ||
+      metadata?.name === 'Permission' ||
+      metadata?.tableName === 'roles' ||
+      metadata?.tableName === 'permissions'
+    );
+  }
+
   /** Produces a shallow, JSON-safe snapshot with sensitive fields masked. */
   private snapshot(data: any): Record<string, any> | undefined {
     if (!data || typeof data !== 'object') return undefined;
@@ -121,7 +136,7 @@ export class AuditSubscriber implements EntitySubscriberInterface {
   }
 
   async afterInsert(event: InsertEvent<any>): Promise<void> {
-    if (this.isAuditEntity(event.metadata)) return;
+    if (this.isAuditEntity(event.metadata) || this.isPrivilegedEntity(event.metadata)) return;
     const ctx = getAuditContext();
     await this.write(event.manager, {
       action: 'CREATE',
@@ -135,7 +150,7 @@ export class AuditSubscriber implements EntitySubscriberInterface {
   }
 
   async afterUpdate(event: UpdateEvent<any>): Promise<void> {
-    if (this.isAuditEntity(event.metadata)) return;
+    if (this.isAuditEntity(event.metadata) || this.isPrivilegedEntity(event.metadata)) return;
 
     const before = event.databaseEntity;
     const after = event.entity;
@@ -178,7 +193,7 @@ export class AuditSubscriber implements EntitySubscriberInterface {
   }
 
   async afterSoftRemove(event: SoftRemoveEvent<any>): Promise<void> {
-    if (this.isAuditEntity(event.metadata)) return;
+    if (this.isAuditEntity(event.metadata) || this.isPrivilegedEntity(event.metadata)) return;
     const ctx = getAuditContext();
     const entity = event.entity || event.databaseEntity;
     await this.write(event.manager, {
@@ -193,7 +208,7 @@ export class AuditSubscriber implements EntitySubscriberInterface {
   }
 
   async afterRecover(event: RecoverEvent<any>): Promise<void> {
-    if (this.isAuditEntity(event.metadata)) return;
+    if (this.isAuditEntity(event.metadata) || this.isPrivilegedEntity(event.metadata)) return;
     const ctx = getAuditContext();
     const entity = event.entity || event.databaseEntity;
     await this.write(event.manager, {
@@ -208,7 +223,7 @@ export class AuditSubscriber implements EntitySubscriberInterface {
   }
 
   async beforeRemove(event: RemoveEvent<any>): Promise<void> {
-    if (this.isAuditEntity(event.metadata)) return;
+    if (this.isAuditEntity(event.metadata) || this.isPrivilegedEntity(event.metadata)) return;
     const ctx = getAuditContext();
     const entity = event.entity || event.databaseEntity;
     await this.write(event.manager, {

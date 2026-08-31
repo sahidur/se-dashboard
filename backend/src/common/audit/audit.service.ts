@@ -3,6 +3,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import { AuditLog } from '../entities/audit-log.entity';
 import { QueryAuditLogDto } from './dto/query-audit-log.dto';
+import { UsersService } from '../../users/users.service';
+import { getAuditContext } from './audit-context';
+
+/**
+ * Entity modules whose audit entries are sensitive (they expose exactly how
+ * the platform's privilege model is configured). Only Super Admins may see
+ * these categories in the activity-log viewer.
+ */
+export const PRIVILEGED_AUDIT_MODULES = ['Role', 'Permission'];
 
 export interface PaginatedAuditLogs {
   data: AuditLog[];
@@ -17,7 +26,58 @@ export class AuditService {
   constructor(
     @InjectRepository(AuditLog)
     private readonly auditLogRepository: Repository<AuditLog>,
+    private readonly usersService: UsersService,
   ) {}
+
+  /** Whether the given acting user is a Super Admin. */
+  async isSuperAdmin(actorId?: string): Promise<boolean> {
+    if (!actorId) return false;
+    try {
+      const actor = await this.usersService.findOneById(actorId);
+      return (actor?.roles || []).some((r) => r.name === 'Super Admin');
+    } catch {
+      return false;
+    }
+  }
+
+  /** Hide privileged (role/permission) entries from non-Super-Admin viewers. */
+  private applyPrivilegedFilter(
+    qb: SelectQueryBuilder<AuditLog>,
+    isSuperAdmin: boolean,
+  ): SelectQueryBuilder<AuditLog> {
+    if (!isSuperAdmin) {
+      qb.andWhere('log.module NOT IN (:...privileged)', {
+        privileged: PRIVILEGED_AUDIT_MODULES,
+      });
+    }
+    return qb;
+  }
+
+  /**
+   * Explicit audit write used by services that want to record a richer,
+   * human-readable entry than the automatic entity subscriber provides
+   * (e.g. role permission diffs). Acting user / IP / browser are resolved
+   * from the per-request audit context.
+   */
+  async record(entry: {
+    action: string;
+    module: string;
+    entityId?: string;
+    oldData?: Record<string, any>;
+    newData?: Record<string, any>;
+  }): Promise<void> {
+    const ctx = getAuditContext();
+    try {
+      await this.auditLogRepository.insert({
+        ...entry,
+        userId: ctx.userId,
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+      });
+    } catch {
+      // Logging must never break the primary operation.
+    }
+  }
 
   /** Base query joining the acting user (password/refreshToken are @Exclude'd). */
   private baseQuery(): SelectQueryBuilder<AuditLog> {
@@ -62,9 +122,13 @@ export class AuditService {
   }
 
   /** Admin-wide log feed with filtering + pagination. */
-  async findAll(dto: QueryAuditLogDto): Promise<PaginatedAuditLogs> {
+  async findAll(
+    dto: QueryAuditLogDto,
+    actorId?: string,
+  ): Promise<PaginatedAuditLogs> {
     const { page, limit } = this.resolvePaging(dto);
     const qb = this.applyFilters(this.baseQuery(), dto);
+    this.applyPrivilegedFilter(qb, await this.isSuperAdmin(actorId));
     if (dto.userId) {
       qb.andWhere('log.userId = :userId', { userId: dto.userId });
     }
@@ -96,17 +160,22 @@ export class AuditService {
   }
 
   /** Distinct list of categories present in the log (for the filter dropdown). */
-  async getCategories(): Promise<string[]> {
-    const rows = await this.auditLogRepository
+  async getCategories(actorId?: string): Promise<string[]> {
+    const qb = this.auditLogRepository
       .createQueryBuilder('log')
-      .select('DISTINCT log.module', 'module')
-      .orderBy('log.module', 'ASC')
-      .getRawMany<{ module: string }>();
+      .select('DISTINCT log.module', 'module');
+    this.applyPrivilegedFilter(qb, await this.isSuperAdmin(actorId));
+    const rows = await qb.orderBy('log.module', 'ASC').getRawMany<{
+      module: string;
+    }>();
     return rows.map((r) => r.module).filter(Boolean);
   }
 
   /** Aggregated counts per action (optionally scoped to a single user). */
-  async getStats(userId?: string): Promise<{
+  async getStats(
+    actorId?: string,
+    userId?: string,
+  ): Promise<{
     total: number;
     byAction: Record<string, number>;
   }> {
@@ -115,8 +184,9 @@ export class AuditService {
       .select('log.action', 'action')
       .addSelect('COUNT(*)', 'count')
       .groupBy('log.action');
+    this.applyPrivilegedFilter(qb, await this.isSuperAdmin(actorId));
     if (userId) {
-      qb.where(
+      qb.andWhere(
         '(log.userId = :userId OR (log.module = :userModule AND log.entityId = CAST(:userId AS varchar)))',
         { userId, userModule: 'User' },
       );

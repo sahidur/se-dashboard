@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
+import { ExportButtons } from '@/components/data-collection/export-buttons';
 import {
   EVALUATION_PERIODS,
   SECTION_BY_SCHOOL_CATEGORY,
@@ -586,9 +587,44 @@ export function StudentPerformanceForm({ schoolId, formKey }: Props) {
         ) : (
           <Card className="overflow-hidden">
             <CardHeader className="px-4 pb-2 pt-4 sm:px-6">
-              <CardTitle className="text-sm font-semibold text-gray-700">
-                Submitted Records <Badge variant="default">{sortedRecords.length}</Badge>
-              </CardTitle>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <CardTitle className="text-sm font-semibold text-gray-700">
+                  Submitted Records <Badge variant="default">{sortedRecords.length}</Badge>
+                </CardTitle>
+                <ExportButtons
+                  payload={{
+                    filename: `student-performance-${formKey}`,
+                    headers: [
+                      'Year', 'Grade', def.periodLabel, 'Students', 'Appeared %',
+                      ...(def.grouped ? ['Domain'] : []), def.rowHeader, ...def.scale.map((s) => s.label),
+                    ],
+                    rows: sortedRecords.flatMap((rec) => {
+                      const summary: (string | number)[] = [
+                        rec.academicYear,
+                        getGradeDisplayName(rec.grade, school?.schoolCategory),
+                        rec.evaluationPeriod,
+                        rec.numberOfStudents ?? 0,
+                        rec.appearedPercent != null ? rec.appearedPercent : '',
+                      ];
+                      const detailRows = rec.rows ?? [];
+                      if (detailRows.length === 0) {
+                        return [[
+                          ...summary,
+                          ...(def.grouped ? [''] : []),
+                          '',
+                          ...def.scale.map(() => 0),
+                        ]];
+                      }
+                      return detailRows.map((row) => [
+                        ...summary,
+                        ...(def.grouped ? [row.domain ?? ''] : []),
+                        row.label,
+                        ...def.scale.map((s) => row.values?.[s.label] ?? 0),
+                      ]);
+                    }),
+                  }}
+                />
+              </div>
             </CardHeader>
             <CardContent className="px-0 pb-4 sm:px-2">
               <div className="overflow-x-auto">

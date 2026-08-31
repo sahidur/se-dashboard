@@ -17,6 +17,13 @@ import { DcStudentPerformance } from '../data-collection/entities/dc-student-per
 import { DcActivityParticipation } from '../data-collection/entities/dc-activity-participation.entity';
 import { DcEventParticipation } from '../data-collection/entities/dc-event-participation.entity';
 import { DcFeeStructure } from '../data-collection/entities/dc-fee-structure.entity';
+import { DcInfrastructure } from '../data-collection/entities/dc-infrastructure.entity';
+import { DcStudentsInfo } from '../data-collection/entities/dc-students-info.entity';
+import { DcTeachersDevelopment } from '../data-collection/entities/dc-teachers-development.entity';
+import { DcRevenueBudgetTotal } from '../data-collection/entities/dc-revenue-budget-total.entity';
+import { DcRevenueBudgetMonthly } from '../data-collection/entities/dc-revenue-budget-monthly.entity';
+import { DcRevenueActualTotal } from '../data-collection/entities/dc-revenue-actual-total.entity';
+import { DcRevenueActualMonthly } from '../data-collection/entities/dc-revenue-actual-monthly.entity';
 
 export type RecycleBinEntityType =
   | 'survey'
@@ -33,7 +40,14 @@ export type RecycleBinEntityType =
   | 'dc-student-performance'
   | 'dc-activity-participation'
   | 'dc-event-participation'
-  | 'dc-fee-structure';
+  | 'dc-fee-structure'
+  | 'dc-infrastructure'
+  | 'dc-students-info'
+  | 'dc-teachers-development'
+  | 'dc-revenue-budget-total'
+  | 'dc-revenue-budget-monthly'
+  | 'dc-revenue-actual-total'
+  | 'dc-revenue-actual-monthly';
 
 // Enum object used for runtime validation via ParseEnumPipe
 export const RECYCLE_BIN_ENTITY_TYPES = {
@@ -52,6 +66,13 @@ export const RECYCLE_BIN_ENTITY_TYPES = {
   DC_ACTIVITY_PARTICIPATION: 'dc-activity-participation',
   DC_EVENT_PARTICIPATION: 'dc-event-participation',
   DC_FEE_STRUCTURE: 'dc-fee-structure',
+  DC_INFRASTRUCTURE: 'dc-infrastructure',
+  DC_STUDENTS_INFO: 'dc-students-info',
+  DC_TEACHERS_DEVELOPMENT: 'dc-teachers-development',
+  DC_REVENUE_BUDGET_TOTAL: 'dc-revenue-budget-total',
+  DC_REVENUE_BUDGET_MONTHLY: 'dc-revenue-budget-monthly',
+  DC_REVENUE_ACTUAL_TOTAL: 'dc-revenue-actual-total',
+  DC_REVENUE_ACTUAL_MONTHLY: 'dc-revenue-actual-monthly',
 } as const;
 
 @Injectable()
@@ -87,6 +108,20 @@ export class RecycleBinService {
     private dcEventParticipationRepo: Repository<DcEventParticipation>,
     @InjectRepository(DcFeeStructure)
     private dcFeeStructureRepo: Repository<DcFeeStructure>,
+    @InjectRepository(DcInfrastructure)
+    private dcInfrastructureRepo: Repository<DcInfrastructure>,
+    @InjectRepository(DcStudentsInfo)
+    private dcStudentsInfoRepo: Repository<DcStudentsInfo>,
+    @InjectRepository(DcTeachersDevelopment)
+    private dcTeachersDevelopmentRepo: Repository<DcTeachersDevelopment>,
+    @InjectRepository(DcRevenueBudgetTotal)
+    private dcRevenueBudgetTotalRepo: Repository<DcRevenueBudgetTotal>,
+    @InjectRepository(DcRevenueBudgetMonthly)
+    private dcRevenueBudgetMonthlyRepo: Repository<DcRevenueBudgetMonthly>,
+    @InjectRepository(DcRevenueActualTotal)
+    private dcRevenueActualTotalRepo: Repository<DcRevenueActualTotal>,
+    @InjectRepository(DcRevenueActualMonthly)
+    private dcRevenueActualMonthlyRepo: Repository<DcRevenueActualMonthly>,
     @InjectRepository(DcSchool)
     private dcSchoolsRepo: Repository<DcSchool>,
   ) {}
@@ -127,6 +162,13 @@ export class RecycleBinService {
       activityParticipations,
       eventParticipations,
       feeStructures,
+      infrastructures,
+      studentsInfos,
+      teachersDevelopments,
+      revenueBudgetTotals,
+      revenueBudgetMonthlies,
+      revenueActualTotals,
+      revenueActualMonthlies,
     ] = await Promise.all([
         this.surveysRepo.find({
           withDeleted: true,
@@ -202,11 +244,46 @@ export class RecycleBinService {
           where: { deletedAt: Not(IsNull()) },
           select: ['id', 'schoolId', 'academicYear', 'month', 'grade', 'admissionFee', 'tuitionFee', 'sessionFee', 'assessmentFee', 'sportsFee', 'syllabusFee', 'admissionForm', 'testimonialFee', 'othersFee', 'transportFee', 'deletedAt', 'createdAt'],
         }),
+        this.dcInfrastructureRepo.find({
+          withDeleted: true,
+          where: { deletedAt: Not(IsNull()) },
+          select: ['id', 'schoolId', 'academicYear', 'campusStatus', 'roomTotal', 'deletedAt', 'createdAt'],
+        }),
+        this.dcStudentsInfoRepo.find({
+          withDeleted: true,
+          where: { deletedAt: Not(IsNull()) },
+          select: ['id', 'schoolId', 'academicYear', 'month', 'grade', 'total', 'deletedAt', 'createdAt'],
+        }),
+        this.dcTeachersDevelopmentRepo.find({
+          withDeleted: true,
+          where: { deletedAt: Not(IsNull()) },
+          select: ['id', 'schoolId', 'academicYear', 'month', 'deletedAt', 'createdAt'],
+        }),
+        this.dcRevenueBudgetTotalRepo.find({
+          withDeleted: true,
+          where: { deletedAt: Not(IsNull()) },
+          select: ['id', 'schoolId', 'academicYear', 'deletedAt', 'createdAt'],
+        }),
+        this.dcRevenueBudgetMonthlyRepo.find({
+          withDeleted: true,
+          where: { deletedAt: Not(IsNull()) },
+          select: ['id', 'schoolId', 'academicYear', 'month', 'collectionPct', 'deletedAt', 'createdAt'],
+        }),
+        this.dcRevenueActualTotalRepo.find({
+          withDeleted: true,
+          where: { deletedAt: Not(IsNull()) },
+          select: ['id', 'schoolId', 'academicYear', 'deletedAt', 'createdAt'],
+        }),
+        this.dcRevenueActualMonthlyRepo.find({
+          withDeleted: true,
+          where: { deletedAt: Not(IsNull()) },
+          select: ['id', 'schoolId', 'academicYear', 'month', 'collectionPct', 'deletedAt', 'createdAt'],
+        }),
       ]);
 
     // Batch-resolve school names for all DC record types.
     const schoolNames = new Map<string, string>();
-    const dcGroups: { schoolId: string }[][] = [teacherIndividuals, alumni, pedagogicalAchievements, cocurriculars, studentsPerformances, studentPerformances, activityParticipations, eventParticipations, feeStructures];
+    const dcGroups: { schoolId: string }[][] = [teacherIndividuals, alumni, pedagogicalAchievements, cocurriculars, studentsPerformances, studentPerformances, activityParticipations, eventParticipations, feeStructures, infrastructures, studentsInfos, teachersDevelopments, revenueBudgetTotals, revenueBudgetMonthlies, revenueActualTotals, revenueActualMonthlies];
     for (const group of dcGroups) {
       for (const [id, name] of await this.resolveSchoolNames(group)) {
         schoolNames.set(id, name);
@@ -297,6 +374,48 @@ export class RecycleBinService {
         entityType: 'dc-fee-structure' as const,
         schoolName: schoolNames.get(f.schoolId),
         displayName: `${f.grade} — ${f.month} ${f.academicYear}`,
+      })),
+      dcInfrastructures: infrastructures.map((i) => ({
+        ...i,
+        entityType: 'dc-infrastructure' as const,
+        schoolName: schoolNames.get(i.schoolId),
+        displayName: `Infrastructure & Classroom — ${i.academicYear}`,
+      })),
+      dcStudentsInfos: studentsInfos.map((si) => ({
+        ...si,
+        entityType: 'dc-students-info' as const,
+        schoolName: schoolNames.get(si.schoolId),
+        displayName: `${si.grade} — ${si.month} ${si.academicYear}`,
+      })),
+      dcTeachersDevelopments: teachersDevelopments.map((td) => ({
+        ...td,
+        entityType: 'dc-teachers-development' as const,
+        schoolName: schoolNames.get(td.schoolId),
+        displayName: `${td.month} ${td.academicYear}`,
+      })),
+      dcRevenueBudgetTotals: revenueBudgetTotals.map((r) => ({
+        ...r,
+        entityType: 'dc-revenue-budget-total' as const,
+        schoolName: schoolNames.get(r.schoolId),
+        displayName: `Planned Revenue (Total) — ${r.academicYear}`,
+      })),
+      dcRevenueBudgetMonthlies: revenueBudgetMonthlies.map((r) => ({
+        ...r,
+        entityType: 'dc-revenue-budget-monthly' as const,
+        schoolName: schoolNames.get(r.schoolId),
+        displayName: `Planned Revenue — ${r.month} ${r.academicYear}`,
+      })),
+      dcRevenueActualTotals: revenueActualTotals.map((r) => ({
+        ...r,
+        entityType: 'dc-revenue-actual-total' as const,
+        schoolName: schoolNames.get(r.schoolId),
+        displayName: `Actual Revenue (Total) — ${r.academicYear}`,
+      })),
+      dcRevenueActualMonthlies: revenueActualMonthlies.map((r) => ({
+        ...r,
+        entityType: 'dc-revenue-actual-monthly' as const,
+        schoolName: schoolNames.get(r.schoolId),
+        displayName: `Actual Revenue — ${r.month} ${r.academicYear}`,
       })),
     };
   }
@@ -409,6 +528,20 @@ export class RecycleBinService {
         return this.dcEventParticipationRepo;
       case 'dc-fee-structure':
         return this.dcFeeStructureRepo;
+      case 'dc-infrastructure':
+        return this.dcInfrastructureRepo;
+      case 'dc-students-info':
+        return this.dcStudentsInfoRepo;
+      case 'dc-teachers-development':
+        return this.dcTeachersDevelopmentRepo;
+      case 'dc-revenue-budget-total':
+        return this.dcRevenueBudgetTotalRepo;
+      case 'dc-revenue-budget-monthly':
+        return this.dcRevenueBudgetMonthlyRepo;
+      case 'dc-revenue-actual-total':
+        return this.dcRevenueActualTotalRepo;
+      case 'dc-revenue-actual-monthly':
+        return this.dcRevenueActualMonthlyRepo;
       default:
         throw new BadRequestException(`Unknown entity type: ${entityType}`);
     }

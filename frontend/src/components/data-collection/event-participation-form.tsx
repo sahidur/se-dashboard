@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { DataTable, type TableColumn } from '@/components/ui/data-table';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
+import { ExportButtons, exportPayloadFromColumns } from '@/components/data-collection/export-buttons';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import api, { getErrorMessage } from '@/lib/api';
@@ -361,6 +362,11 @@ export function EventParticipationForm({ schoolId }: Props) {
           title="Event Participation Records"
           titleIcon={<Award size={18} />}
           badge={<Badge variant="default">{records.length} record{records.length > 1 ? 's' : ''}</Badge>}
+          headerExtra={
+            <ExportButtons
+              payload={exportPayloadFromColumns(eventParticipationColumns, records, 'event-participation')}
+            />
+          }
           emptyMessage="No event participation records yet."
           emptyIcon={<Award size={40} className="mb-3 opacity-20" />}
           actions={(rec) => (

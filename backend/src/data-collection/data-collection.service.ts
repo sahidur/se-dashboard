@@ -42,6 +42,7 @@ import {
   UpsertPerformanceDto,
   CreateAlumniDto,
   UpdateAlumniDto,
+  UpdateTeacherIndividualDto,
   UpsertPedagogicalAchievementDto,
   UpsertCocurricularDto,
   UpsertStudentsPerformanceDto,
@@ -328,6 +329,18 @@ export class DataCollectionService {
     });
   }
 
+  /**
+   * Soft-delete the yearly infrastructure record. NOTE: the entity stores
+   * BOTH the Infrastructure Status and Classroom Status forms' data in a
+   * single row, so deleting it removes both for that academic year.
+   */
+  async deleteInfrastructure(id: string, userId: string, roles: string[]): Promise<void> {
+    const record = await this.infraRepo.findOne({ where: { id } });
+    if (!record) throw new NotFoundException('Infrastructure record not found');
+    await this.validateSchoolAccess(record.schoolId, userId, roles);
+    await this.infraRepo.softRemove(record);
+  }
+
   // ===================== Students Info =====================
 
   async upsertStudentsInfo(dto: UpsertStudentsInfoDto, userId: string, roles: string[]): Promise<DcStudentsInfo> {
@@ -356,6 +369,13 @@ export class DataCollectionService {
       if (yDiff !== 0) return yDiff;
       return GRADE_ORDER.indexOf(a.grade) - GRADE_ORDER.indexOf(b.grade);
     });
+  }
+
+  async deleteStudentsInfo(id: string, userId: string, roles: string[]): Promise<void> {
+    const record = await this.studentsRepo.findOne({ where: { id } });
+    if (!record) throw new NotFoundException('Student record not found');
+    await this.validateSchoolAccess(record.schoolId, userId, roles);
+    await this.studentsRepo.softRemove(record);
   }
 
   // ===================== Teachers Info =====================
@@ -394,6 +414,16 @@ export class DataCollectionService {
     });
   }
 
+  async updateTeacherIndividual(id: string, dto: UpdateTeacherIndividualDto, userId: string, roles: string[]): Promise<DcTeacherIndividual> {
+    const record = await this.teacherIndividualRepo.findOne({ where: { id } });
+    if (!record) throw new NotFoundException('Teacher record not found');
+    await this.validateSchoolAccess(record.schoolId, userId, roles);
+    await this.assertCanEditExisting(true, userId, roles);
+    const { schoolId: _ignored, ...rest } = dto as CreateTeacherIndividualDto & { schoolId?: string };
+    Object.assign(record, rest);
+    return this.teacherIndividualRepo.save(record);
+  }
+
   async deleteTeacherIndividual(id: string, userId: string, roles: string[]): Promise<void> {
     const record = await this.teacherIndividualRepo.findOne({
       where: { id },
@@ -427,6 +457,13 @@ export class DataCollectionService {
       relations: { createdBy: true },
     });
     return records.sort((a, b) => this.compareYearThenMonth(a, b));
+  }
+
+  async deleteTeachersDevelopment(id: string, userId: string, roles: string[]): Promise<void> {
+    const record = await this.teachersDevRepo.findOne({ where: { id } });
+    if (!record) throw new NotFoundException('Development record not found');
+    await this.validateSchoolAccess(record.schoolId, userId, roles);
+    await this.teachersDevRepo.softRemove(record);
   }
 
   // ===================== Revenue =====================
@@ -597,6 +634,13 @@ export class DataCollectionService {
     });
   }
 
+  async deleteRevenueBudgetTotal(id: string, userId: string, roles: string[]): Promise<void> {
+    const record = await this.revBudgetTotalRepo.findOne({ where: { id } });
+    if (!record) throw new NotFoundException('Revenue record not found');
+    await this.validateSchoolAccess(record.schoolId, userId, roles);
+    await this.revBudgetTotalRepo.softRemove(record);
+  }
+
   // ===================== Revenue Budget Monthly =====================
 
   private calcPct(target: number, achievement: number): number {
@@ -623,6 +667,13 @@ export class DataCollectionService {
     return records.sort((a, b) => this.compareYearThenMonth(a, b));
   }
 
+  async deleteRevenueBudgetMonthly(id: string, userId: string, roles: string[]): Promise<void> {
+    const record = await this.revBudgetMonthlyRepo.findOne({ where: { id } });
+    if (!record) throw new NotFoundException('Revenue record not found');
+    await this.validateSchoolAccess(record.schoolId, userId, roles);
+    await this.revBudgetMonthlyRepo.softRemove(record);
+  }
+
   // ===================== Revenue Actual Total =====================
 
   async upsertRevenueActualTotal(dto: UpsertRevenueActualTotalDto, userId: string, roles: string[]): Promise<DcRevenueActualTotal> {
@@ -645,6 +696,13 @@ export class DataCollectionService {
     });
   }
 
+  async deleteRevenueActualTotal(id: string, userId: string, roles: string[]): Promise<void> {
+    const record = await this.revActualTotalRepo.findOne({ where: { id } });
+    if (!record) throw new NotFoundException('Revenue record not found');
+    await this.validateSchoolAccess(record.schoolId, userId, roles);
+    await this.revActualTotalRepo.softRemove(record);
+  }
+
   // ===================== Revenue Actual Monthly =====================
 
   async upsertRevenueActualMonthly(dto: UpsertRevenueActualMonthlyDto, userId: string, roles: string[]): Promise<DcRevenueActualMonthly> {
@@ -664,6 +722,13 @@ export class DataCollectionService {
     await this.validateSchoolAccess(schoolId, userId, roles);
     const records = await this.revActualMonthlyRepo.find({ where: { schoolId } });
     return records.sort((a, b) => this.compareYearThenMonth(a, b));
+  }
+
+  async deleteRevenueActualMonthly(id: string, userId: string, roles: string[]): Promise<void> {
+    const record = await this.revActualMonthlyRepo.findOne({ where: { id } });
+    if (!record) throw new NotFoundException('Revenue record not found');
+    await this.validateSchoolAccess(record.schoolId, userId, roles);
+    await this.revActualMonthlyRepo.softRemove(record);
   }
 
   // ===================== Pedagogical Achievements =====================

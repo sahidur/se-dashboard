@@ -92,7 +92,7 @@ export default function PerformancePage() {
   return (
     <>
       <Header title="Pedagogical Performance" subtitle="Academic performance and achievements" />
-      <div className="p-4 sm:p-6 max-w-4xl mx-auto">
+      <div className="p-4 sm:p-6 lg:p-8">
         <SchoolSelector value={schoolId} onChange={(id) => setSchoolId(id)} className="mb-6" />
         {!schoolId ? (
           <Card><CardContent className="py-16 text-center"><TrendingUp size={48} className="mx-auto mb-3 text-gray-300" /><p className="text-gray-500">Select a school to fill performance data.</p></CardContent></Card>

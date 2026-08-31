@@ -60,6 +60,13 @@ const ACTION_STYLES: Record<string, ActionStyle> = {
     badge: 'bg-amber-50 text-amber-700 ring-amber-600/20',
     ring: 'from-amber-500/60',
   },
+  PERMISSIONS_UPDATE: {
+    label: 'Permissions changed',
+    icon: Shield,
+    dot: 'bg-fuchsia-500',
+    badge: 'bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-600/20',
+    ring: 'from-fuchsia-500/60',
+  },
   DELETE: {
     label: 'Deleted',
     icon: Trash2,

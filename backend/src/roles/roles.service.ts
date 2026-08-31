@@ -11,6 +11,14 @@ import { Permission } from './entities/permission.entity';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { UsersService } from '../users/users.service';
+import { AuditService } from '../common/audit/audit.service';
+
+/** Readable permission label: `module:action` or `module:action:resource`. */
+const permLabel = (p: {
+  module: string;
+  action: string;
+  resource?: string | null;
+}) => `${p.module}:${p.action}${p.resource ? `:${p.resource}` : ''}`;
 
 @Injectable()
 export class RolesService {
@@ -20,6 +28,7 @@ export class RolesService {
     @InjectRepository(Permission)
     private permissionsRepository: Repository<Permission>,
     private usersService: UsersService,
+    private auditService: AuditService,
   ) {}
 
   /**
@@ -155,6 +164,18 @@ export class RolesService {
       savedRole.permissions = await this.permissionsRepository.save(permissions);
     }
 
+    await this.auditService.record({
+      action: 'CREATE',
+      module: 'Role',
+      entityId: savedRole.id,
+      newData: {
+        name: savedRole.name,
+        description: savedRole.description ?? null,
+        hierarchy: savedRole.hierarchy,
+        permissions: (savedRole.permissions || []).map(permLabel),
+      },
+    });
+
     return savedRole;
   }
 
@@ -214,6 +235,13 @@ export class RolesService {
       }
     }
 
+    const before = {
+      name: role.name,
+      description: role.description ?? null,
+      hierarchy: role.hierarchy,
+      permissions: (role.permissions || []).map(permLabel),
+    };
+
     Object.assign(role, {
       ...(updateRoleDto.name && { name: updateRoleDto.name }),
       ...(updateRoleDto.description !== undefined && {
@@ -243,16 +271,47 @@ export class RolesService {
       role.permissions = await this.permissionsRepository.save(permissions);
     }
 
+    const after = {
+      name: role.name,
+      description: role.description ?? null,
+      hierarchy: role.hierarchy,
+      permissions: (role.permissions || []).map(permLabel),
+    };
+
+    const permissionsChanged =
+      JSON.stringify(before.permissions) !== JSON.stringify(after.permissions);
+    await this.auditService.record({
+      action: permissionsChanged ? 'PERMISSIONS_UPDATE' : 'UPDATE',
+      module: 'Role',
+      entityId: role.id,
+      oldData: before,
+      newData: after,
+    });
+
     return this.rolesRepository.save(role);
   }
 
   async remove(id: string, actorId?: string): Promise<void> {
-    const role = await this.rolesRepository.findOne({ where: { id } });
+    const role = await this.rolesRepository.findOne({
+      where: { id },
+      relations: ['permissions'],
+    });
     if (!role) {
       throw new NotFoundException('Role not found');
     }
     // Privilege guard: cannot delete roles at/above your own level.
     this.assertCanModifyRole(await this.actorPower(actorId), role);
+    await this.auditService.record({
+      action: 'DELETE',
+      module: 'Role',
+      entityId: role.id,
+      oldData: {
+        name: role.name,
+        description: role.description ?? null,
+        hierarchy: role.hierarchy,
+        permissions: (role.permissions || []).map(permLabel),
+      },
+    });
     await this.rolesRepository.remove(role);
   }
 

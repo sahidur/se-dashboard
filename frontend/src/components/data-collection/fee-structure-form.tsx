@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { DataTable, type TableColumn } from '@/components/ui/data-table';
 import { DraftActionBar } from '@/components/data-collection/draft-action-bar';
 import { FormTabs } from '@/components/data-collection/form-tabs';
+import { ExportButtons } from '@/components/data-collection/export-buttons';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
 import api, { getErrorMessage } from '@/lib/api';
@@ -607,6 +608,22 @@ export function FeeStructureForm({ schoolId }: Props) {
         title="Submitted Records"
         titleIcon={<BookOpen size={18} className="text-amber-600" />}
         badge={<span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-700">{dataRecords.length}</span>}
+        headerExtra={
+          <ExportButtons
+            payload={{
+              filename: 'fee-structure',
+              headers: ['Academic Year', 'Month', 'Grade', ...FEE_FIELDS.map((f) => f.label), 'Total', 'Updated At'],
+              rows: sortedDataRecords.map((r) => [
+                r.academicYear,
+                r.month,
+                getGradeDisplayName(r.grade, school?.schoolCategory),
+                ...FEE_FIELDS.map((f) => Number(r[f.key as keyof DcFeeStructure] ?? 0)),
+                FEE_FIELDS.reduce((s, f) => s + Number(r[f.key as keyof DcFeeStructure] ?? 0), 0),
+                r.updatedAt ? formatDateTime(r.updatedAt) : '',
+              ]),
+            }}
+          />
+        }
         onRefresh={loadRecords}
         refreshing={loadingRecords}
         actions={(r) => (
