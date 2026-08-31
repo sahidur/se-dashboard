@@ -46,9 +46,9 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
       >
         <Menu size={20} />
       </button>
-      {/* Titles clamp to a single line so long school/form names keep the
-          header compact — hover shows the full text as a native tooltip. */}
-      <div className="min-w-0 mr-3">
+      {/* Titles are hidden on mobile — long school/form names wrap and crowd
+          the compact header row. */}
+      <div className="hidden min-w-0 mr-3 sm:block">
         <h1
           className="truncate text-lg font-bold leading-snug text-gray-900 sm:text-xl"
           title={title}
