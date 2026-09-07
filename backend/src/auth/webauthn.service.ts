@@ -59,7 +59,7 @@ export class WebAuthnService {
     this.rpID = this.configService.get<string>('WEBAUTHN_RP_ID', 'localhost');
     this.rpName = this.configService.get<string>(
       'WEBAUTHN_RP_NAME',
-      'BEP Social Enterprise Platform',
+      'SE360',
     );
     const originEnv =
       this.configService.get<string>('WEBAUTHN_ORIGIN') ||

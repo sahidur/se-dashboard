@@ -20,7 +20,7 @@ export function proxy(request: NextRequest) {
   }
 
   // Check for the persisted auth state in localStorage via cookie.
-  // The Zustand 'bep-auth' key is stored in localStorage (client-only),
+  // The Zustand 'se360-auth' key is stored in localStorage (client-only),
   // so we use a lightweight httpOnly session cookie set at login as the
   // server-side signal. If the cookie is absent, redirect to login.
   //
@@ -28,7 +28,7 @@ export function proxy(request: NextRequest) {
   // authenticated". Real token validation happens on every API call via
   // the NestJS JwtAuthGuard. This check prevents the unauthenticated
   // flash and protects dashboard routes from crawlers/bots.
-  const sessionCookie = request.cookies.get('bep-session');
+  const sessionCookie = request.cookies.get('se360-session');
 
   if (!sessionCookie?.value) {
     const loginUrl = new URL('/auth/login', request.url);

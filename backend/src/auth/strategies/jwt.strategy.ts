@@ -14,7 +14,7 @@ export interface JwtPayload {
 
 /**
  * Accepts the access token from the Authorization Bearer header (Swagger,
- * non-browser clients) OR from the httpOnly `bep_at` cookie set at login
+ * non-browser clients) OR from the httpOnly `se360_at` cookie set at login
  * (browser sessions — see auth/cookies.ts).
  */
 export function cookieExtractor(req?: Request): string | null {

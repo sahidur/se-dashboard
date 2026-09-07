@@ -1,9 +1,9 @@
-# BEP SE Platform — Development Conventions
+# SE360 — Development Conventions
 
 ## Stack
 - **Backend**: NestJS (Node.js), TypeORM, PostgreSQL
 - **Frontend**: Next.js (App Router, Turbopack), React, TanStack Query
-- **Auth**: httpOnly cookies (`bep_at` / `bep_rt`), JWT, Zustand (client state)
+- **Auth**: httpOnly cookies (`se360_at` / `se360_rt`), JWT, Zustand (client state)
 - **Deployment**: DigitalOcean droplet, systemd services, nginx reverse proxy
 
 ## Project Structure

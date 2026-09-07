@@ -820,9 +820,9 @@ async function cookieTests() {
   console.log('\n[JwtStrategy] cookie extractor');
 
   await check(
-    'extractor reads bep_at cookie from request',
+    'extractor reads se360_at cookie from request',
     () => {
-      const token = cookieExtractor({ cookies: { bep_at: 'tok' } } as any);
+      const token = cookieExtractor({ cookies: { se360_at: 'tok' } } as any);
       if (token !== 'tok') throw new Error(`got ${token}`);
     },
   );

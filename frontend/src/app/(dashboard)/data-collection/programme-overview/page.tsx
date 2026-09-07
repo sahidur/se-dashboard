@@ -9,10 +9,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import {
-  School, Users, GraduationCap, TrendingUp,
+  School, Users, GraduationCap,
   Filter, RefreshCw, ArrowUpRight, BarChart3, Target, Sparkles,
-  User, Globe, MapPin, CheckCircle2, XCircle, ChevronRight, Info,
-  AlertTriangle, TrendingDown, CalendarRange,
+  MapPin, CheckCircle2, XCircle, ChevronRight, Info,
+  AlertTriangle, CalendarRange,
 } from 'lucide-react';
 import api from '@/lib/api';
 
@@ -67,10 +67,10 @@ interface SchoolRow {
 /* â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 const CATEGORY_OPTIONS = [
-  { value: '', label: 'All Schools', color: 'indigo' },
+  { value: 'brac_academy', label: 'BRAC Academy', color: 'emerald' },
   { value: 'brac_primary', label: 'BRAC Primary', color: 'blue' },
   { value: 'brac_secondary', label: 'BRAC Secondary', color: 'purple' },
-  { value: 'brac_academy', label: 'BRAC Academy', color: 'emerald' },
+  { value: '', label: 'All Schools', color: 'indigo' },
 ];
 
 const CHIP_STYLES: Record<string, { active: string; idle: string }> = {
@@ -100,7 +100,6 @@ const fmtTaka = (n: number) => `৳${Math.round(n || 0).toLocaleString('en-IN')}
 
 const signedTaka = (n: number) => `${n < 0 ? '-' : ''}${fmtTaka(Math.abs(n))}`;
 
-const pct = (a: number, b: number) => (b > 0 ? Math.min((a / b) * 100, 100).toFixed(1) : '0');
 
 /* BDT Taka currency icon (lucide has no Taka glyph) */
 function TakaIcon({ size = 22, className }: { size?: number; className?: string }) {
@@ -135,73 +134,47 @@ function AnimatedNumber({ value }: { value: number }) {
 
 /* â”€â”€â”€ KPI Card (clickable) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
-interface StatChip { label: string; value: string; icon: React.ElementType }
-
-/* Static class strings — Tailwind cannot resolve dynamically built colour names. */
-const ACCENTS: Record<string, { tile: string; text: string; fill: string; glow: string }> = {
-  indigo: { tile: 'bg-indigo-50 text-indigo-600', text: 'text-indigo-600', fill: 'bg-indigo-500', glow: 'border-indigo-100 shadow-[0_0_20px_-6px_rgba(99,102,241,0.45)] group-hover:shadow-[0_6px_28px_-6px_rgba(99,102,241,0.6)] group-hover:border-indigo-200' },
-  purple: { tile: 'bg-purple-50 text-purple-600', text: 'text-purple-600', fill: 'bg-purple-500', glow: 'border-purple-100 shadow-[0_0_20px_-6px_rgba(168,85,247,0.45)] group-hover:shadow-[0_6px_28px_-6px_rgba(168,85,247,0.6)] group-hover:border-purple-200' },
-  blue: { tile: 'bg-blue-50 text-blue-600', text: 'text-blue-600', fill: 'bg-blue-500', glow: 'border-blue-100 shadow-[0_0_20px_-6px_rgba(59,130,246,0.45)] group-hover:shadow-[0_6px_28px_-6px_rgba(59,130,246,0.6)] group-hover:border-blue-200' },
-  cyan: { tile: 'bg-cyan-50 text-cyan-600', text: 'text-cyan-600', fill: 'bg-cyan-500', glow: 'border-cyan-100 shadow-[0_0_20px_-6px_rgba(6,182,212,0.45)] group-hover:shadow-[0_6px_28px_-6px_rgba(6,182,212,0.6)] group-hover:border-cyan-200' },
-  teal: { tile: 'bg-teal-50 text-teal-600', text: 'text-teal-600', fill: 'bg-teal-500', glow: 'border-teal-100 shadow-[0_0_20px_-6px_rgba(20,184,166,0.45)] group-hover:shadow-[0_6px_28px_-6px_rgba(20,184,166,0.6)] group-hover:border-teal-200' },
-  orange: { tile: 'bg-orange-50 text-orange-600', text: 'text-orange-600', fill: 'bg-orange-500', glow: 'border-orange-100 shadow-[0_0_20px_-6px_rgba(249,115,22,0.45)] group-hover:shadow-[0_6px_28px_-6px_rgba(249,115,22,0.6)] group-hover:border-orange-200' },
-  green: { tile: 'bg-green-50 text-green-600', text: 'text-green-600', fill: 'bg-green-500', glow: 'border-green-100 shadow-[0_0_20px_-6px_rgba(34,197,94,0.45)] group-hover:shadow-[0_6px_28px_-6px_rgba(34,197,94,0.6)] group-hover:border-green-200' },
-  red: { tile: 'bg-red-50 text-red-600', text: 'text-red-600', fill: 'bg-red-500', glow: 'border-red-100 shadow-[0_0_20px_-6px_rgba(239,68,68,0.45)] group-hover:shadow-[0_6px_28px_-6px_rgba(239,68,68,0.6)] group-hover:border-red-200' },
+/* Mid-tone two-colour gradients for the KPI cards — modern, soft and smooth
+   (never a flat solid, never too deep or too pale). Static class strings:
+   Tailwind cannot resolve dynamically built colour names. */
+const CARD_GRADIENTS: Record<string, string> = {
+  indigo: 'from-indigo-500 via-indigo-400 to-sky-400',
+  purple: 'from-purple-500 via-violet-400 to-fuchsia-400',
+  blue: 'from-blue-500 via-sky-400 to-cyan-400',
+  cyan: 'from-cyan-500 via-teal-400 to-sky-400',
+  teal: 'from-teal-500 via-emerald-400 to-teal-300',
+  orange: 'from-orange-500 via-amber-400 to-orange-300',
+  green: 'from-emerald-500 via-green-400 to-lime-400',
+  red: 'from-rose-500 via-pink-400 to-rose-300',
 };
 
 function KpiCard({
-  title, value, valueDisplay, valueLabel, icon: Icon, accent, badge, pctVal, href, stats,
+  title, value, valueDisplay, icon: Icon, accent, href,
 }: {
-  title: string; value: number; valueDisplay?: string; valueLabel?: string; icon: React.ElementType;
-  accent: keyof typeof ACCENTS; badge?: string; pctVal?: number; href: string; stats?: StatChip[];
+  title: string; value: number; valueDisplay?: string; icon: React.ElementType;
+  accent: keyof typeof CARD_GRADIENTS; href?: string;
 }) {
-  const a = ACCENTS[accent];
   return (
-    <Link href={href} className="group block h-full">
-      <Card className={`relative flex h-full flex-col overflow-hidden border bg-white transition-all duration-200 group-hover:-translate-y-0.5 ${a.glow}`}>
-        <CardContent className="flex flex-1 flex-col gap-3 p-4 sm:p-5">
-          <div className="flex items-start gap-3">
-            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${a.tile}`}>
-              <Icon size={20} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-semibold uppercase leading-snug tracking-wider text-gray-500 sm:text-xs">{title}</p>
-              <p className={`mt-1 break-words font-extrabold leading-tight tabular-nums text-gray-900 ${valueDisplay ? 'text-lg sm:text-xl' : 'text-2xl sm:text-3xl'}`}>
-                {valueDisplay ?? <AnimatedNumber value={value} />}
-              </p>
-              {valueLabel && <p className="mt-1 text-[11px] font-medium leading-snug text-gray-400">{valueLabel}</p>}
-            </div>
-            <ArrowUpRight size={16} className="shrink-0 text-gray-300 transition-all group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-gray-500" />
+    <Link href={href ?? '#'} className="group block h-full">
+      <Card
+        className={`relative flex h-full flex-col overflow-hidden rounded-2xl border-0 bg-gradient-to-br bg-[length:200%_200%] shadow-lg shadow-gray-300/60 transition-all duration-300 animate-gradient-x hover:-translate-y-1 hover:shadow-xl ${CARD_GRADIENTS[accent]}`}
+      >
+        <CardContent className="flex flex-1 flex-col gap-4 p-4 sm:p-5">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/20 text-white backdrop-blur-sm transition-transform duration-300 group-hover:scale-110">
+            <Icon size={22} />
           </div>
-
-          {stats && stats.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {stats.map((s) => (
-                <span key={s.label} className="inline-flex max-w-full items-center gap-1 rounded-lg bg-gray-50 px-2 py-1 text-[11px] font-medium text-gray-500">
-                  <s.icon size={12} className="shrink-0 text-gray-400" />
-                  <span className="truncate">{s.label}</span>
-                  <span className="text-xs font-bold tabular-nums text-gray-800">{s.value}</span>
-                </span>
-              ))}
-            </div>
-          )}
-
-          {pctVal !== undefined && (
-            <div className="mt-auto">
-              <div className="mb-1.5 flex items-center justify-between text-[11px] font-semibold text-gray-400">
-                <span>Achievement</span>
-                <span className={a.text}>{pctVal}%</span>
-              </div>
-              <div className="h-2 rounded-full bg-gray-100">
-                <div
-                  className={`h-2 rounded-full transition-all duration-1000 ${a.fill}`}
-                  style={{ width: `${Math.min(Number(pctVal), 100)}%` }}
-                />
-              </div>
-            </div>
-          )}
-
-          {badge && <p className="mt-auto text-[11px] font-medium leading-snug text-gray-400">{badge}</p>}
+          <div className="mt-auto">
+            <p className="text-[11px] font-semibold uppercase leading-snug tracking-wider text-white/85 sm:text-xs">
+              {title}
+            </p>
+            <p className="mt-1.5 break-words text-2xl font-extrabold leading-tight tabular-nums text-white drop-shadow-sm sm:text-3xl">
+              {valueDisplay ?? <AnimatedNumber value={value} />}
+            </p>
+          </div>
+          <ArrowUpRight
+            size={16}
+            className="absolute right-4 top-4 text-white/50 transition-all duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-white"
+          />
         </CardContent>
       </Card>
     </Link>
@@ -629,11 +602,6 @@ export default function ProgrammeOverviewPage() {
   const detailHref = (metric: string) => `/data-collection/programme-overview/${metric}${q}`;
 
   const outstandingDues = Math.max((t?.actualRevenueTarget ?? 0) - (t?.actualRevenueAchievement ?? 0), 0);
-  const revenueDeficit = (t?.actualRevenueAchievement ?? 0) - (t?.budgetRevenueTarget ?? 0);
-  const collectionRate = (t?.actualRevenueTarget ?? 0) > 0
-    ? ((t?.actualRevenueAchievement ?? 0) / (t?.actualRevenueTarget ?? 1)) * 100
-    : 0;
-  const targetGap = (t?.actualRevenueTarget ?? 0) - (t?.budgetRevenueTarget ?? 0);
 
   if (loading && !data) {
     return (
@@ -705,9 +673,6 @@ export default function ProgrammeOverviewPage() {
                     </select>
                   </label>
                 )}
-                <div className="text-sm font-medium text-gray-500">
-                  {t?.totalSchools ?? 0} school{(t?.totalSchools ?? 0) !== 1 ? 's' : ''} shown
-                </div>
               </div>
             </div>
           </CardContent>
@@ -724,13 +689,7 @@ export default function ProgrammeOverviewPage() {
             value={t?.totalSchools ?? 0}
             icon={School}
             accent="indigo"
-            badge={`${Object.keys(categories).length} School ${Object.keys(categories).length === 1 ? 'Category' : 'Categories'}`}
             href={detailHref('schools')}
-            stats={CATEGORY_TABLES.filter((c) => categories[c.key]).map((c) => ({
-              label: c.short,
-              value: (categories[c.key]?.totalSchools ?? 0).toLocaleString(),
-              icon: School,
-            }))}
           />
           <KpiCard
             title="Total Teachers"
@@ -738,10 +697,6 @@ export default function ProgrammeOverviewPage() {
             icon={Users}
             accent="purple"
             href={detailHref('teachers')}
-            stats={[
-              { label: 'Male', value: (t?.totalTeachersMale ?? 0).toLocaleString(), icon: User },
-              { label: 'Female', value: (t?.totalTeachersFemale ?? 0).toLocaleString(), icon: User },
-            ]}
           />
           <KpiCard
             title="Total Students"
@@ -749,19 +704,12 @@ export default function ProgrammeOverviewPage() {
             icon={GraduationCap}
             accent="blue"
             href={detailHref('students')}
-            stats={[
-              { label: 'Boys', value: (t?.totalStudentsBoys ?? 0).toLocaleString(), icon: User },
-              { label: 'Girls', value: (t?.totalStudentsGirls ?? 0).toLocaleString(), icon: User },
-              { label: 'PWD', value: (t?.totalPWD ?? 0).toLocaleString(), icon: User },
-              { label: 'Ethnic', value: (t?.totalEthnic ?? 0).toLocaleString(), icon: Globe },
-            ]}
           />
           <KpiCard
             title="Yearly Student Target"
             value={t?.yearlyStudentTarget ?? 0}
             icon={Target}
             accent="cyan"
-            pctVal={Number(pct(t?.totalStudents ?? 0, t?.yearlyStudentTarget ?? 0))}
             href={detailHref('student-target')}
           />
           <KpiCard
@@ -771,10 +719,6 @@ export default function ProgrammeOverviewPage() {
             icon={TakaIcon}
             accent="teal"
             href={detailHref('budget-target')}
-            stats={[
-              { label: 'Planned students', value: (t?.yearlyStudentTarget ?? 0).toLocaleString(), icon: Target },
-            ]}
-            badge="Budgeted for the year — the baseline for the deficit"
           />
           <KpiCard
             title="Actual Revenue Target"
@@ -783,11 +727,6 @@ export default function ProgrammeOverviewPage() {
             icon={BarChart3}
             accent="orange"
             href={detailHref('actual-target')}
-            stats={[
-              { label: 'Enrolled', value: (t?.totalStudents ?? 0).toLocaleString(), icon: GraduationCap },
-              { label: 'vs plan', value: signedTaka(targetGap), icon: TrendingUp },
-            ]}
-            badge="Receivable from the students actually enrolled"
           />
           <KpiCard
             title="Actual Revenue Achievement"
@@ -795,22 +734,15 @@ export default function ProgrammeOverviewPage() {
             valueDisplay={fmtTaka(t?.actualRevenueAchievement ?? 0)}
             icon={Sparkles}
             accent="green"
-            pctVal={Number(pct(t?.actualRevenueAchievement ?? 0, t?.actualRevenueTarget ?? 0))}
             href={detailHref('actual-achievement')}
           />
           <KpiCard
             title="Outstanding Dues & Deficit"
             value={outstandingDues}
             valueDisplay={fmtTaka(outstandingDues)}
-            valueLabel="Outstanding dues (billed, not collected)"
             icon={AlertTriangle}
             accent="red"
             href={detailHref('revenue-gap')}
-            badge={`${collectionRate.toFixed(1)}% of the actual target collected`}
-            stats={[
-              { label: 'Collected', value: fmtTaka(t?.actualRevenueAchievement ?? 0), icon: TrendingUp },
-              { label: 'Deficit vs plan', value: signedTaka(revenueDeficit), icon: TrendingDown },
-            ]}
           />
         </div>
 

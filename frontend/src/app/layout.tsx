@@ -3,7 +3,7 @@ import './globals.css';
 import { Providers } from './providers';
 
 export const metadata: Metadata = {
-  title: 'BEP Social Enterprise Platform',
+  title: 'SE360',
   description: 'School management, surveys, and reporting platform',
 };
 

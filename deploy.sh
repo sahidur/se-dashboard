@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  BEP Social Enterprise Platform – One-Click DigitalOcean Deployment
+#  SE360 – One-Click DigitalOcean Deployment
 #  Domain  : se.somadhanhobe.com
 #  OS      : Ubuntu 22.04 | 24.04 LTS  (Node 24 needs glibc >= 2.28)
 #  Run as  : sudo bash deploy.sh
@@ -36,9 +36,9 @@ askpw() { printf "${YELLOW}  ?  ${NC}%s: " "$1"; read -rs "${2?}"; echo; }
 DOMAIN="${DOMAIN:-se.somadhanhobe.com}"
 REPO_URL="${REPO_URL:-}"          # Git HTTPS/SSH clone URL (optional)
 APP_BRANCH="${APP_BRANCH:-main}"  # Git branch to deploy
-APP_USER="${APP_USER:-bep}"       # Dedicated OS user for the app
-APP_DIR="${APP_DIR:-/opt/bep-se}" # Installation directory
-LOG_DIR="${LOG_DIR:-/var/log/bep-se}"
+APP_USER="${APP_USER:-se360}"       # Dedicated OS user for the app
+APP_DIR="${APP_DIR:-/opt/se360}" # Installation directory
+LOG_DIR="${LOG_DIR:-/var/log/se360}"
 NODE_MAJOR="${NODE_MAJOR:-24}"    # Node.js Active LTS major version
 BACKEND_PORT="${BACKEND_PORT:-4000}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
@@ -64,11 +64,11 @@ DB_CA_CERT="${DB_CA_CERT:-ca-certificate.crt}"
 S3_ENDPOINT="${S3_ENDPOINT:-https://sgp1.digitaloceanspaces.com}"
 S3_REGION="${S3_REGION:-sgp1}"
 S3_BUCKET="${S3_BUCKET:-dev-shomadhanhobe-resources}"
-S3_FOLDER="${S3_FOLDER:-bep-se}"
+S3_FOLDER="${S3_FOLDER:-bep-se}" # keep in sync with existing uploads folder in the bucket
 S3_ACCESS_KEY="${S3_ACCESS_KEY:-}"
 S3_SECRET_KEY="${S3_SECRET_KEY:-}"
 WEBAUTHN_RP_ID="${WEBAUTHN_RP_ID:-${DOMAIN}}"
-WEBAUTHN_RP_NAME="${WEBAUTHN_RP_NAME:-BEP Social Enterprise Platform}"
+WEBAUTHN_RP_NAME="${WEBAUTHN_RP_NAME:-SE360}"
 WEBAUTHN_ORIGIN="${WEBAUTHN_ORIGIN:-https://${DOMAIN}}"
 
 # =============================================================================
@@ -201,7 +201,7 @@ else
       "Either:\n" \
       "  a) Set REPO_URL=https://github.com/your/repo.git and re-run, or\n" \
       "  b) Upload the project to ${APP_DIR} first:\n" \
-      "       rsync -av --exclude node_modules --exclude .next ./BEP-SE/ root@<droplet-ip>:${APP_DIR}/"
+      "       rsync -av --exclude node_modules --exclude .next ./SE360/ root@<droplet-ip>:${APP_DIR}/"
 fi
 
 chown -R "$APP_USER":"$APP_USER" "$APP_DIR"
@@ -243,7 +243,7 @@ DB_CA_CERT=${DB_CA_CERT}
 JWT_SECRET=${JWT_SECRET}
 JWT_EXPIRES_IN=15m
 JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
-JWT_REFRESH_EXPIRES_IN=7d
+JWT_REFRESH_EXPIRES_IN=24h
 
 # ── S3-Compatible Storage (DigitalOcean Spaces) ───────────────────────────────
 S3_ENDPOINT=${S3_ENDPOINT}
@@ -367,13 +367,13 @@ sudo -u "$APP_USER" bash -c "
 ok "Frontend built  →  .next/"
 
 # =============================================================================
-#  Step 7 – systemd service: bep-backend
+#  Step 7 – systemd service: se360-backend
 # =============================================================================
-step "Creating systemd service: bep-backend"
+step "Creating systemd service: se360-backend"
 
-cat > /etc/systemd/system/bep-backend.service <<UNIT
+cat > /etc/systemd/system/se360-backend.service <<UNIT
 [Unit]
-Description=BEP SE – Backend (NestJS)
+Description=SE360 – Backend (NestJS)
 Documentation=https://docs.nestjs.com
 After=network-online.target
 Wants=network-online.target
@@ -397,7 +397,7 @@ StartLimitIntervalSec=60
 # Logging (journald + file)
 StandardOutput=append:${LOG_DIR}/backend.log
 StandardError=append:${LOG_DIR}/backend-error.log
-SyslogIdentifier=bep-backend
+SyslogIdentifier=se360-backend
 
 # Load secrets from .env
 EnvironmentFile=${APP_DIR}/backend/.env
@@ -432,18 +432,18 @@ UMask=0077
 WantedBy=multi-user.target
 UNIT
 
-ok "bep-backend.service written"
+ok "se360-backend.service written"
 
 # =============================================================================
-#  Step 8 – systemd service: bep-frontend
+#  Step 8 – systemd service: se360-frontend
 # =============================================================================
-step "Creating systemd service: bep-frontend"
+step "Creating systemd service: se360-frontend"
 
-cat > /etc/systemd/system/bep-frontend.service <<UNIT
+cat > /etc/systemd/system/se360-frontend.service <<UNIT
 [Unit]
-Description=BEP SE – Frontend (Next.js)
+Description=SE360 – Frontend (Next.js)
 Documentation=https://nextjs.org
-After=network-online.target bep-backend.service
+After=network-online.target se360-backend.service
 Wants=network-online.target
 
 [Service]
@@ -465,7 +465,7 @@ StartLimitIntervalSec=60
 # Logging
 StandardOutput=append:${LOG_DIR}/frontend.log
 StandardError=append:${LOG_DIR}/frontend-error.log
-SyslogIdentifier=bep-frontend
+SyslogIdentifier=se360-frontend
 
 # Runtime env (NEXT_PUBLIC_* already baked in at build time)
 EnvironmentFile=${APP_DIR}/frontend/.env.local
@@ -500,10 +500,10 @@ UMask=0077
 WantedBy=multi-user.target
 UNIT
 
-ok "bep-frontend.service written"
+ok "se360-frontend.service written"
 
 systemctl daemon-reload
-systemctl enable bep-backend bep-frontend
+systemctl enable se360-backend se360-frontend
 ok "Services enabled for auto-start on reboot"
 
 # =============================================================================
@@ -514,8 +514,8 @@ step "Configuring Nginx (initial HTTP config)"
 rm -f /etc/nginx/sites-enabled/default
 
 # http{}-level directives. limit_req_zone can only live here, not in a server{}.
-cat > /etc/nginx/conf.d/bep-hardening.conf <<'NGINX'
-# Generated by deploy.sh — global hardening for the BEP SE vhosts.
+cat > /etc/nginx/conf.d/se360-hardening.conf <<'NGINX'
+# Generated by deploy.sh — global hardening for the SE360 vhosts.
 
 # Don't advertise the nginx version in responses and error pages.
 server_tokens off;
@@ -523,15 +523,15 @@ server_tokens off;
 # Brute-force throttles, keyed on the client IP. These sit in front of the
 # app's own @Throttle guards as a second layer that also protects the box from
 # the request volume itself.
-limit_req_zone $binary_remote_addr zone=bep_auth:10m rate=10r/m;
-limit_req_zone $binary_remote_addr zone=bep_api:10m  rate=20r/s;
+limit_req_zone $binary_remote_addr zone=se360_auth:10m rate=10r/m;
+limit_req_zone $binary_remote_addr zone=se360_api:10m  rate=20r/s;
 limit_req_status 429;
-limit_conn_zone $binary_remote_addr zone=bep_conn:10m;
+limit_conn_zone $binary_remote_addr zone=se360_conn:10m;
 NGINX
 
-cat > /etc/nginx/sites-available/bep-se-http <<NGINX
+cat > /etc/nginx/sites-available/se360-http <<NGINX
 # Temporary HTTP-only vhost used during Let's Encrypt certificate issuance.
-# After SSL is obtained this file is replaced by bep-se (HTTPS).
+# After SSL is obtained this file is replaced by se360 (HTTPS).
 server {
     listen 80;
     listen [::]:80;
@@ -543,13 +543,13 @@ server {
     }
 
     location / {
-        return 200 'BEP SE – obtaining SSL certificate…';
+        return 200 'SE360 – obtaining SSL certificate…';
         add_header Content-Type text/plain;
     }
 }
 NGINX
 
-ln -sf /etc/nginx/sites-available/bep-se-http /etc/nginx/sites-enabled/bep-se-http
+ln -sf /etc/nginx/sites-available/se360-http /etc/nginx/sites-enabled/se360-http
 
 nginx -t
 systemctl enable nginx
@@ -594,9 +594,9 @@ fi
 # =============================================================================
 step "Writing final Nginx HTTPS configuration"
 
-cat > /etc/nginx/sites-available/bep-se <<NGINX
+cat > /etc/nginx/sites-available/se360 <<NGINX
 # =============================================================================
-#  BEP SE – Nginx reverse proxy
+#  SE360 – Nginx reverse proxy
 #  Generated by deploy.sh  $(date -u '+%Y-%m-%d %H:%M UTC')
 # =============================================================================
 
@@ -652,7 +652,7 @@ server {
     add_header Permissions-Policy         "camera=(), microphone=(), geolocation=()"      always;
 
     # Cap concurrent connections per IP (slowloris / scraping)
-    limit_conn bep_conn 40;
+    limit_conn se360_conn 40;
 
     # ── Gzip ─────────────────────────────────────────────────────────────────
     gzip on;
@@ -691,7 +691,7 @@ server {
     # ── Auth endpoints: strict brute-force throttle ───────────────────────────
     # Longest-prefix match wins, so this takes precedence over /api/ below.
     location /api/auth/ {
-        limit_req           zone=bep_auth burst=20 nodelay;
+        limit_req           zone=se360_auth burst=20 nodelay;
 
         proxy_pass          http://127.0.0.1:${BACKEND_PORT}/api/auth/;
         proxy_http_version  1.1;
@@ -722,7 +722,7 @@ server {
 
     # ── Backend API (NestJS on :${BACKEND_PORT}) ──────────────────────────────
     location /api/ {
-        limit_req           zone=bep_api burst=60 nodelay;
+        limit_req           zone=se360_api burst=60 nodelay;
 
         proxy_pass          http://127.0.0.1:${BACKEND_PORT}/api/;
         proxy_http_version  1.1;
@@ -785,13 +785,13 @@ server {
 NGINX
 
 # Swap in the full HTTPS config
-rm -f /etc/nginx/sites-enabled/bep-se-http
-ln -sf /etc/nginx/sites-available/bep-se /etc/nginx/sites-enabled/bep-se
+rm -f /etc/nginx/sites-enabled/se360-http
+ln -sf /etc/nginx/sites-available/se360 /etc/nginx/sites-enabled/se360
 
 if [[ "$SKIP_SSL" == "true" ]]; then
   # Comment out TLS lines so nginx can start without the cert files
   sed -i 's|^\(    ssl_\)|    # \1|g; s|^\(    include /etc/\)|    # \1|g' \
-      /etc/nginx/sites-available/bep-se
+      /etc/nginx/sites-available/se360
   warn "SSL lines commented out (SKIP_SSL=true). Uncomment after obtaining certs."
 fi
 
@@ -822,7 +822,7 @@ ok "certbot.timer active – certs auto-renew and nginx reloads on renewal"
 # =============================================================================
 step "Configuring log rotation"
 
-cat > /etc/logrotate.d/bep-se <<LOGROTATE
+cat > /etc/logrotate.d/se360 <<LOGROTATE
 ${LOG_DIR}/*.log {
     daily
     missingok
@@ -834,8 +834,8 @@ ${LOG_DIR}/*.log {
     sharedscripts
     postrotate
         # Signal both services to re-open log files
-        systemctl kill --signal=USR1 bep-backend  2>/dev/null || true
-        systemctl kill --signal=USR1 bep-frontend 2>/dev/null || true
+        systemctl kill --signal=USR1 se360-backend  2>/dev/null || true
+        systemctl kill --signal=USR1 se360-frontend 2>/dev/null || true
     endscript
 }
 LOGROTATE
@@ -863,21 +863,21 @@ ok "ufw active:  limit 22, allow 80/443 | deny everything else"
 # =============================================================================
 step "Starting application services"
 
-systemctl restart bep-backend
+systemctl restart se360-backend
 sleep 4
-systemctl restart bep-frontend
+systemctl restart se360-frontend
 sleep 4
 
-if systemctl is-active --quiet bep-backend; then
-  ok "bep-backend  is running"
+if systemctl is-active --quiet se360-backend; then
+  ok "se360-backend  is running"
 else
-  warn "bep-backend did not start. Check: journalctl -u bep-backend -n 50"
+  warn "se360-backend did not start. Check: journalctl -u se360-backend -n 50"
 fi
 
-if systemctl is-active --quiet bep-frontend; then
-  ok "bep-frontend is running"
+if systemctl is-active --quiet se360-frontend; then
+  ok "se360-frontend is running"
 else
-  warn "bep-frontend did not start. Check: journalctl -u bep-frontend -n 50"
+  warn "se360-frontend did not start. Check: journalctl -u se360-frontend -n 50"
 fi
 
 # =============================================================================
@@ -885,17 +885,17 @@ fi
 # =============================================================================
 echo ""
 echo -e "${BOLD}${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BOLD}${GREEN}  BEP SE deployed successfully!${NC}"
+echo -e "${BOLD}${GREEN}  SE360 deployed successfully!${NC}"
 echo -e "${BOLD}${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 echo -e "  ${BOLD}Application URL${NC}  :  https://${DOMAIN}"
 echo -e "  ${BOLD}API base URL${NC}     :  https://${DOMAIN}/api"
 echo ""
 echo -e "  ${BOLD}Service commands${NC}:"
-echo -e "    systemctl status  bep-backend bep-frontend"
-echo -e "    systemctl restart bep-backend"
-echo -e "    journalctl -u bep-backend  -f     # live backend logs"
-echo -e "    journalctl -u bep-frontend -f     # live frontend logs"
+echo -e "    systemctl status  se360-backend se360-frontend"
+echo -e "    systemctl restart se360-backend"
+echo -e "    journalctl -u se360-backend  -f     # live backend logs"
+echo -e "    journalctl -u se360-frontend -f     # live frontend logs"
 echo ""
 echo -e "  ${BOLD}Log files${NC}  :  ${LOG_DIR}/"
 echo -e "  ${BOLD}App dir${NC}    :  ${APP_DIR}/"
@@ -917,7 +917,7 @@ echo -e "  ${BOLD}Security notes${NC}:"
 echo -e "    · TRUST_PROXY=${TRUST_PROXY} — required so login rate limiting and audit"
 echo -e "      logs see the real client IP instead of nginx's 127.0.0.1."
 echo -e "    · nginx throttles /api/auth/ to 10 req/min per IP (burst 20)."
-echo -e "    * Sessions use httpOnly cookies (bep_at/bep_rt); tokens are never"
+echo -e "    * Sessions use httpOnly cookies (se360_at/se360_rt); tokens are never"
 echo -e "      stored in browser localStorage."
 echo -e "    * Uploads under /api/uploads/ require HMAC-signed URLs (30-day TTL)"
 echo -e "      or an authenticated session, and are served with nosniff + a"

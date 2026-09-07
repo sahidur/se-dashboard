@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { User, Permission } from '@/types';
 
-const SESSION_COOKIE = 'bep-session';
+const SESSION_COOKIE = 'se360-session';
 
 // Set a short-lived session cookie readable by the Next.js edge middleware.
 // This is NOT a security token — it only signals "user has authenticated".
@@ -16,7 +16,8 @@ const secureFlag = () =>
 export function setSessionCookie() {
   if (typeof document === 'undefined') return;
   // SameSite=Strict prevents CSRF. Not HttpOnly because JS must write it.
-  document.cookie = `${SESSION_COOKIE}=1; path=/; SameSite=Strict${secureFlag()}; max-age=604800`;
+  // Keep in sync with the backend session length (JWT_REFRESH_EXPIRES_IN, 24h).
+  document.cookie = `${SESSION_COOKIE}=1; path=/; SameSite=Strict${secureFlag()}; max-age=86400`;
 }
 
 function clearSessionCookie() {
@@ -25,8 +26,8 @@ function clearSessionCookie() {
 }
 
 // The middleware gates dashboard routes on this cookie while the client gates
-// them on the persisted store. The two can drift apart (cookie expires after 7
-// days, the browser clears cookies but keeps localStorage, cookies are blocked)
+// them on the persisted store. The two can drift apart (cookie expires after
+// 24 hours, the browser clears cookies but keeps localStorage, cookies are blocked)
 // and that drift is what produced the login <-> dashboard redirect loop, so
 // callers must be able to ask whether the cookie is actually there.
 export function hasSessionCookie() {
@@ -91,10 +92,10 @@ export const useAuthStore = create<AuthState>()(
         // Best-effort server-side revocation FIRST: POST /auth/logout clears
         // the stored refresh token and expires the httpOnly session cookies.
         // Without this, "logging out" only wiped client state while the
-        // refresh credential stayed usable until its 7-day expiry.
+        // refresh credential stayed usable until its 24-hour expiry.
         // Raw fetch (not the api client) to avoid an import cycle; keepalive
         // lets the request survive the page teardown of the redirect below;
-        // the bep_at cookie authenticates it. Failures are non-blocking.
+        // the se360_at cookie authenticates it. Failures are non-blocking.
         if (typeof window !== 'undefined') {
           try {
             const base =
@@ -122,7 +123,7 @@ export const useAuthStore = create<AuthState>()(
         // back to the dashboard.
         if (typeof window !== 'undefined') {
           try {
-            window.localStorage.removeItem('bep-auth');
+            window.localStorage.removeItem('se360-auth');
           } catch {
             // Storage can be unavailable (private mode / blocked); state is
             // already cleared in memory, so there is nothing else to do.
@@ -165,10 +166,10 @@ export const useAuthStore = create<AuthState>()(
       },
     }),
     {
-      name: 'bep-auth',
+      name: 'se360-auth',
       partialize: (state) => ({
         // SECURITY: access/refresh tokens are deliberately NOT persisted.
-        // They live in httpOnly cookies set by the API (`bep_at` / `bep_rt`)
+        // They live in httpOnly cookies set by the API (`se360_at` / `se360_rt`)
         // and are sent automatically with every request, so a successful XSS
         // can no longer steal them from localStorage. The tokens held on the
         // store object itself are transient, in-memory values only (kept so

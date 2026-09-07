@@ -6,7 +6,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  // Auth rides in httpOnly cookies (`bep_at` / `bep_rt`) set by the API at
+  // Auth rides in httpOnly cookies (`se360_at` / `se360_rt`) set by the API at
   // login; the browser attaches them automatically. withCredentials is what
   // makes that work for the cross-origin dev setup (localhost:3000 -> :4000);
   // production is same-origin via the nginx /api proxy.
@@ -30,6 +30,42 @@ api.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
+// Single-flight refresh: when the access token expires, several in-flight
+// requests can 401 at the same time (e.g. the batch of queries fired when the
+// user returns to an inactive tab). The backend rotates the refresh token on
+// every /auth/refresh call, so letting each 401 refresh independently makes
+// all but the first fail and wrongly logs the user out. Sharing one promise
+// queues every 401 behind a single refresh call instead.
+let refreshPromise: Promise<void> | null = null;
+
+function refreshSession(): Promise<void> {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      // Cookie-first refresh: the httpOnly `se360_rt` cookie authenticates the
+      // call when present. A body token is only included for transitional
+      // sessions that still hold a persisted legacy refresh token.
+      const refreshToken = useAuthStore.getState().refreshToken;
+      const hadLegacyTokens = !!refreshToken;
+
+      const response = await axios.post(
+        `${API_BASE_URL}/auth/refresh`,
+        refreshToken ? { refreshToken } : {},
+        { withCredentials: true },
+      );
+
+      const { accessToken, refreshToken: newRefreshToken } = response.data;
+      // Only keep tokens on the store for legacy tabs; cookie-only sessions
+      // rely entirely on the rotated cookies the server just set.
+      if (hadLegacyTokens && accessToken && newRefreshToken) {
+        useAuthStore.getState().setTokens(accessToken, newRefreshToken);
+      }
+    })().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
 // Response interceptor - handle token refresh
 api.interceptors.response.use(
   (response) => response,
@@ -39,26 +75,8 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
-      // Cookie-first refresh: the httpOnly `bep_rt` cookie authenticates the
-      // call when present. A body token is only included for transitional
-      // sessions that still hold a persisted legacy refresh token.
-      const refreshToken = useAuthStore.getState().refreshToken;
-      const hadLegacyTokens = !!refreshToken;
-
       try {
-        const response = await axios.post(
-          `${API_BASE_URL}/auth/refresh`,
-          refreshToken ? { refreshToken } : {},
-          { withCredentials: true },
-        );
-
-        const { accessToken, refreshToken: newRefreshToken } = response.data;
-        // Only keep tokens on the store for legacy tabs; cookie-only sessions
-        // rely entirely on the rotated cookies the server just set.
-        if (hadLegacyTokens && accessToken && newRefreshToken) {
-          useAuthStore.getState().setTokens(accessToken, newRefreshToken);
-        }
-
+        await refreshSession();
         return api(originalRequest);
       } catch {
         // Refresh token is invalid/expired — fall through to forced logout below.

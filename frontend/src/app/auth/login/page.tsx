@@ -34,7 +34,7 @@ type LoginForm = z.infer<typeof loginSchema>;
 // Marks that this tab has already sent an authenticated-looking visitor to the
 // dashboard. If we end up back on the login page with the flag still set, the
 // middleware bounced us straight back and another redirect would loop forever.
-const REDIRECT_ATTEMPT_KEY = 'bep-login-redirect-attempt';
+const REDIRECT_ATTEMPT_KEY = 'se360-login-redirect-attempt';
 
 // Reading a browser-only value through useSyncExternalStore (with a no-op
 // subscription) returns the server snapshot during SSR/hydration and the client
@@ -78,7 +78,7 @@ export default function LoginPage() {
   // A full navigation guarantees the dashboard mounts fresh with the auth store
   // rehydrated from localStorage (the same path a hard reload takes).
   //
-  // Dashboard routes are guarded twice: by the `bep-session` cookie in the edge
+  // Dashboard routes are guarded twice: by the `se360-session` cookie in the edge
   // middleware and by the persisted store in the dashboard layout. When those
   // two disagree (cookie expired/blocked/cleared while localStorage still says
   // "authenticated") this redirect and the middleware's redirect back to the
@@ -94,7 +94,7 @@ export default function LoginPage() {
     }
 
     // Cookie sessions keep no persisted access token, so an in-memory token
-    // OR the `bep-session` middleware cookie counts as "probably logged in".
+    // OR the `se360-session` middleware cookie counts as "probably logged in".
     const authed = isAuthenticated && (!!accessToken || hasSessionCookie());
 
     if (!authed) {
@@ -132,7 +132,7 @@ export default function LoginPage() {
     // races with Next.js' RSC transition and leaves the dashboard stuck on its
     // spinner. Do not "fix" this by switching back to the router.
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-    window.location.assign('/dashboard');
+    window.location.assign('/data-collection/programme-overview');
   }, [hydrated, isAuthenticated, accessToken, logout]);
 
   const onSubmit = async (data: LoginForm) => {

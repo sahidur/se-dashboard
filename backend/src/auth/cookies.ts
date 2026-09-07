@@ -5,9 +5,9 @@ import { Response } from 'express';
  *
  * Tokens move out of localStorage into httpOnly cookies so a successful XSS
  * can no longer exfiltrate long-lived credentials:
- *  - `bep_at`: short-lived access token (mirrors the 15m JWT TTL), sent with
+ *  - `se360_at`: short-lived access token (mirrors the 15m JWT TTL), sent with
  *    every API request.
- *  - `bep_rt`: refresh token scoped to `/api/auth` only — the browser never
+ *  - `se360_rt`: refresh token scoped to `/api/auth` only — the browser never
  *    presents it anywhere except POST /api/auth/refresh.
  *
  * SameSite=Lax is sufficient CSRF protection here: in production nginx serves
@@ -17,13 +17,13 @@ import { Response } from 'express';
  * non-browser API clients.
  */
 
-export const ACCESS_TOKEN_COOKIE = 'bep_at';
-export const REFRESH_TOKEN_COOKIE = 'bep_rt';
+export const ACCESS_TOKEN_COOKIE = 'se360_at';
+export const REFRESH_TOKEN_COOKIE = 'se360_rt';
 
 /** Keep in sync with JWT_EXPIRES_IN (default 15m). */
 const ACCESS_TTL_MS = 15 * 60 * 1000;
-/** Keep in sync with JWT_REFRESH_EXPIRES_IN (default 7d). */
-const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Keep in sync with JWT_REFRESH_EXPIRES_IN (default 24h). */
+const REFRESH_TTL_MS = 24 * 60 * 60 * 1000;
 
 function cookieOptions() {
   return {

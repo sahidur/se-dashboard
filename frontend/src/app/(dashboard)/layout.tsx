@@ -11,7 +11,7 @@ import {
 import { Sidebar } from '@/components/layout/sidebar';
 import api from '@/lib/api';
 
-const SIDEBAR_COLLAPSED_KEY = 'bep-sidebar-collapsed';
+const SIDEBAR_COLLAPSED_KEY = 'se360-sidebar-collapsed';
 
 export default function DashboardLayout({
   children,
@@ -53,7 +53,7 @@ export default function DashboardLayout({
     // its loop guard. Also re-issue the middleware cookie if it expired or was
     // cleared while the persisted store survived; otherwise the next navigation
     // would be bounced to the login page, which would send us right back here.
-    sessionStorage.removeItem('bep-login-redirect-attempt');
+    sessionStorage.removeItem('se360-login-redirect-attempt');
     if (!hasSessionCookie()) setSessionCookie();
   }, [hydrated, isAuthenticated, router]);
 

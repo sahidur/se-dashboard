@@ -14,14 +14,14 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
   /**
-   * Cheap session check for the uploads middleware: verifies the bep_at
+   * Cheap session check for the uploads middleware: verifies the se360_at
    * cookie JWT (signature + expiry) without a DB round-trip. Deactivated
    * accounts are cut off within the access token's 15-minute TTL by the
    * regular guard pipeline on API calls.
    */
   const hasSessionJwt = (req: Request): boolean => {
     try {
-      jwt.verify(req.cookies?.bep_at ?? '', process.env.JWT_SECRET || '');
+      jwt.verify(req.cookies?.se360_at ?? '', process.env.JWT_SECRET || '');
       return true;
     } catch {
       return false;
@@ -83,7 +83,7 @@ async function bootstrap() {
   );
 
   // Required so the JWT strategy and auth controller can read the httpOnly
-  // session cookies (bep_at / bep_rt). No signing key: cookies are verified
+  // session cookies (se360_at / se360_rt). No signing key: cookies are verified
   // as JWTs, not as opaque signed values.
   app.use(cookieParser());
 
@@ -169,8 +169,8 @@ async function bootstrap() {
   // Swagger — only in non-production environments
   if (process.env.APP_ENV !== 'production') {
     const config = new DocumentBuilder()
-      .setTitle('Social Enterprise Platform API')
-      .setDescription('API documentation for BEP Social Enterprise Platform')
+      .setTitle('SE360 API')
+      .setDescription('API documentation for SE360')
       .setVersion('1.0')
       .addBearerAuth()
       .build();

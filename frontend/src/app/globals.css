@@ -66,6 +66,16 @@
   to { stroke-dashoffset: 0; }
 }
 
+/* Slow drifting gradient for the KPI cards (background-size is 200%) */
+@keyframes gradientDrift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.animate-gradient-x {
+  animation: gradientDrift 10s ease-in-out infinite;
+}
+
 .animate-fadeIn {
   animation: fadeIn 0.4s ease-out both;
 }
@@ -130,6 +140,7 @@
   .animate-slideInLeft,
   .animate-timelineIn,
   .animate-popIn,
+  .animate-gradient-x,
   .progress-bar-shimmer {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;

@@ -305,7 +305,7 @@ export function Sidebar({
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold text-white">
               SE
             </div>
-            <span className="text-lg font-bold text-gray-900">BEP-SE</span>
+            <span className="text-lg font-bold text-gray-900">SE360</span>
           </Link>
         )}
         {/* Desktop collapse button */}
