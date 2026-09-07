@@ -1022,10 +1022,8 @@ export class DataCollectionService {
    * newest first. `dc_activity_participation` / `dc_pedagogical_achievement`
    * keep their year in a `year` column instead of `academicYear`.
    */
-  private async getAvailableAcademicYears(schoolIds: string[]): Promise<number[]> {
-    if (schoolIds.length === 0) return [];
-
-    const sources: { repo: Repository<any>; field: string }[] = [
+  private yearSources(): { repo: Repository<any>; field: string }[] {
+    return [
       { repo: this.basicInfoRepo, field: 'academicYear' },
       { repo: this.infraRepo, field: 'academicYear' },
       { repo: this.studentsRepo, field: 'academicYear' },
@@ -1046,9 +1044,13 @@ export class DataCollectionService {
       { repo: this.activityPartRepo, field: 'year' },
       { repo: this.pedagAchievRepo, field: 'year' },
     ];
+  }
+
+  private async getAvailableAcademicYears(schoolIds: string[]): Promise<number[]> {
+    if (schoolIds.length === 0) return [];
 
     const results = await Promise.all(
-      sources.map(({ repo, field }) =>
+      this.yearSources().map(({ repo, field }) =>
         repo
           .createQueryBuilder('r')
           .select(`DISTINCT r.${field}`, 'year')
@@ -1066,6 +1068,38 @@ export class DataCollectionService {
       }
     }
     return [...years].sort((a, b) => b - a);
+  }
+
+  /**
+   * Distinct schools that submitted ANY form data per academic year. Used to
+   * pick the programme overview's default year: the newest year with real
+   * coverage, not merely the newest year some single school touched.
+   */
+  private async getAcademicYearCoverage(schoolIds: string[]): Promise<Map<number, number>> {
+    const coverage = new Map<number, Set<string>>();
+    if (schoolIds.length === 0) return coverage as unknown as Map<number, number>;
+
+    const results = await Promise.all(
+      this.yearSources().map(({ repo, field }) =>
+        repo
+          .createQueryBuilder('r')
+          .select(`DISTINCT r.${field}, r.schoolId`)
+          .where('r.schoolId IN (:...ids)', { ids: schoolIds })
+          .getRawMany<{ year: number | string | null; schoolId: string }>(),
+      ),
+    );
+
+    for (const rows of results) {
+      for (const row of rows) {
+        const y = Number(row.year);
+        // 0 is the entity default for rows created before academicYear existed.
+        if (!Number.isFinite(y) || y <= 0) continue;
+        const schools = coverage.get(y) ?? new Set<string>();
+        schools.add(row.schoolId);
+        coverage.set(y, schools);
+      }
+    }
+    return new Map([...coverage].map(([y, schools]) => [y, schools.size]));
   }
 
   async getProgrammeOverview(
@@ -1099,8 +1133,23 @@ export class DataCollectionService {
 
     // Every dc_* table now stores one row per academic year, so without this
     // filter a school with two years of data would be counted twice.
-    const availableYears = await this.getAvailableAcademicYears(schoolIds);
-    const year = academicYear ?? availableYears[0] ?? null;
+    //
+    // Default year = the year with the WIDEST school coverage (most schools
+    // submitted any form for it), newest wins on ties. Picking the absolute
+    // newest year instead zeroed every school/category that had not submitted
+    // for it yet — a single test submission for 2027 made the whole BRAC
+    // Academy category (2025/2026 data) show all zeros.
+    const yearCoverage = await this.getAcademicYearCoverage(schoolIds);
+    const availableYears = [...yearCoverage.keys()].sort((a, b) => b - a);
+    const year =
+      academicYear ??
+      availableYears.reduce<number | null>(
+        (best, y) =>
+          best === null || yearCoverage.get(y)! > yearCoverage.get(best)!
+            ? y
+            : best,
+        null,
+      );
 
     const teacherQb = this.teacherIndividualRepo
       .createQueryBuilder('t')
