@@ -393,6 +393,8 @@ create_services() {
 Description=SE360 – Backend (NestJS)
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -403,8 +405,6 @@ ExecStart=/usr/bin/node dist/main.js
 ExecReload=/bin/kill -HUP \$MAINPID
 Restart=on-failure
 RestartSec=10
-StartLimitBurst=5
-StartLimitIntervalSec=60
 StandardOutput=append:${LOG_DIR}/backend.log
 StandardError=append:${LOG_DIR}/backend-error.log
 SyslogIdentifier=se360-backend
@@ -421,7 +421,7 @@ ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictNamespaces=true
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 RestrictSUIDSGID=true
 SystemCallArchitectures=native
 LockPersonality=true
@@ -439,6 +439,8 @@ UNIT
 Description=SE360 – Frontend (Next.js)
 After=network-online.target se360-backend.service
 Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -449,8 +451,6 @@ ExecStart=/usr/bin/node node_modules/next/dist/bin/next start --port ${FRONTEND_
 ExecReload=/bin/kill -HUP \$MAINPID
 Restart=on-failure
 RestartSec=10
-StartLimitBurst=5
-StartLimitIntervalSec=60
 StandardOutput=append:${LOG_DIR}/frontend.log
 StandardError=append:${LOG_DIR}/frontend-error.log
 SyslogIdentifier=se360-frontend
@@ -469,7 +469,7 @@ ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictNamespaces=true
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 RestrictSUIDSGID=true
 SystemCallArchitectures=native
 LockPersonality=true

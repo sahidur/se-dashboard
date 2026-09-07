@@ -377,6 +377,8 @@ Description=SE360 – Backend (NestJS)
 Documentation=https://docs.nestjs.com
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -391,8 +393,6 @@ ExecReload=/bin/kill -HUP \$MAINPID
 # Restart policy
 Restart=on-failure
 RestartSec=10
-StartLimitBurst=5
-StartLimitIntervalSec=60
 
 # Logging (journald + file)
 StandardOutput=append:${LOG_DIR}/backend.log
@@ -420,7 +420,7 @@ ProtectKernelModules=true
 ProtectKernelLogs=true
 ProtectControlGroups=true
 RestrictNamespaces=true
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 RestrictRealtime=true
 RestrictSUIDSGID=true
 SystemCallArchitectures=native
@@ -445,6 +445,8 @@ Description=SE360 – Frontend (Next.js)
 Documentation=https://nextjs.org
 After=network-online.target se360-backend.service
 Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -459,8 +461,6 @@ ExecReload=/bin/kill -HUP \$MAINPID
 # Restart policy
 Restart=on-failure
 RestartSec=10
-StartLimitBurst=5
-StartLimitIntervalSec=60
 
 # Logging
 StandardOutput=append:${LOG_DIR}/frontend.log
@@ -489,7 +489,7 @@ ProtectKernelModules=true
 ProtectKernelLogs=true
 ProtectControlGroups=true
 RestrictNamespaces=true
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 RestrictRealtime=true
 RestrictSUIDSGID=true
 SystemCallArchitectures=native
