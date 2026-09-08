@@ -572,7 +572,7 @@ function SchoolsListTable({ schools, onRowClick }: { schools: SchoolRow[]; onRow
 
 export default function ProgrammeOverviewPage() {
   const [category, setCategory] = useState('');
-  /** '' = follow the server default (the newest year that has data). */
+  /** '' = follow the server default (the current year, or the widest-coverage year when it has no data yet). */
   const [year, setYear] = useState('');
   const router = useRouter();
 
@@ -593,7 +593,13 @@ export default function ProgrammeOverviewPage() {
   const t = data?.totals;
   const categories = data?.categories ?? {};
   const availableYears = data?.availableYears ?? [];
-  const activeYear = year || (data?.academicYear != null ? String(data.academicYear) : '');
+  // The filter is always offered. The current year is listed even when no
+  // school has submitted data for it yet, so users can see and select it.
+  const currentYear = new Date().getFullYear();
+  const yearOptions = availableYears.includes(currentYear)
+    ? availableYears
+    : [currentYear, ...availableYears].sort((a, b) => b - a);
+  const activeYear = year || (data?.academicYear != null ? String(data.academicYear) : String(currentYear));
 
   const query = new URLSearchParams();
   if (category) query.set('category', category);
@@ -658,21 +664,19 @@ export default function ProgrammeOverviewPage() {
                 })}
               </div>
               <div className="flex flex-wrap items-center gap-3 lg:ml-auto">
-                {availableYears.length > 0 && (
-                  <label className="flex items-center gap-2 text-sm font-medium text-gray-600">
-                    <CalendarRange size={15} className="text-gray-500" />
-                    Academic year
-                    <select
-                      value={activeYear}
-                      onChange={(e) => setYear(e.target.value)}
-                      className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                    >
-                      {availableYears.map((y) => (
-                        <option key={y} value={String(y)}>{y}</option>
-                      ))}
-                    </select>
-                  </label>
-                )}
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-600">
+                  <CalendarRange size={15} className="text-gray-500" />
+                  Academic year
+                  <select
+                    value={activeYear}
+                    onChange={(e) => setYear(e.target.value)}
+                    className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  >
+                    {yearOptions.map((y) => (
+                      <option key={y} value={String(y)}>{y}</option>
+                    ))}
+                  </select>
+                </label>
               </div>
             </div>
           </CardContent>

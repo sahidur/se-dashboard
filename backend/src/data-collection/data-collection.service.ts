@@ -1142,22 +1142,25 @@ export class DataCollectionService {
     // Every dc_* table now stores one row per academic year, so without this
     // filter a school with two years of data would be counted twice.
     //
-    // Default year = the year with the WIDEST school coverage (most schools
-    // submitted any form for it), newest wins on ties. Picking the absolute
-    // newest year instead zeroed every school/category that had not submitted
-    // for it yet — a single test submission for 2027 made the whole BRAC
-    // Academy category (2025/2026 data) show all zeros.
+    // Default year = the CURRENT year. That is what users expect to see first;
+    // if the current year has no submissions yet, fall back to the year with
+    // the widest school coverage (newest wins ties) so the page is not all
+    // zeros. Picking the absolute newest year instead zeroed whole categories
+    // (a single 2027 test submission blanked BRAC Academy's 2025/2026 data).
     const yearCoverage = await this.getAcademicYearCoverage(schoolIds);
     const availableYears = [...yearCoverage.keys()].sort((a, b) => b - a);
+    const currentYear = new Date().getFullYear();
     const year =
       academicYear ??
-      availableYears.reduce<number | null>(
-        (best, y) =>
-          best === null || yearCoverage.get(y)! > yearCoverage.get(best)!
-            ? y
-            : best,
-        null,
-      );
+      (yearCoverage.has(currentYear)
+        ? currentYear
+        : availableYears.reduce<number | null>(
+            (best, y) =>
+              best === null || yearCoverage.get(y)! > yearCoverage.get(best)!
+                ? y
+                : best,
+            null,
+          ));
 
     const teacherQb = this.teacherIndividualRepo
       .createQueryBuilder('t')
