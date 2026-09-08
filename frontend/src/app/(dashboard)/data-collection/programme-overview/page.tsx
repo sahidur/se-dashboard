@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import {
   School, Users, GraduationCap,
-  Filter, RefreshCw, ArrowUpRight, BarChart3, Target, Sparkles,
+  Filter, RefreshCw, BarChart3, Target, Sparkles,
   MapPin, CheckCircle2, XCircle, ChevronRight, ChevronDown, Check, Info,
   AlertTriangle, CalendarRange,
 } from 'lucide-react';
@@ -134,18 +134,18 @@ function AnimatedNumber({ value }: { value: number }) {
 
 /* â”€â”€â”€ KPI Card (clickable) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
-/* Mid-tone two-colour gradients for the KPI cards — modern, soft and smooth
-   (never a flat solid, never too deep or too pale). Static class strings:
-   Tailwind cannot resolve dynamically built colour names. */
+/* Two-colour horizontal gradients for the KPI cards (top row style: pink → purple,
+   violet, blue, … orange → amber). Static class strings: Tailwind cannot resolve
+   dynamically built colour names. */
 const CARD_GRADIENTS: Record<string, string> = {
-  indigo: 'from-indigo-500 via-indigo-400 to-sky-400',
-  purple: 'from-purple-500 via-violet-400 to-fuchsia-400',
-  blue: 'from-blue-500 via-sky-400 to-cyan-400',
-  cyan: 'from-cyan-500 via-teal-400 to-sky-400',
-  teal: 'from-teal-500 via-emerald-400 to-teal-300',
-  orange: 'from-orange-500 via-amber-400 to-orange-300',
-  green: 'from-emerald-500 via-green-400 to-lime-400',
-  red: 'from-rose-500 via-pink-400 to-rose-300',
+  indigo: 'from-pink-500 via-rose-500 to-purple-500',
+  purple: 'from-violet-600 via-purple-500 to-indigo-500',
+  blue: 'from-sky-400 via-blue-500 to-indigo-500',
+  cyan: 'from-cyan-400 via-sky-500 to-blue-600',
+  teal: 'from-teal-400 via-emerald-500 to-teal-600',
+  orange: 'from-amber-400 via-orange-500 to-orange-600',
+  green: 'from-lime-400 via-green-500 to-emerald-600',
+  red: 'from-rose-500 via-red-500 to-pink-600',
 };
 
 function KpiCard({
@@ -157,24 +157,21 @@ function KpiCard({
   return (
     <Link href={href ?? '#'} className="group block h-full">
       <Card
-        className={`relative flex h-full flex-col overflow-hidden rounded-2xl border-0 bg-gradient-to-br bg-[length:200%_200%] shadow-lg shadow-gray-300/60 transition-all duration-300 animate-gradient-x hover:-translate-y-1 hover:shadow-xl ${CARD_GRADIENTS[accent]}`}
+        className={`relative flex h-full flex-col overflow-hidden rounded-2xl border-0 bg-gradient-to-r shadow-lg shadow-gray-300/60 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${CARD_GRADIENTS[accent]}`}
       >
-        <CardContent className="flex flex-1 flex-col gap-4 p-4 sm:p-5">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/20 text-white backdrop-blur-sm transition-transform duration-300 group-hover:scale-110">
-            <Icon size={22} />
-          </div>
-          <div className="mt-auto">
-            <p className="text-[11px] font-semibold uppercase leading-snug tracking-wider text-white/85 sm:text-xs">
+        <CardContent className="flex flex-1 flex-col p-4 sm:p-5">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-[11px] font-semibold leading-snug tracking-wide text-white/90 sm:text-xs">
               {title}
             </p>
-            <p className="mt-1.5 break-words text-2xl font-extrabold leading-tight tabular-nums text-white drop-shadow-sm sm:text-3xl">
-              {valueDisplay ?? <AnimatedNumber value={value} />}
-            </p>
+            <Icon
+              size={22}
+              className="shrink-0 text-white/80 transition-transform duration-300 group-hover:scale-110"
+            />
           </div>
-          <ArrowUpRight
-            size={16}
-            className="absolute right-4 top-4 text-white/50 transition-all duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-white"
-          />
+          <p className="mt-2 break-words text-2xl font-extrabold leading-tight tabular-nums text-white drop-shadow-sm sm:text-3xl">
+            {valueDisplay ?? <AnimatedNumber value={value} />}
+          </p>
         </CardContent>
       </Card>
     </Link>
