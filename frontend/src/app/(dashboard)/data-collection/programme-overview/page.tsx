@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -11,7 +11,7 @@ import { Modal } from '@/components/ui/modal';
 import {
   School, Users, GraduationCap,
   Filter, RefreshCw, ArrowUpRight, BarChart3, Target, Sparkles,
-  MapPin, CheckCircle2, XCircle, ChevronRight, Info,
+  MapPin, CheckCircle2, XCircle, ChevronRight, ChevronDown, Check, Info,
   AlertTriangle, CalendarRange,
 } from 'lucide-react';
 import api from '@/lib/api';
@@ -570,10 +570,88 @@ function SchoolsListTable({ schools, onRowClick }: { schools: SchoolRow[]; onRow
 
 /* â”€â”€â”€ Main Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
+/* Searchable Academic-Year dropdown (30 years from 2020) */
+const YEAR_OPTIONS: number[] = Array.from({ length: 30 }, (_, i) => 2020 + i);
+
+function YearSelect({ value, onChange }: { value: string; onChange: (y: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocMouseDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const filtered = useMemo(
+    () => YEAR_OPTIONS.filter((y) => String(y).includes(search.trim())),
+    [search],
+  );
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => { setOpen((o) => !o); setSearch(''); }}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-gray-700 shadow-sm hover:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+      >
+        {value}
+        <ChevronDown size={14} className={`text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 z-30 mt-1 w-44 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
+          <div className="border-b border-gray-100 p-2">
+            <input
+              autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search year…"
+              className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-sm focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+            />
+          </div>
+          <div className="max-h-56 overflow-y-auto py-1">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-sm text-gray-400">No year matches</p>
+            ) : (
+              filtered.map((y) => (
+                <button
+                  key={y}
+                  type="button"
+                  onClick={() => { onChange(String(y)); setOpen(false); }}
+                  className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-indigo-50 ${
+                    String(y) === value ? 'bg-indigo-50 font-semibold text-indigo-700' : 'text-gray-700'
+                  }`}
+                >
+                  {y}
+                  {String(y) === value && <Check size={14} className="text-indigo-600" />}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ProgrammeOverviewPage() {
   const [category, setCategory] = useState('');
-  /** '' = follow the server default (the current year, or the widest-coverage year when it has no data yet). */
-  const [year, setYear] = useState('');
+  /** Defaults to the current academic year; every API call carries the year explicitly. */
+  const [year, setYear] = useState(String(new Date().getFullYear()));
   const router = useRouter();
 
   const { data, isFetching: loading, refetch } = useQuery({
@@ -582,8 +660,8 @@ export default function ProgrammeOverviewPage() {
       api
         .get('/data-collection/programme-overview', {
           params: {
+            academicYear: year, // always explicit — defaults to the current year
             ...(category ? { category } : {}),
-            ...(year ? { academicYear: year } : {}),
           },
         })
         .then(({ data }) => data as OverviewData),
@@ -592,18 +670,10 @@ export default function ProgrammeOverviewPage() {
 
   const t = data?.totals;
   const categories = data?.categories ?? {};
-  const availableYears = data?.availableYears ?? [];
-  // The filter is always offered. The current year is listed even when no
-  // school has submitted data for it yet, so users can see and select it.
-  const currentYear = new Date().getFullYear();
-  const yearOptions = availableYears.includes(currentYear)
-    ? availableYears
-    : [currentYear, ...availableYears].sort((a, b) => b - a);
-  const activeYear = year || (data?.academicYear != null ? String(data.academicYear) : String(currentYear));
 
   const query = new URLSearchParams();
   if (category) query.set('category', category);
-  if (activeYear) query.set('academicYear', activeYear);
+  if (year) query.set('academicYear', year);
   const q = query.toString() ? `?${query.toString()}` : '';
   const detailHref = (metric: string) => `/data-collection/programme-overview/${metric}${q}`;
 
@@ -627,9 +697,7 @@ export default function ProgrammeOverviewPage() {
     <>
       <Header
         title="Programme Overview"
-        subtitle={activeYear
-          ? `Aggregated data across all schools • Academic year ${activeYear}`
-          : 'Aggregated data across all schools'}
+        subtitle={`Aggregated data across all schools • Academic year ${year}`}
         actions={
           <Button variant="outline" size="sm" onClick={() => { void refetch(); }} className="gap-2">
             <RefreshCw size={14} />
@@ -664,19 +732,11 @@ export default function ProgrammeOverviewPage() {
                 })}
               </div>
               <div className="flex flex-wrap items-center gap-3 lg:ml-auto">
-                <label className="flex items-center gap-2 text-sm font-medium text-gray-600">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
                   <CalendarRange size={15} className="text-gray-500" />
                   Academic year
-                  <select
-                    value={activeYear}
-                    onChange={(e) => setYear(e.target.value)}
-                    className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                  >
-                    {yearOptions.map((y) => (
-                      <option key={y} value={String(y)}>{y}</option>
-                    ))}
-                  </select>
-                </label>
+                </div>
+                <YearSelect value={year} onChange={setYear} />
               </div>
             </div>
           </CardContent>
@@ -775,7 +835,7 @@ export default function ProgrammeOverviewPage() {
         <div className={`transition-opacity duration-200 ${loading ? 'pointer-events-none opacity-50' : ''}`}>
           <SchoolsListTable
             schools={data?.schools ?? []}
-            onRowClick={(id) => router.push(`/data-collection/school-information?school=${id}${activeYear ? `&academicYear=${activeYear}` : ''}`)}
+            onRowClick={(id) => router.push(`/data-collection/school-information?school=${id}&academicYear=${year}`)}
           />
         </div>
       </div>

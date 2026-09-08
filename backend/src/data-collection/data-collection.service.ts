@@ -1086,8 +1086,12 @@ export class DataCollectionService {
           // Aliases are mandatory: without them Postgres returns the raw
           // snake_case column names (academic_year), so row.year/schoolId
           // would be undefined and the coverage map would come back empty.
-          .select(`DISTINCT r.${field}`, 'year')
+          // NOTE: .distinct(true) (not DISTINCT inside .select) — addSelect
+          // prepends its column, which would place DISTINCT mid-select-list
+          // and produce invalid SQL.
+          .select(`r.${field}`, 'year')
           .addSelect('r.schoolId', 'schoolId')
+          .distinct(true)
           .where('r.schoolId IN (:...ids)', { ids: schoolIds })
           .getRawMany<{ year: number | string | null; schoolId: string }>(),
       ),
