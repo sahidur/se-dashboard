@@ -495,6 +495,7 @@ systemctl list-unit-files se360-backend.service &>/dev/null && \
 # =============================================================================
 step "Pulling latest code"
 if [[ -d "$APP_DIR/.git" ]]; then
+  chown -R "$APP_USER":"$APP_USER" "$APP_DIR"
   sudo -u "$APP_USER" git -C "$APP_DIR" fetch origin
   sudo -u "$APP_USER" git -C "$APP_DIR" reset --hard "origin/${APP_BRANCH}"
   ok "Code updated from origin/${APP_BRANCH}"

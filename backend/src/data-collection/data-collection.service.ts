@@ -1083,7 +1083,11 @@ export class DataCollectionService {
       this.yearSources().map(({ repo, field }) =>
         repo
           .createQueryBuilder('r')
-          .select(`DISTINCT r.${field}, r.schoolId`)
+          // Aliases are mandatory: without them Postgres returns the raw
+          // snake_case column names (academic_year), so row.year/schoolId
+          // would be undefined and the coverage map would come back empty.
+          .select(`DISTINCT r.${field}`, 'year')
+          .addSelect('r.schoolId', 'schoolId')
           .where('r.schoolId IN (:...ids)', { ids: schoolIds })
           .getRawMany<{ year: number | string | null; schoolId: string }>(),
       ),
@@ -1091,11 +1095,15 @@ export class DataCollectionService {
 
     for (const rows of results) {
       for (const row of rows) {
-        const y = Number(row.year);
+        // Defensive key lookup: an unquoted alias folds to lowercase in
+        // Postgres, so the raw row may carry schoolid/school_id instead.
+        const raw = row as Record<string, unknown>;
+        const y = Number(raw.year ?? raw.academic_year);
+        const schoolId = String(raw.schoolId ?? raw.schoolid ?? raw.school_id ?? '');
         // 0 is the entity default for rows created before academicYear existed.
-        if (!Number.isFinite(y) || y <= 0) continue;
+        if (!Number.isFinite(y) || y <= 0 || !schoolId) continue;
         const schools = coverage.get(y) ?? new Set<string>();
-        schools.add(row.schoolId);
+        schools.add(schoolId);
         coverage.set(y, schools);
       }
     }

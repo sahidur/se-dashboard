@@ -187,7 +187,8 @@ step "Deploying application code"
 if [[ -n "$REPO_URL" ]]; then
   if [[ -d "$APP_DIR/.git" ]]; then
     info "Repository exists – pulling latest from origin/${APP_BRANCH}"
-    sudo -u "$APP_USER" git -C "$APP_DIR" fetch origin
+    chown -R "$APP_USER":"$APP_USER" "$APP_DIR"
+  sudo -u "$APP_USER" git -C "$APP_DIR" fetch origin
     sudo -u "$APP_USER" git -C "$APP_DIR" reset --hard "origin/${APP_BRANCH}"
   else
     info "Cloning ${REPO_URL}"
