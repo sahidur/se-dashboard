@@ -674,7 +674,8 @@ export default function ProgrammeOverviewPage() {
   const q = query.toString() ? `?${query.toString()}` : '';
   const detailHref = (metric: string) => `/data-collection/programme-overview/${metric}${q}`;
 
-  const outstandingDues = Math.max((t?.actualRevenueTarget ?? 0) - (t?.actualRevenueAchievement ?? 0), 0);
+  /* Collected minus the planned (budgeted) target — negative means shortfall. */
+  const revenueDeficit = (t?.actualRevenueAchievement ?? 0) - (t?.budgetRevenueTarget ?? 0);
 
   if (loading && !data) {
     return (
@@ -798,9 +799,9 @@ export default function ProgrammeOverviewPage() {
             href={detailHref('actual-achievement')}
           />
           <KpiCard
-            title="Outstanding Dues & Deficit"
-            value={outstandingDues}
-            valueDisplay={fmtTaka(outstandingDues)}
+            title="Revenue Deficit"
+            value={revenueDeficit}
+            valueDisplay={signedTaka(revenueDeficit)}
             icon={AlertTriangle}
             accent="red"
             href={detailHref('revenue-gap')}
