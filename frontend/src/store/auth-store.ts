@@ -16,8 +16,8 @@ const secureFlag = () =>
 export function setSessionCookie() {
   if (typeof document === 'undefined') return;
   // SameSite=Strict prevents CSRF. Not HttpOnly because JS must write it.
-  // Keep in sync with the backend session length (JWT_REFRESH_EXPIRES_IN, 24h).
-  document.cookie = `${SESSION_COOKIE}=1; path=/; SameSite=Strict${secureFlag()}; max-age=86400`;
+  // Keep in sync with the backend session length (JWT_REFRESH_EXPIRES_IN, 7d).
+  document.cookie = `${SESSION_COOKIE}=1; path=/; SameSite=Strict${secureFlag()}; max-age=604800`;
 }
 
 function clearSessionCookie() {

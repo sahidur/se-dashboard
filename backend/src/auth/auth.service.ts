@@ -6,7 +6,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
-import { randomBytes } from 'crypto';
+import { randomBytes, createHash } from 'crypto';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -32,6 +32,65 @@ export class AuthService {
 
   /** Keyed by normalised email: { consecutiveFailures, lockedUntil }. */
   private failedLogins = new Map<string, { count: number; lockedUntil: number }>();
+
+  /**
+   * Rotation grace window: the refresh token is rotated on every use, but two
+   * tabs (or devices) waking from the same idle period can both present the
+   * same still-valid token an instant apart. The loser fails the bcrypt
+   * compare against the newly stored hash and gets force-logged-out by the
+   * frontend — historically THE cause of "randomly logged out after a few
+   * minutes". Tokens retired by a very recent rotation stay refreshable for
+   * REFRESH_GRACE_MS. Explicit revocation (logout / password change) clears
+   * the window.
+   */
+  private static readonly REFRESH_GRACE_MS = 60_000;
+  /** Retired tokens remembered per user (covers a burst of concurrent tabs). */
+  private static readonly MAX_RETIRED_PER_USER = 5;
+  /** Cap on tracked users so the map can't grow unboundedly under abuse. */
+  private static readonly MAX_TRACKED_REFRESH_USERS = 10_000;
+
+  /** userId → (sha256 of a just-retired refresh token → when it was rotated). */
+  private retiredRefreshTokens = new Map<string, Map<string, number>>();
+
+  private static sha256(value: string): string {
+    return createHash('sha256').update(value).digest('hex');
+  }
+
+  private rememberRetiredRefreshToken(userId: string, refreshToken: string): void {
+    let retired = this.retiredRefreshTokens.get(userId);
+    if (!retired) {
+      if (this.retiredRefreshTokens.size >= AuthService.MAX_TRACKED_REFRESH_USERS) {
+        const now = Date.now();
+        for (const [k, v] of this.retiredRefreshTokens) {
+          if (now - Math.max(...v.values()) > AuthService.REFRESH_GRACE_MS) {
+            this.retiredRefreshTokens.delete(k);
+          }
+        }
+        if (this.retiredRefreshTokens.size >= AuthService.MAX_TRACKED_REFRESH_USERS) {
+          const oldest = this.retiredRefreshTokens.keys().next().value;
+          if (oldest !== undefined) this.retiredRefreshTokens.delete(oldest);
+        }
+      }
+      retired = new Map();
+      this.retiredRefreshTokens.set(userId, retired);
+    }
+    if (retired.size >= AuthService.MAX_RETIRED_PER_USER) {
+      const oldestKey = [...retired.entries()].sort((a, b) => a[1] - b[1])[0][0];
+      retired.delete(oldestKey);
+    }
+    retired.set(AuthService.sha256(refreshToken), Date.now());
+  }
+
+  private isRecentlyRetiredRefreshToken(userId: string, refreshToken: string): boolean {
+    const retired = this.retiredRefreshTokens.get(userId);
+    if (!retired) return false;
+    const rotatedAt = retired.get(AuthService.sha256(refreshToken));
+    return !!rotatedAt && Date.now() - rotatedAt <= AuthService.REFRESH_GRACE_MS;
+  }
+
+  private clearRetiredRefreshTokens(userId: string): void {
+    this.retiredRefreshTokens.delete(userId);
+  }
 
   /**
    * Lazily-created dummy bcrypt hash. When the login email doesn't exist we
@@ -243,10 +302,15 @@ export class AuthService {
         user.refreshToken,
       );
       if (!isTokenValid) {
-        throw new UnauthorizedException('Invalid refresh token');
+        // Grace window: a duplicate refresh sent an instant apart by another
+        // tab/device must not force a logout (see retiredRefreshTokens).
+        if (!this.isRecentlyRetiredRefreshToken(user.id, refreshToken)) {
+          throw new UnauthorizedException('Invalid refresh token');
+        }
       }
 
       const tokens = await this.generateTokens(user);
+      this.rememberRetiredRefreshToken(user.id, refreshToken);
       await this.usersService.updateRefreshToken(user.id, tokens.refreshToken);
 
       return tokens;
@@ -257,6 +321,9 @@ export class AuthService {
 
   async logout(userId: string) {
     await this.usersService.updateRefreshToken(userId, null);
+    // Explicit logout must also close the rotation grace window, otherwise a
+    // token retired moments earlier could still mint a fresh session.
+    this.clearRetiredRefreshTokens(userId);
     const ctx = getAuditContext();
     await this.usersService.logActivity({
       action: 'LOGOUT',
@@ -292,7 +359,9 @@ export class AuthService {
 
     // Rotate the refresh token so any OTHER session (other devices/browsers
     // holding the old refresh token) is invalidated. The current device stays
-    // logged in via the fresh pair returned below.
+    // logged in via the fresh pair returned below. The grace window is closed
+    // too so the rotation genuinely kills every old token.
+    this.clearRetiredRefreshTokens(userId);
     const tokens = await this.generateTokens({
       ...user,
       password: hashedPassword,

@@ -8,7 +8,8 @@ import { Response } from 'express';
  *  - `se360_at`: short-lived access token (mirrors the 15m JWT TTL), sent with
  *    every API request.
  *  - `se360_rt`: refresh token scoped to `/api/auth` only — the browser never
- *    presents it anywhere except POST /api/auth/refresh.
+ *    presents it anywhere except POST /api/auth/refresh. Lives as long as
+ *    JWT_REFRESH_EXPIRES_IN (7d by default).
  *
  * SameSite=Lax is sufficient CSRF protection here: in production nginx serves
  * the API on the SAME origin (/api proxy) and in development localhost:3000 ->
@@ -20,10 +21,37 @@ import { Response } from 'express';
 export const ACCESS_TOKEN_COOKIE = 'se360_at';
 export const REFRESH_TOKEN_COOKIE = 'se360_rt';
 
-/** Keep in sync with JWT_EXPIRES_IN (default 15m). */
-const ACCESS_TTL_MS = 15 * 60 * 1000;
-/** Keep in sync with JWT_REFRESH_EXPIRES_IN (default 24h). */
-const REFRESH_TTL_MS = 24 * 60 * 60 * 1000;
+/**
+ * Parse a jsonwebtoken-style duration ("15m", "24h", "7d", "900", "120000ms")
+ * into milliseconds. Cookie maxAge must always match the TTL actually signed
+ * into the JWT — hard-coding these values silently capped sessions even when
+ * JWT_EXPIRES_IN / JWT_REFRESH_EXPIRES_IN asked for something longer.
+ */
+function parseDurationMs(raw: string | undefined, fallbackMs: number): number {
+  if (!raw) return fallbackMs;
+  const match = /^(\d+)\s*(ms|s|m|h|d)?$/i.exec(raw.trim());
+  if (!match) return fallbackMs;
+  const n = Number(match[1]);
+  switch ((match[2] || 's').toLowerCase()) {
+    case 'ms': return n;
+    case 's': return n * 1000;
+    case 'm': return n * 60_000;
+    case 'h': return n * 3_600_000;
+    case 'd': return n * 86_400_000;
+    default: return fallbackMs;
+  }
+}
+
+/** Mirrors JWT_EXPIRES_IN (default 15m). */
+const ACCESS_TTL_MS = parseDurationMs(
+  process.env.JWT_EXPIRES_IN,
+  15 * 60 * 1000,
+);
+/** Mirrors JWT_REFRESH_EXPIRES_IN (default 7d). */
+const REFRESH_TTL_MS = parseDurationMs(
+  process.env.JWT_REFRESH_EXPIRES_IN,
+  7 * 24 * 60 * 60 * 1000,
+);
 
 function cookieOptions() {
   return {

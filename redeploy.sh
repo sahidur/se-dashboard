@@ -541,12 +541,12 @@ ensure_env COOKIE_SECURE "true"
 # DB_SSL=true and the DB provider uses a self-signed CA (e.g. DigitalOcean).
 ensure_env DB_CA_CERT "ca-certificate.crt"
 
-# Session length: the app moved to 24-hour refresh tokens (was 7d). Existing
-# env files still carry JWT_REFRESH_EXPIRES_IN=7d, which would override the new
-# default baked into the code, so rewrite it in place.
-if grep -qE '^JWT_REFRESH_EXPIRES_IN=7d$' "$BACKEND_ENV_FILE"; then
-  sed -i 's|^JWT_REFRESH_EXPIRES_IN=.*|JWT_REFRESH_EXPIRES_IN=24h|' "$BACKEND_ENV_FILE"
-  ok "Updated JWT_REFRESH_EXPIRES_IN 7d → 24h (24-hour sessions)"
+# Session length: 7-day refresh tokens. Existing env files still carry an
+# older value (24h / 7d variants), which would override the default baked into
+# the code, so normalise it in place.
+if ! grep -qE '^JWT_REFRESH_EXPIRES_IN=7d$' "$BACKEND_ENV_FILE"; then
+  sed -i 's|^JWT_REFRESH_EXPIRES_IN=.*|JWT_REFRESH_EXPIRES_IN=7d|' "$BACKEND_ENV_FILE"
+  ok "Updated JWT_REFRESH_EXPIRES_IN → 7d (7-day sessions)"
 fi
 
 # DB_SSL_REJECT_UNAUTHORIZED must be explicitly set. The backend defaults to
