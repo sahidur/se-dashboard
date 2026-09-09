@@ -134,42 +134,69 @@ function AnimatedNumber({ value }: { value: number }) {
 
 /* â”€â”€â”€ KPI Card (clickable) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
-/* Two-colour horizontal gradients for the KPI cards (top row style: pink → purple,
-   violet, blue, … orange → amber). Static class strings: Tailwind cannot resolve
-   dynamically built colour names. */
-const CARD_GRADIENTS: Record<string, string> = {
-  indigo: 'from-pink-500 via-rose-500 to-purple-500',
-  purple: 'from-violet-600 via-purple-500 to-indigo-500',
-  blue: 'from-sky-400 via-blue-500 to-indigo-500',
-  cyan: 'from-cyan-400 via-sky-500 to-blue-600',
-  teal: 'from-teal-400 via-emerald-500 to-teal-600',
-  orange: 'from-amber-400 via-orange-500 to-orange-600',
-  green: 'from-lime-400 via-green-500 to-emerald-600',
-  red: 'from-rose-500 via-red-500 to-pink-600',
+/* KPI card styling — modern "soft tint + accent chip" pattern (Stripe/Tremor style):
+   white card with a subtle colour wash, coloured icon chip with a matching glow,
+   dark readable value, and a colour-matched hover shadow. Static class strings:
+   Tailwind cannot resolve dynamically built colour names. */
+const CARD_ACCENTS: Record<string, { card: string; icon: string }> = {
+  indigo: {
+    card: 'border-indigo-100 bg-gradient-to-br from-indigo-50/90 via-white to-white hover:border-indigo-200 hover:shadow-indigo-500/20',
+    icon: 'bg-gradient-to-br from-indigo-500 to-blue-600 shadow-indigo-500/40',
+  },
+  purple: {
+    card: 'border-purple-100 bg-gradient-to-br from-purple-50/90 via-white to-white hover:border-purple-200 hover:shadow-purple-500/20',
+    icon: 'bg-gradient-to-br from-purple-500 to-fuchsia-600 shadow-purple-500/40',
+  },
+  blue: {
+    card: 'border-blue-100 bg-gradient-to-br from-blue-50/90 via-white to-white hover:border-blue-200 hover:shadow-blue-500/20',
+    icon: 'bg-gradient-to-br from-blue-500 to-indigo-600 shadow-blue-500/40',
+  },
+  cyan: {
+    card: 'border-cyan-100 bg-gradient-to-br from-cyan-50/90 via-white to-white hover:border-cyan-200 hover:shadow-cyan-500/20',
+    icon: 'bg-gradient-to-br from-cyan-500 to-sky-600 shadow-cyan-500/40',
+  },
+  teal: {
+    card: 'border-teal-100 bg-gradient-to-br from-teal-50/90 via-white to-white hover:border-teal-200 hover:shadow-teal-500/20',
+    icon: 'bg-gradient-to-br from-teal-500 to-emerald-600 shadow-teal-500/40',
+  },
+  orange: {
+    card: 'border-orange-100 bg-gradient-to-br from-orange-50/90 via-white to-white hover:border-orange-200 hover:shadow-orange-500/20',
+    icon: 'bg-gradient-to-br from-orange-500 to-amber-600 shadow-orange-500/40',
+  },
+  green: {
+    card: 'border-emerald-100 bg-gradient-to-br from-emerald-50/90 via-white to-white hover:border-emerald-200 hover:shadow-emerald-500/20',
+    icon: 'bg-gradient-to-br from-emerald-500 to-green-600 shadow-emerald-500/40',
+  },
+  red: {
+    card: 'border-rose-100 bg-gradient-to-br from-rose-50/90 via-white to-white hover:border-rose-200 hover:shadow-rose-500/20',
+    icon: 'bg-gradient-to-br from-rose-500 to-red-600 shadow-rose-500/40',
+  },
 };
 
 function KpiCard({
   title, value, valueDisplay, icon: Icon, accent, href,
 }: {
   title: string; value: number; valueDisplay?: string; icon: React.ElementType;
-  accent: keyof typeof CARD_GRADIENTS; href?: string;
+  accent: keyof typeof CARD_ACCENTS; href?: string;
 }) {
+  const tones = CARD_ACCENTS[accent];
   return (
     <Link href={href ?? '#'} className="group block h-full">
       <Card
-        className={`relative flex h-full flex-col overflow-hidden rounded-2xl border-0 bg-gradient-to-r shadow-lg shadow-gray-300/60 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${CARD_GRADIENTS[accent]}`}
+        className={`relative flex h-full flex-col overflow-hidden rounded-2xl border shadow-md shadow-gray-200/50 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${tones.card}`}
       >
         <CardContent className="flex flex-1 flex-col p-4 sm:p-5">
           <div className="flex items-start justify-between gap-3">
-            <p className="text-[11px] font-semibold leading-snug tracking-wide text-white/90 sm:text-xs">
+            <p className="text-[11px] font-semibold uppercase leading-snug tracking-wide text-gray-500 sm:text-xs">
               {title}
             </p>
-            <Icon
-              size={22}
-              className="shrink-0 text-white/80 transition-transform duration-300 group-hover:scale-110"
-            />
+            <span
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white shadow-lg transition-transform duration-300 group-hover:scale-110 ${tones.icon}`}
+            >
+              <Icon size={18} />
+            </span>
           </div>
-          <p className="mt-2 break-words text-2xl font-extrabold leading-tight tabular-nums text-white drop-shadow-sm sm:text-3xl">
+          <p className="mt-2 break-words text-2xl font-bold leading-tight tabular-nums tracking-tight text-gray-900 sm:text-3xl">
             {valueDisplay ?? <AnimatedNumber value={value} />}
           </p>
         </CardContent>
