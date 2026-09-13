@@ -1186,11 +1186,47 @@ export class DataCollectionService {
     );
 
     // Parallel aggregate queries
-    const [teacherRows, studentRecords, budgetTotals, actualTotals] = await Promise.all([
+    const [
+      teacherRows, studentRecords, budgetTotals, actualTotals,
+      teacherIndividuals, teachersDevRecords, activityRecords,
+      pedagRecords, studentsPerfRecords, eventRecords,
+    ] = await Promise.all([
       teacherQb.getRawMany(),
       this.studentsRepo.find({ where: studentWhere }),
       this.revBudgetTotalRepo.find({ where: revenueWhere }),
       this.revActualTotalRepo.find({ where: revenueWhere }),
+      // ── School-ranking inputs (mirror the Overall Score / 3.00 in
+      // school-information: Students', Teachers', Revenue Collection and
+      // Pedagogical Performance status groups; Infrastructure & Head
+      // Teachers' are informational only and excluded) ──
+      this.teacherIndividualRepo.find({
+        where: studentWhere,
+        select: ['schoolId', 'trainingReceived', 'assessmentScore'],
+      }),
+      this.teachersDevRepo.find({
+        where: studentWhere,
+        select: ['schoolId', 'teacherDropoutRate'],
+      }),
+      // Activity participation + pedagogical achievements use a `year` column.
+      this.activityPartRepo.find({
+        where: year != null
+          ? { schoolId: In(schoolIds), year }
+          : { schoolId: In(schoolIds) },
+        select: ['schoolId', 'item', 'year', 'participationRate'],
+      }),
+      this.pedagAchievRepo.find({
+        where: year != null
+          ? { schoolId: In(schoolIds), year }
+          : { schoolId: In(schoolIds) },
+      }),
+      this.studentsPerfRepo.find({
+        where: studentWhere,
+        select: ['schoolId', 'examName', 'gradeAPlus', 'gradeA', 'numberOfStudents'],
+      }),
+      this.eventPartRepo.find({
+        where: studentWhere,
+        select: ['schoolId'],
+      }),
     ]);
 
     // Aggregate teacher counts
@@ -1219,6 +1255,48 @@ export class DataCollectionService {
     const actualMap: Record<string, typeof actualTotals[0]> = {};
     for (const r of actualTotals) actualMap[r.schoolId] = r;
 
+    // ── School-ranking aggregates (grouped per school) ──
+    const attendVals: Record<string, number[]> = {};
+    const dropoutVals: Record<string, number[]> = {};
+    for (const rec of studentRecords) {
+      if (rec.attendanceRate != null) (attendVals[rec.schoolId] ??= []).push(Number(rec.attendanceRate));
+      if (rec.dropoutRate != null) (dropoutVals[rec.schoolId] ??= []).push(Number(rec.dropoutRate));
+    }
+    const teacherStats: Record<string, { total: number; basic: number; subject: number; aGrade: number }> = {};
+    for (const t of teacherIndividuals) {
+      const e = (teacherStats[t.schoolId] ??= { total: 0, basic: 0, subject: 0, aGrade: 0 });
+      e.total++;
+      const tr = (t.trainingReceived || '').toLowerCase();
+      if (tr.includes('basic')) e.basic++;
+      if (tr.includes('subject')) e.subject++;
+      if (Number(t.assessmentScore) >= 80) e.aGrade++;
+    }
+    const tDropVals: Record<string, number[]> = {};
+    for (const d of teachersDevRecords) {
+      if (d.teacherDropoutRate != null) (tDropVals[d.schoolId] ??= []).push(Number(d.teacherDropoutRate));
+    }
+    const libVals: Record<string, number[]> = {};
+    const labVals: Record<string, number[]> = {};
+    const cornerHas: Record<string, boolean> = {};
+    const clubHas: Record<string, boolean> = {};
+    for (const a of activityRecords) {
+      const item = String(a.item || '').toLowerCase();
+      if (item.includes('library') && a.participationRate != null) (libVals[a.schoolId] ??= []).push(Number(a.participationRate));
+      if (item.includes('lab') && a.participationRate != null) (labVals[a.schoolId] ??= []).push(Number(a.participationRate));
+      if (item.includes('corner')) cornerHas[a.schoolId] = true;
+      if (item.includes('club')) clubHas[a.schoolId] = true;
+    }
+    // Latest pedagogical-achievement record per school (highest `year` wins).
+    const pedagMap: Record<string, DcPedagogicalAchievement> = {};
+    for (const p of pedagRecords) {
+      const cur = pedagMap[p.schoolId];
+      if (!cur || p.year > cur.year) pedagMap[p.schoolId] = p;
+    }
+    const perfBySchool: Record<string, DcStudentsPerformance[]> = {};
+    for (const r of studentsPerfRecords) (perfBySchool[r.schoolId] ??= []).push(r);
+    const eventHas: Record<string, boolean> = {};
+    for (const e of eventRecords) eventHas[e.schoolId] = true;
+
     // Build per-school rows
     const schoolRows = schools.map((school) => {
       const t = teacherMap[school.id] ?? { male: 0, female: 0 };
@@ -1243,6 +1321,35 @@ export class DataCollectionService {
             .reduce((acc, v) => acc + parseFloat(String(v ?? 0)), 0)
         : 0;
 
+      // Overall score out of 3.00 — same rules as the school-information page
+      const overallScore = this.computeSchoolOverallScore({
+        studentTotal: s.total,
+        studentTarget: b?.totalStudentsTarget != null ? Number(b.totalStudentsTarget) : null,
+        attendance: this.avgOrNull(attendVals[school.id]),
+        dropout: this.avgOrNull(dropoutVals[school.id]),
+        teacherCount: teacherStats[school.id]?.total ?? 0,
+        basicTrained: teacherStats[school.id]?.basic ?? null,
+        subjectTrained: teacherStats[school.id]?.subject ?? null,
+        aGradeTeachers: teacherStats[school.id]?.aGrade ?? null,
+        teacherDropout: this.avgOrNull(tDropVals[school.id]),
+        plannedTarget: sumBudgetTarget,
+        actualTarget: sumActualTarget,
+        collected: sumActualAchievement,
+        libraryPct: this.avgOrNull(libVals[school.id]),
+        labPct: this.avgOrNull(labVals[school.id]),
+        hasCorner: !!cornerHas[school.id],
+        hasClub: !!clubHas[school.id],
+        scholarshipCount: pedagMap[school.id]
+          ? Number(pedagMap[school.id].kgScholarship) +
+            Number(pedagMap[school.id].primaryScholarship) +
+            Number(pedagMap[school.id].jrScholarship) +
+            Number(pedagMap[school.id].sscScholarship) +
+            Number(pedagMap[school.id].othersScholarship)
+          : null,
+        performance: perfBySchool[school.id] ?? [],
+        hasEvents: !!eventHas[school.id],
+      });
+
       return {
         id: school.id,
         name: school.name,
@@ -1260,7 +1367,18 @@ export class DataCollectionService {
         budgetRevenueAchievement: sumBudgetAchievement,
         actualRevenueTarget: sumActualTarget,
         actualRevenueAchievement: sumActualAchievement,
+        overallScore,
+        overallGrade:
+          overallScore == null ? null : overallScore >= 2.5 ? 'A' : overallScore >= 1.5 ? 'B' : 'C',
       };
+    });
+
+    // Rank highest score first; schools without any data sink to the bottom.
+    schoolRows.sort((x, y) => {
+      if (x.overallScore == null && y.overallScore == null) return 0;
+      if (x.overallScore == null) return 1;
+      if (y.overallScore == null) return -1;
+      return y.overallScore - x.overallScore;
     });
 
     // Programme totals
@@ -1315,6 +1433,100 @@ export class DataCollectionService {
     }
 
     return { totals, categories, schools: schoolRows, academicYear: year, availableYears };
+  }
+
+  /** Simple mean of a list of numbers; null when the list is empty. */
+  private avgOrNull(vals?: number[]): number | null {
+    if (!vals || vals.length === 0) return null;
+    return vals.reduce((a, b) => a + b, 0) / vals.length;
+  }
+
+  /**
+   * Overall school score out of 3.00 — server-side mirror of the Status Groups
+   * computed in the school-information page (section 8.3/8.4 of the rating doc):
+   *   A / Green = 3 • B / Yellow = 2 • C / Red = 1  (percent: ≥80 / 70–79 / <70)
+   * The four graded groups (Students', Teachers', Revenue Collection,
+   * Pedagogical Performance) each contribute their indicator-point average;
+   * the overall score is the mean of those group averages. Infrastructure &
+   * Head Teachers' status are informational only and excluded, matching the
+   * rating document. Complementary rows (retention, dues) are excluded to
+   * avoid double-counting. Returns null when a school has no gradable data.
+   */
+  private computeSchoolOverallScore(i: {
+    studentTotal: number;
+    studentTarget: number | null;
+    attendance: number | null;
+    dropout: number | null;
+    teacherCount: number;
+    basicTrained: number | null;
+    subjectTrained: number | null;
+    aGradeTeachers: number | null;
+    teacherDropout: number | null;
+    plannedTarget: number;
+    actualTarget: number;
+    collected: number;
+    libraryPct: number | null;
+    labPct: number | null;
+    hasCorner: boolean;
+    hasClub: boolean;
+    scholarshipCount: number | null;
+    performance: DcStudentsPerformance[];
+    hasEvents: boolean;
+  }): number | null {
+    const cap100 = (v: number | null) => (v == null ? null : Math.min(100, Math.max(0, v)));
+    const pctPoint = (p: number | null): number | null => (p == null ? null : p >= 80 ? 3 : p >= 70 ? 2 : 1);
+    const groupAvg = (pts: (number | null)[]): number | null => {
+      const valid = pts.filter((p): p is number => p != null);
+      return valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
+    };
+
+    // ── Students' Status ──
+    const enrollPct = i.studentTarget != null && i.studentTarget > 0
+      ? cap100((i.studentTotal / i.studentTarget) * 100)
+      : null;
+    const retention = i.dropout == null ? null : 100 - i.dropout; // dropout graded on retention
+    const studentsAvg = groupAvg([pctPoint(enrollPct), pctPoint(retention), pctPoint(cap100(i.attendance))]);
+
+    // ── Teachers' Status ──
+    const pctOf = (count: number | null): number | null =>
+      i.teacherCount > 0 && count != null ? (count / i.teacherCount) * 100 : null;
+    const teacherRetention = i.teacherDropout == null ? null : 100 - i.teacherDropout;
+    const teachersAvg = groupAvg([
+      pctPoint(cap100(teacherRetention)),
+      pctPoint(cap100(pctOf(i.basicTrained))),
+      pctPoint(cap100(pctOf(i.subjectTrained))),
+      pctPoint(cap100(pctOf(i.aGradeTeachers))),
+    ]);
+
+    // ── Revenue Collection Status (dues row excluded — complement of collected) ──
+    const collectedPct = i.actualTarget > 0 ? cap100((i.collected / i.actualTarget) * 100) : null;
+    const vsPlanPct = i.plannedTarget > 0 ? cap100((i.collected / i.plannedTarget) * 100) : null;
+    const revenueAvg = groupAvg([pctPoint(collectedPct), pctPoint(vsPlanPct)]);
+
+    // ── Pedagogical Performance Status ──
+    const latestPedag = i.performance.some((r) => (r.examName || '') === 'Annual')
+      ? i.performance.filter((r) => (r.examName || '') === 'Annual')
+      : i.performance;
+    const perfTotal = latestPedag.reduce((s, r) => s + (r.numberOfStudents || 0), 0);
+    const perfTop = latestPedag.reduce((s, r) => s + (r.gradeAPlus || 0) + (r.gradeA || 0), 0);
+    const sscTopPct = perfTotal > 0 ? cap100((perfTop / perfTotal) * 100) : null;
+    const scholarPct = i.scholarshipCount != null && i.studentTotal > 0
+      ? cap100((i.scholarshipCount / i.studentTotal) * 100)
+      : null;
+    const pedagAvg = groupAvg([
+      pctPoint(cap100(i.libraryPct)),
+      pctPoint(cap100(i.labPct)),
+      i.hasCorner ? 3 : null,
+      i.hasClub ? 3 : null,
+      pctPoint(scholarPct),
+      pctPoint(sscTopPct),
+      i.hasEvents ? 3 : null,
+    ]);
+
+    const groups = [studentsAvg, teachersAvg, revenueAvg, pedagAvg].filter(
+      (g): g is number => g != null,
+    );
+    return groups.length ? groups.reduce((a, b) => a + b, 0) / groups.length : null;
   }
 
   private emptyOverview(

@@ -62,6 +62,9 @@ interface SchoolRow {
   budgetRevenueAchievement: number;
   actualRevenueTarget: number;
   actualRevenueAchievement: number;
+  /** Overall score out of 3.00 (same rating as the school-information page). */
+  overallScore: number | null;
+  overallGrade: 'A' | 'B' | 'C' | null;
 }
 
 /* â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
@@ -494,9 +497,50 @@ function CategorySummaryTable({ label, header, totals, showSsc }: { label: strin
   );
 }
 
-/* â”€â”€â”€ Schools List Table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* â”€â”€â”€ Schools List Table (ranked by overall score, 10 per page) â”€â”€â”€â”€ */
+
+const SCHOOLS_PAGE_SIZE = 10;
+
+const RANK_GRADE_PILL: Record<'A' | 'B' | 'C', string> = {
+  A: 'bg-green-100 text-green-700 ring-green-200',
+  B: 'bg-yellow-100 text-yellow-700 ring-yellow-200',
+  C: 'bg-red-100 text-red-700 ring-red-200',
+};
+
+function RankBadge({ rank, score, grade }: { rank: number; score: number | null; grade: 'A' | 'B' | 'C' | null }) {
+  const medal = rank === 1 ? 'bg-amber-400 text-white shadow-amber-300' : rank === 2 ? 'bg-gray-300 text-gray-700 shadow-gray-200' : rank === 3 ? 'bg-orange-300 text-orange-900 shadow-orange-200' : 'bg-indigo-50 text-indigo-700';
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <span className={`inline-flex h-7 min-w-[1.75rem] items-center justify-center rounded-full px-1.5 text-xs font-bold tabular-nums shadow-sm ${medal}`}>
+        #{rank}
+      </span>
+      {score != null ? (
+        <>
+          <span className="text-[10px] font-semibold tabular-nums text-gray-500">{score.toFixed(2)}/3.00</span>
+          {grade && (
+            <span className={`inline-flex items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold ring-1 ${RANK_GRADE_PILL[grade]}`}>
+              {grade}
+            </span>
+          )}
+        </>
+      ) : (
+        <span className="text-[10px] text-gray-300">No data</span>
+      )}
+    </div>
+  );
+}
 
 function SchoolsListTable({ schools, onRowClick }: { schools: SchoolRow[]; onRowClick: (id: string) => void }) {
+  const [page, setPage] = useState(1);
+
+  // Filters (category / academic year) swap the list — snap back to page 1.
+  useEffect(() => { setPage(1); }, [schools]);
+
+  const totalPages = Math.max(1, Math.ceil(schools.length / SCHOOLS_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = schools.slice((safePage - 1) * SCHOOLS_PAGE_SIZE, safePage * SCHOOLS_PAGE_SIZE);
+  const rankOf = (idx: number) => (safePage - 1) * SCHOOLS_PAGE_SIZE + idx + 1;
+
   const location = (s: SchoolRow) =>
     [s.upazila, s.district, s.division].filter(Boolean).join(', ') || '—';
 
@@ -505,7 +549,9 @@ function SchoolsListTable({ schools, onRowClick }: { schools: SchoolRow[]; onRow
       <div className="flex items-center gap-2 border-b border-indigo-100 bg-indigo-50 px-4 py-3 sm:px-5">
         <School size={16} className="text-indigo-600" />
         <h3 className="text-sm font-semibold text-indigo-900">Schools ({schools.length})</h3>
-        <span className="ml-auto hidden text-xs text-indigo-500 sm:inline">Click a school to open its full profile</span>
+        <span className="ml-auto hidden text-xs text-indigo-500 sm:inline">
+          Ranked by overall score (out of 3.00) — highest first • Click a school to open its full profile
+        </span>
       </div>
 
       {schools.length === 0 ? (
@@ -517,6 +563,7 @@ function SchoolsListTable({ schools, onRowClick }: { schools: SchoolRow[]; onRow
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-indigo-200 bg-indigo-100 text-left text-xs uppercase tracking-wide text-indigo-900">
+                  <th className="px-4 py-3 text-center font-semibold">School Ranking</th>
                   <th className="px-4 py-3 font-semibold">Name</th>
                   <th className="px-4 py-3 font-semibold">Category</th>
                   <th className="px-4 py-3 font-semibold">Location</th>
@@ -527,12 +574,15 @@ function SchoolsListTable({ schools, onRowClick }: { schools: SchoolRow[]; onRow
                 </tr>
               </thead>
               <tbody className="divide-y divide-indigo-50">
-                {schools.map((s) => (
+                {pageRows.map((s, idx) => (
                   <tr
                     key={s.id}
                     onClick={() => onRowClick(s.id)}
                     className="group cursor-pointer bg-white transition even:bg-indigo-50/40 hover:bg-indigo-100/70"
                   >
+                    <td className="px-4 py-3">
+                      <RankBadge rank={rankOf(idx)} score={s.overallScore} grade={s.overallGrade} />
+                    </td>
                     <td className="px-4 py-3">
                       <p className="font-medium text-gray-800 group-hover:text-indigo-700">{s.name}</p>
                       <p className="font-mono text-xs text-gray-400">{s.code}</p>
@@ -561,12 +611,13 @@ function SchoolsListTable({ schools, onRowClick }: { schools: SchoolRow[]; onRow
 
           {/* Mobile stacked cards */}
           <div className="divide-y divide-indigo-50 sm:hidden">
-            {schools.map((s) => (
+            {pageRows.map((s, idx) => (
               <button
                 key={s.id}
                 onClick={() => onRowClick(s.id)}
                 className="flex w-full items-center gap-3 bg-white px-4 py-3 text-left transition even:bg-indigo-50/40 active:bg-indigo-100/70"
               >
+                <RankBadge rank={rankOf(idx)} score={s.overallScore} grade={s.overallGrade} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium text-gray-800">{s.name}</p>
                   <p className="font-mono text-xs text-gray-400">{s.code}</p>
@@ -586,6 +637,36 @@ function SchoolsListTable({ schools, onRowClick }: { schools: SchoolRow[]; onRow
               </button>
             ))}
           </div>
+
+          {/* Pagination — 10 schools per page */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between gap-3 border-t border-indigo-100 bg-indigo-50/50 px-4 py-3">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={safePage <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="gap-1"
+              >
+                <ChevronDown size={14} className="rotate-90" /> Prev
+              </Button>
+              <p className="text-xs text-gray-600">
+                Page <span className="font-semibold text-gray-800">{safePage}</span> of {totalPages}
+                <span className="ml-2 hidden text-gray-400 sm:inline">
+                  Showing {(safePage - 1) * SCHOOLS_PAGE_SIZE + 1}–{Math.min(safePage * SCHOOLS_PAGE_SIZE, schools.length)} of {schools.length}
+                </span>
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={safePage >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                className="gap-1"
+              >
+                Next <ChevronDown size={14} className="-rotate-90" />
+              </Button>
+            </div>
+          )}
         </>
       )}
     </Card>
