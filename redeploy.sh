@@ -549,6 +549,14 @@ if ! grep -qE '^JWT_REFRESH_EXPIRES_IN=7d$' "$BACKEND_ENV_FILE"; then
   ok "Updated JWT_REFRESH_EXPIRES_IN → 7d (7-day sessions)"
 fi
 
+# Access-token session length: 6 hours. Existing env files still carry the old
+# 15m value, which would override the default baked into the code, so
+# normalise it in place.
+if ! grep -qE '^JWT_EXPIRES_IN=6h$' "$BACKEND_ENV_FILE"; then
+  sed -i 's|^JWT_EXPIRES_IN=.*|JWT_EXPIRES_IN=6h|' "$BACKEND_ENV_FILE"
+  ok "Updated JWT_EXPIRES_IN → 6h (6-hour sessions)"
+fi
+
 # DB_SSL_REJECT_UNAUTHORIZED must be explicitly set. The backend defaults to
 # 'true' (secure by default) when this key is absent, which breaks connections
 # to managed DBs using self-signed CAs. 'false' is correct for DigitalOcean

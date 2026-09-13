@@ -242,7 +242,7 @@ DB_CA_CERT=${DB_CA_CERT}
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
 JWT_SECRET=${JWT_SECRET}
-JWT_EXPIRES_IN=15m
+JWT_EXPIRES_IN=6h
 JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
 JWT_REFRESH_EXPIRES_IN=7d
 

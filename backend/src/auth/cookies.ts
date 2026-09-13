@@ -5,7 +5,7 @@ import { Response } from 'express';
  *
  * Tokens move out of localStorage into httpOnly cookies so a successful XSS
  * can no longer exfiltrate long-lived credentials:
- *  - `se360_at`: short-lived access token (mirrors the 15m JWT TTL), sent with
+ *  - `se360_at`: access token (mirrors the 6h JWT TTL), sent with
  *    every API request.
  *  - `se360_rt`: refresh token scoped to `/api/auth` only — the browser never
  *    presents it anywhere except POST /api/auth/refresh. Lives as long as
@@ -42,10 +42,10 @@ function parseDurationMs(raw: string | undefined, fallbackMs: number): number {
   }
 }
 
-/** Mirrors JWT_EXPIRES_IN (default 15m). */
+/** Mirrors JWT_EXPIRES_IN (default 6h). */
 const ACCESS_TTL_MS = parseDurationMs(
   process.env.JWT_EXPIRES_IN,
-  15 * 60 * 1000,
+  6 * 60 * 60 * 1000,
 );
 /** Mirrors JWT_REFRESH_EXPIRES_IN (default 7d). */
 const REFRESH_TTL_MS = parseDurationMs(
