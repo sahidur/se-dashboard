@@ -124,6 +124,18 @@ export class SchoolMonitoringService {
     }
   }
 
+  /** Every indicator must be rated yes / no / na — unanswered questions are rejected. */
+  private assertAllAnswered(answers?: MonitoringAnswerDto[]): void {
+    const unanswered = (answers ?? [])
+      .filter((a) => a.result !== 'yes' && a.result !== 'no' && a.result !== 'na')
+      .map((a) => a.code);
+    if (unanswered.length) {
+      throw new BadRequestException(
+        `Every question must be answered before submitting. Missing ratings for: ${unanswered.join(', ')}`,
+      );
+    }
+  }
+
   // ===================== CRUD =====================
 
   async create(
@@ -132,6 +144,7 @@ export class SchoolMonitoringService {
     roles: string[],
   ): Promise<MonitoringSubmission> {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
+    this.assertAllAnswered(dto.answers);
     this.assertNegativeAnswersExplained(dto.answers);
     const submission = this.submissionRepo.create({
       schoolId: dto.schoolId,
@@ -302,6 +315,7 @@ export class SchoolMonitoringService {
   ): Promise<MonitoringSubmission> {
     const submission = await this.findOne(id, userId, roles);
     await this.assertCanEdit(userId, roles);
+    this.assertAllAnswered(dto.answers ?? submission.answers as MonitoringAnswerDto[]);
     this.assertNegativeAnswersExplained(dto.answers);
     Object.assign(submission, {
       observerName: dto.observerName ?? submission.observerName,

@@ -56,27 +56,34 @@ const SCHOOL_TYPE_LABELS: Record<string, string> = {
 };
 
 interface FormState {
-  boys: number;
-  girls: number;
-  personsWithDisability: number;
-  ethnic: number;
-  attendanceRate: number;
-  dropoutRate: number;
-  replacedStudentsRate: number;
-  retentionRate: number;
-  remedialSupport: number;
+  // Numeric fields kept as strings so inputs render blank instead of a
+  // default "0"; they are converted to numbers at submit time.
+  boys: string;
+  girls: string;
+  personsWithDisability: string;
+  ethnic: string;
+  attendanceRate: string;
+  dropoutRate: string;
+  replacedStudentsRate: string;
+  retentionRate: string;
+  remedialSupport: string;
 }
 
 const emptyForm: FormState = {
-  boys: 0,
-  girls: 0,
-  personsWithDisability: 0,
-  ethnic: 0,
-  attendanceRate: 0,
-  dropoutRate: 0,
-  replacedStudentsRate: 0,
-  retentionRate: 0,
-  remedialSupport: 0,
+  boys: '',
+  girls: '',
+  personsWithDisability: '',
+  ethnic: '',
+  attendanceRate: '',
+  dropoutRate: '',
+  replacedStudentsRate: '',
+  retentionRate: '',
+  remedialSupport: '',
+};
+
+const toNum = (v: unknown) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
 };
 
 type FieldErrors = Partial<Record<'academicYear' | 'month' | 'grade', string>>;
@@ -200,15 +207,15 @@ export function StudentsInfoForm({ schoolId }: Props) {
       );
       if (match) {
         setForm({
-          boys: match.boys,
-          girls: match.girls,
-          personsWithDisability: match.personsWithDisability,
-          ethnic: match.ethnic,
-          attendanceRate: Number(match.attendanceRate),
-          dropoutRate: Number(match.dropoutRate),
-          replacedStudentsRate: Number(match.replacedStudentsRate ?? 0),
-          retentionRate: Number(match.retentionRate ?? 0),
-          remedialSupport: match.remedialSupport,
+          boys: match.boys != null ? String(match.boys) : '',
+          girls: match.girls != null ? String(match.girls) : '',
+          personsWithDisability: match.personsWithDisability != null ? String(match.personsWithDisability) : '',
+          ethnic: match.ethnic != null ? String(match.ethnic) : '',
+          attendanceRate: match.attendanceRate != null ? String(match.attendanceRate) : '',
+          dropoutRate: match.dropoutRate != null ? String(match.dropoutRate) : '',
+          replacedStudentsRate: match.replacedStudentsRate != null ? String(match.replacedStudentsRate) : '',
+          retentionRate: match.retentionRate != null ? String(match.retentionRate) : '',
+          remedialSupport: match.remedialSupport != null ? String(match.remedialSupport) : '',
         });
         setIsEditing(true);
       } else {
@@ -262,15 +269,15 @@ export function StudentsInfoForm({ schoolId }: Props) {
     setMonth(r.month);
     setGrade(g);
     setForm({
-      boys: r.boys,
-      girls: r.girls,
-      personsWithDisability: r.personsWithDisability,
-      ethnic: r.ethnic,
-      attendanceRate: Number(r.attendanceRate),
-      dropoutRate: Number(r.dropoutRate),
-      replacedStudentsRate: Number(r.replacedStudentsRate ?? 0),
-      retentionRate: Number(r.retentionRate ?? 0),
-      remedialSupport: r.remedialSupport,
+      boys: r.boys != null ? String(r.boys) : '',
+      girls: r.girls != null ? String(r.girls) : '',
+      personsWithDisability: r.personsWithDisability != null ? String(r.personsWithDisability) : '',
+      ethnic: r.ethnic != null ? String(r.ethnic) : '',
+      attendanceRate: r.attendanceRate != null ? String(r.attendanceRate) : '',
+      dropoutRate: r.dropoutRate != null ? String(r.dropoutRate) : '',
+      replacedStudentsRate: r.replacedStudentsRate != null ? String(r.replacedStudentsRate) : '',
+      retentionRate: r.retentionRate != null ? String(r.retentionRate) : '',
+      remedialSupport: r.remedialSupport != null ? String(r.remedialSupport) : '',
     });
     setIsEditing(true);
     setError('');
@@ -279,11 +286,10 @@ export function StudentsInfoForm({ schoolId }: Props) {
     setTab('entry');
   };
 
-  const total = form.boys + form.girls;
+  const total = (Number(form.boys) || 0) + (Number(form.girls) || 0);
 
   const setNum = (key: keyof FormState, val: string) => {
-    const parsed = parseFloat(val);
-    setForm((p) => ({ ...p, [key]: isNaN(parsed) ? 0 : parsed }));
+    setForm((p) => ({ ...p, [key]: val }));
   };
 
   const validate = (): boolean => {
@@ -320,16 +326,16 @@ export function StudentsInfoForm({ schoolId }: Props) {
         academicYear: Number(academicYear),
         month,
         grade,
-        boys: form.boys,
-        girls: form.girls,
+        boys: toNum(form.boys),
+        girls: toNum(form.girls),
         total,
-        personsWithDisability: form.personsWithDisability,
-        ethnic: form.ethnic,
-        attendanceRate: form.attendanceRate,
-        dropoutRate: form.dropoutRate,
-        replacedStudentsRate: form.replacedStudentsRate,
-        retentionRate: form.retentionRate,
-        remedialSupport: form.remedialSupport,
+        personsWithDisability: toNum(form.personsWithDisability),
+        ethnic: toNum(form.ethnic),
+        attendanceRate: toNum(form.attendanceRate),
+        dropoutRate: toNum(form.dropoutRate),
+        replacedStudentsRate: toNum(form.replacedStudentsRate),
+        retentionRate: toNum(form.retentionRate),
+        remedialSupport: toNum(form.remedialSupport),
       });
       const gradeName = getGradeDisplayName(GRADES.find((g) => g.value === grade)?.label ?? grade, school?.schoolCategory);
       const successText = `${month} — ${gradeName} saved successfully!`;
@@ -718,7 +724,7 @@ export function StudentsInfoForm({ schoolId }: Props) {
 function NumberField({
   label, value, onChange, disabled, color = 'gray',
 }: {
-  label: string; value: number; onChange: (v: string) => void; disabled?: boolean; color?: string;
+  label: string; value: string; onChange: (v: string) => void; disabled?: boolean; color?: string;
 }) {
   const colors: Record<string, string> = {
     blue:   'focus:ring-blue-300',
@@ -738,6 +744,7 @@ function NumberField({
         min={0}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        placeholder="0"
         disabled={disabled}
         className={`text-center font-bold text-gray-800 transition-all focus:ring-2 ${colors[color] ?? colors.gray}`}
       />
@@ -748,7 +755,7 @@ function NumberField({
 function PercentField({
   label, value, onChange, disabled,
 }: {
-  label: string; value: number; onChange: (v: string) => void; disabled?: boolean;
+  label: string; value: string; onChange: (v: string) => void; disabled?: boolean;
 }) {
   return (
     <div className="group">
@@ -763,6 +770,7 @@ function PercentField({
           step={0.01}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          placeholder="0"
           disabled={disabled}
           className="pr-8 text-center font-bold text-gray-800 transition-all focus:ring-2 focus:ring-teal-300"
         />

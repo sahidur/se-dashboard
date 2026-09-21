@@ -42,27 +42,35 @@ const FEE_ROWS: { key: string; label: string; hint?: string }[] = [
 ];
 
 type RevenueFormState = {
-  totalStudentsTarget: number;
-} & Record<string, number>;
+  totalStudentsTarget: string;
+} & Record<string, string>;
 
+// Amount fields are kept as strings so inputs render blank instead of a
+// default "0"; they are converted to numbers at submit time.
 function buildBlank(): RevenueFormState {
-  const f: RevenueFormState = { totalStudentsTarget: 0 };
+  const f: RevenueFormState = { totalStudentsTarget: '' };
   FEE_ROWS.forEach(({ key }) => {
-    f[`${key}Target`] = 0;
-    f[`${key}Achievement`] = 0;
+    f[`${key}Target`] = '';
+    f[`${key}Achievement`] = '';
   });
   return f;
 }
 
 function recordToForm(data: DcRevenueTotalRecord): RevenueFormState {
   const f = buildBlank();
-  f.totalStudentsTarget = Number(data.totalStudentsTarget) || 0;
+  f.totalStudentsTarget = data.totalStudentsTarget != null ? String(data.totalStudentsTarget) : '';
   FEE_ROWS.forEach(({ key }) => {
-    f[`${key}Target`] = Number((data as unknown as Record<string, number>)[`${key}Target`]) || 0;
-    f[`${key}Achievement`] = Number((data as unknown as Record<string, number>)[`${key}Achievement`]) || 0;
+    const rec = data as unknown as Record<string, unknown>;
+    f[`${key}Target`] = rec[`${key}Target`] != null && rec[`${key}Target`] !== '' ? String(rec[`${key}Target`]) : '';
+    f[`${key}Achievement`] = rec[`${key}Achievement`] != null && rec[`${key}Achievement`] !== '' ? String(rec[`${key}Achievement`]) : '';
   });
   return f;
 }
+
+const toNum = (v: unknown) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
 
 function calcPct(target: number, achievement: number): string {
   if (!target) return '—';
@@ -164,7 +172,11 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
     try {
       const d = await draft.loadDraft();
       if (d?.form) {
-        setForm(d.form);
+        const normalized = buildBlank();
+        Object.entries(d.form).forEach(([k, v]) => {
+          if (v != null && v !== '') normalized[k] = String(v);
+        });
+        setForm(normalized);
         if (d.academicYear) setAcademicYear(d.academicYear);
       }
     } catch {
@@ -210,7 +222,7 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
     setForm(buildBlank());
   };
 
-  const setField = (k: string, v: number) => setForm((prev) => ({ ...prev, [k]: v }));
+  const setField = (k: string, v: string) => setForm((prev) => ({ ...prev, [k]: v }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -219,10 +231,12 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
     setSaving(true);
     setError('');
     try {
+      const numericForm: Record<string, number> = {};
+      Object.entries(form).forEach(([k, v]) => { numericForm[k] = toNum(v); });
       const { data } = await api.post<DcRevenueTotalRecord>(endpoint, {
         schoolId,
         academicYear: Number(academicYear),
-        ...form,
+        ...numericForm,
       });
       setRecord(data);
       setIsEditing(true);
@@ -253,8 +267,8 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
     );
   }
 
-  const totalTarget = FEE_ROWS.reduce((s, { key }) => s + (form[`${key}Target`] || 0), 0);
-  const totalAchievement = FEE_ROWS.reduce((s, { key }) => s + (form[`${key}Achievement`] || 0), 0);
+  const totalTarget = FEE_ROWS.reduce((s, { key }) => s + (Number(form[`${key}Target`]) || 0), 0);
+  const totalAchievement = FEE_ROWS.reduce((s, { key }) => s + (Number(form[`${key}Achievement`]) || 0), 0);
 
   return (
     <div className="space-y-5 pb-10">
@@ -348,7 +362,7 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
                   type="number"
                   min={0}
                   value={form.totalStudentsTarget}
-                  onChange={(e) => setField('totalStudentsTarget', Number(e.target.value) || 0)}
+                  onChange={(e) => setField('totalStudentsTarget', e.target.value)}
                   placeholder="0"
                 />
               </div>
@@ -368,8 +382,8 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {FEE_ROWS.map(({ key, label, hint }, idx) => {
-                    const target = form[`${key}Target`] || 0;
-                    const achievement = form[`${key}Achievement`] || 0;
+                    const target = Number(form[`${key}Target`]) || 0;
+                    const achievement = Number(form[`${key}Achievement`]) || 0;
                     const deficit = target - achievement;
                     const pct = target > 0 ? (achievement / target) * 100 : 0;
                     const pctLabel = calcPct(target, achievement);
@@ -385,7 +399,7 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
                             type="number"
                             min={0}
                             value={form[`${key}Target`]}
-                            onChange={(e) => setField(`${key}Target`, Number(e.target.value) || 0)}
+                            onChange={(e) => setField(`${key}Target`, e.target.value)}
                             placeholder="BDT"
                             className="max-w-[180px]"
                           />
@@ -395,7 +409,7 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
                             type="number"
                             min={0}
                             value={form[`${key}Achievement`]}
-                            onChange={(e) => setField(`${key}Achievement`, Number(e.target.value) || 0)}
+                            onChange={(e) => setField(`${key}Achievement`, e.target.value)}
                             placeholder="BDT"
                             className="max-w-[180px]"
                           />

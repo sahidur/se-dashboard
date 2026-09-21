@@ -514,12 +514,19 @@ BACKEND_ENV_FILE="${APP_DIR}/backend/.env"
 CORS_ORIGIN_VALUE="$(grep -E '^CORS_ORIGIN=' "$BACKEND_ENV_FILE" | tail -n 1 | cut -d'=' -f2- || true)"
 DEFAULT_WEBAUTHN_ORIGIN="${CORS_ORIGIN_VALUE:-https://${DOMAIN}}"
 
-# Appends "KEY=value" only when KEY is not already present.
+# Appends "KEY=value" only when KEY is not already present. Secret-valued keys
+# must NOT be echoed to stdout — terminal scrollback / CI logs / tee'd SSH
+# sessions are classic credential-leak channels.
 ensure_env() {
   local key="$1" value="$2"
   if ! grep -q "^${key}=" "$BACKEND_ENV_FILE"; then
     echo "${key}=${value}" >> "$BACKEND_ENV_FILE"
-    ok "Added ${key}=${value}"
+    case "$key" in
+      SEED_ADMIN_PASSWORD|UPLOAD_URL_SECRET|JWT_SECRET|JWT_REFRESH_SECRET|DB_PASSWORD|S3_SECRET_KEY)
+        ok "Added ${key}=<redacted>" ;;
+      *)
+        ok "Added ${key}=${value}" ;;
+    esac
   fi
 }
 
@@ -557,14 +564,13 @@ if ! grep -qE '^JWT_EXPIRES_IN=6h$' "$BACKEND_ENV_FILE"; then
   ok "Updated JWT_EXPIRES_IN → 6h (6-hour sessions)"
 fi
 
-# DB_SSL_REJECT_UNAUTHORIZED must be explicitly set. The backend defaults to
-# 'true' (secure by default) when this key is absent, which breaks connections
-# to managed DBs using self-signed CAs. 'false' is correct for DigitalOcean
-# managed PostgreSQL.
+# DB_SSL_REJECT_UNAUTHORIZED defaults to 'true' in the backend (secure by
+# default). The repo ships the provider CA (DB_CA_CERT), so leave validation
+# ON; do not silently downgrade to an unvalidated TLS channel.
 if grep -q '^DB_SSL=true' "$BACKEND_ENV_FILE" && \
    ! grep -q '^DB_SSL_REJECT_UNAUTHORIZED=' "$BACKEND_ENV_FILE"; then
-  echo 'DB_SSL_REJECT_UNAUTHORIZED=false' >> "$BACKEND_ENV_FILE"
-  ok "Added DB_SSL_REJECT_UNAUTHORIZED=false (required for managed DB with SSL)"
+  echo 'DB_SSL_REJECT_UNAUTHORIZED=true' >> "$BACKEND_ENV_FILE"
+  ok "Added DB_SSL_REJECT_UNAUTHORIZED=true (CA cert shipped at DB_CA_CERT)"
 fi
 
 # Read only by 'npm run seed', and only when admin@bep.org does not exist yet.

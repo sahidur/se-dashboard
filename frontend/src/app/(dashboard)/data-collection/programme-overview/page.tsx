@@ -532,9 +532,13 @@ function RankBadge({ rank, score, grade }: { rank: number; score: number | null;
 
 function SchoolsListTable({ schools, onRowClick }: { schools: SchoolRow[]; onRowClick: (id: string) => void }) {
   const [page, setPage] = useState(1);
+  const [prevSchools, setPrevSchools] = useState(schools);
 
   // Filters (category / academic year) swap the list — snap back to page 1.
-  useEffect(() => { setPage(1); }, [schools]);
+  if (prevSchools !== schools) {
+    setPrevSchools(schools);
+    setPage(1);
+  }
 
   const totalPages = Math.max(1, Math.ceil(schools.length / SCHOOLS_PAGE_SIZE));
   const safePage = Math.min(page, totalPages);

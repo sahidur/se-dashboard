@@ -22,6 +22,8 @@ export interface MonitoringAnswer {
   result: 'yes' | 'no' | 'na' | '';
   /** Optional free-text observation comment. */
   comment?: string;
+  /** Evidence files uploaded for this specific question. */
+  attachments?: MonitoringAttachment[];
 }
 
 /** An uploaded file/photo attached to a monitoring submission. */

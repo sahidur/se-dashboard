@@ -8,7 +8,7 @@ import { BookOpenCheck, Baby, Blocks, ClipboardList, NotebookPen, ScrollText, ty
  * generic React form driven by these definitions.
  */
 
-export type StudentPerformanceFormKey = 'ba-1' | 'ba-2' | 'ba-3' | 'bps-1' | 'bps-2' | 'bss-1';
+export type StudentPerformanceFormKey = 'ba-1' | 'ba-2' | 'ba-3a' | 'ba-3b' | 'bps-1' | 'bps-2' | 'bss-1';
 
 export interface PerfScale {
   /** Column label; also the key used inside the stored `values` object. */
@@ -134,16 +134,30 @@ const BA_2_ROWS = numbered([
   'Conscious about living a safe and risk-free life (knows about hazardous objects and sources of danger and informs the teacher)',
 ]);
 
-const BA_3_ROWS = subjects([
+// BA Grade 1–2 subjects
+const BA_3A_ROWS = subjects([
   'Bangla',
   'English',
   'Primary Mathematics',
   'Social Science and Primary Science',
   'Religion and Moral Education',
-  'Bangladesh and Global Studies',
-  'Arts and Crafts',
   'World Studies',
   'Story Time',
+  'Computer Education',
+  'Arts and Crafts',
+]);
+
+// BA Grade 3–5 subjects
+const BA_3B_ROWS = subjects([
+  'Bangla',
+  'English',
+  'Primary Mathematics',
+  'Bangladesh and Global Studies',
+  'Primary Science',
+  'Religion and Moral Education',
+  'World Studies',
+  'Story Time',
+  'Computer Education',
 ]);
 
 const BPS_1_ROWS = grouped([
@@ -215,7 +229,7 @@ export const STUDENT_PERFORMANCE_SECTIONS: StudentPerformanceSection[] = [
     key: 'ba',
     label: "Students' Performance (BA)",
     short: 'BA',
-    description: 'BRAC Academy — Play & Learn, Nursery and Grade 1–5 evaluations',
+    description: 'BRAC Academy — Play World, Nursery, Grade 1–2 and Grade 3–5 evaluations',
     color: 'from-teal-500 to-teal-600',
     bg: 'bg-teal-50',
     text: 'text-teal-600',
@@ -291,14 +305,28 @@ export const STUDENT_PERFORMANCE_FORMS: StudentPerformanceFormDef[] = [
     scale: FOUR_POINT,
   },
   {
-    key: 'ba-3',
-    slug: 'student-performance-ba-3',
+    key: 'ba-3a',
+    slug: 'student-performance-ba-3a',
     sectionKey: 'ba',
     formNo: 3,
-    label: 'Grade 1–5 — Subject-wise Performance',
+    label: 'Grade 1–2 — Subject-wise Performance',
     description: '9 subjects rated Excellent to Need Improvement',
     icon: BookOpenCheck,
-    grades: ['G1', 'G2', 'G3', 'G4', 'G5'],
+    grades: ['G1', 'G2'],
+    rowHeader: 'Subjects',
+    periodLabel: 'Assessment Period',
+    appearedLabel: 'Students appeared in the exam (Number)',
+    scale: FOUR_POINT,
+  },
+  {
+    key: 'ba-3b',
+    slug: 'student-performance-ba-3b',
+    sectionKey: 'ba',
+    formNo: 4,
+    label: 'Grade 3–5 — Subject-wise Performance',
+    description: '9 subjects rated Excellent to Need Improvement',
+    icon: BookOpenCheck,
+    grades: ['G3', 'G4', 'G5'],
     rowHeader: 'Subjects',
     periodLabel: 'Assessment Period',
     appearedLabel: 'Students appeared in the exam (Number)',
@@ -352,7 +380,8 @@ export const STUDENT_PERFORMANCE_FORMS: StudentPerformanceFormDef[] = [
 const ROWS_BY_KEY: Record<StudentPerformanceFormKey, PerfRow[]> = {
   'ba-1': BA_1_ROWS,
   'ba-2': BA_2_ROWS,
-  'ba-3': BA_3_ROWS,
+  'ba-3a': BA_3A_ROWS,
+  'ba-3b': BA_3B_ROWS,
   'bps-1': BPS_1_ROWS,
   'bps-2': BPS_2_ROWS,
   'bss-1': BSS_1_ROWS,

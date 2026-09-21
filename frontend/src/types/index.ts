@@ -10,6 +10,8 @@ export interface MonitoringAnswer {
   section: string;
   result: MonitoringResult;
   comment?: string;
+  /** Evidence files uploaded for this specific question. */
+  attachments?: MonitoringAttachment[];
 }
 
 export interface MonitoringAttachment {
@@ -491,6 +493,12 @@ export interface DcTeacherIndividual {
   subjectExpertise?: string;
   trainingReceived?: string;
   assessmentScore?: number;
+  joiningDate?: string | null;
+  phone?: string | null;
+  lastWorkingDay?: string | null;
+  separationType?: string | null;
+  separationReason?: string | null;
+  separationNote?: string | null;
   createdById: string;
   createdBy?: { id: string; firstName: string; lastName: string };
   createdAt: string;
@@ -646,6 +654,10 @@ export interface DcStudentsPerformance {
   gradeC: number;
   gradeD: number;
   gradeF: number;
+  academyExcellent: number;
+  academyGood: number;
+  academySatisfactory: number;
+  academyImprovementNeeded: number;
   progressGood?: number;
   progressSatisfactory?: number;
   progressNeedImprove?: number;
@@ -666,7 +678,7 @@ export interface DcStudentPerformance {
   id: string;
   schoolId: string;
   academicYear: number;
-  /** ba-1 | ba-2 | ba-3 | bps-1 | bps-2 | bss-1 */
+  /** ba-1 | ba-2 | ba-3a | ba-3b | bps-1 | bps-2 | bss-1 */
   formKey: string;
   grade: string;
   evaluationPeriod: string;

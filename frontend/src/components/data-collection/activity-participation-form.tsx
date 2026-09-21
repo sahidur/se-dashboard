@@ -25,15 +25,20 @@ import type { DcSchool, DcActivityParticipation } from '@/types';
 /* ─── Constants ──────────────────────────────────────────── */
 
 const ITEMS = [
+  'Agriculture lab',
+  'Classroom Library',
+  'Computer lab',
   'Corner activity',
-  'Language & Literacy club',
-  'Nature & Environment club',
-  'Music club',
   'Creative club',
+  'Creativity Corner',
+  'Critical thinking Corner',
+  'ICT lab',
+  'Language & Literacy club',
+  'Music club',
+  'Nature & Environment club',
+  'Physical Activity Corner',
   'Science & Technology club',
   'Science lab',
-  'ICT lab',
-  'Agriculture lab',
   'Use of library',
 ];
 
@@ -378,13 +383,11 @@ export function ActivityParticipationForm({ schoolId }: Props) {
                   />
 
                   <Label className="mb-1.5 block text-sm font-medium text-gray-700">
-                    % of Students Participated
+                    Number of Students Participated
                   </Label>
                   <Input
                     type="number"
                     min={0}
-                    max={100}
-                    step="0.1"
                     disabled={fieldsDisabled}
                     value={form.participationRate}
                     onChange={(e) => set('participationRate', e.target.value)}

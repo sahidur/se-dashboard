@@ -28,6 +28,14 @@ export class MonitoringAnswerDto {
   @IsString()
   @MaxLength(2000)
   comment?: string;
+
+  // Evidence files tied to this specific question (uploaded via /files/upload).
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => MonitoringAttachmentDto)
+  attachments?: MonitoringAttachmentDto[];
 }
 
 export class MonitoringAttachmentDto {

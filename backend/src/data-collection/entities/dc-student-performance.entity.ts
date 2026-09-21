@@ -48,7 +48,7 @@ export class DcStudentPerformance {
   @Column({ name: 'academic_year', type: 'int', default: 0 })
   academicYear: number;
 
-  /** ba-1 | ba-2 | ba-3 | bps-1 | bps-2 | bss-1 */
+  /** ba-1 | ba-2 | ba-3a | ba-3b | bps-1 | bps-2 | bss-1 (ba-3 kept for legacy records) */
   @Column({ name: 'form_key', length: 20 })
   formKey: string;
 

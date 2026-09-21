@@ -55,22 +55,29 @@ const FEE_FIELDS: { key: keyof FeeAmounts; label: string; hint?: string }[] = [
 ];
 
 interface FeeAmounts {
-  admissionFee: number;
-  tuitionFee: number;
-  sessionFee: number;
-  assessmentFee: number;
-  sportsFee: number;
-  syllabusFee: number;
-  admissionForm: number;
-  testimonialFee: number;
-  othersFee: number;
-  transportFee: number;
+  // Fee fields kept as strings so inputs render blank instead of a
+  // default "0"; they are converted to numbers at submit time.
+  admissionFee: string;
+  tuitionFee: string;
+  sessionFee: string;
+  assessmentFee: string;
+  sportsFee: string;
+  syllabusFee: string;
+  admissionForm: string;
+  testimonialFee: string;
+  othersFee: string;
+  transportFee: string;
 }
 
 const BLANK_AMOUNTS: FeeAmounts = {
-  admissionFee: 0, tuitionFee: 0, sessionFee: 0, assessmentFee: 0,
-  sportsFee: 0, syllabusFee: 0, admissionForm: 0, testimonialFee: 0,
-  othersFee: 0, transportFee: 0,
+  admissionFee: '', tuitionFee: '', sessionFee: '', assessmentFee: '',
+  sportsFee: '', syllabusFee: '', admissionForm: '', testimonialFee: '',
+  othersFee: '', transportFee: '',
+};
+
+const toNum = (v: unknown) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
 };
 
 interface Props {
@@ -169,16 +176,16 @@ export function FeeStructureForm({ schoolId }: Props) {
       );
       if (existing) {
         setAmounts({
-          admissionFee: Number(existing.admissionFee),
-          tuitionFee: Number(existing.tuitionFee),
-          sessionFee: Number(existing.sessionFee),
-          assessmentFee: Number(existing.assessmentFee),
-          sportsFee: Number(existing.sportsFee),
-          syllabusFee: Number(existing.syllabusFee),
-          admissionForm: Number(existing.admissionForm),
-          testimonialFee: Number(existing.testimonialFee),
-          othersFee: Number(existing.othersFee),
-          transportFee: Number(existing.transportFee),
+          admissionFee: existing.admissionFee != null ? String(existing.admissionFee) : '',
+          tuitionFee: existing.tuitionFee != null ? String(existing.tuitionFee) : '',
+          sessionFee: existing.sessionFee != null ? String(existing.sessionFee) : '',
+          assessmentFee: existing.assessmentFee != null ? String(existing.assessmentFee) : '',
+          sportsFee: existing.sportsFee != null ? String(existing.sportsFee) : '',
+          syllabusFee: existing.syllabusFee != null ? String(existing.syllabusFee) : '',
+          admissionForm: existing.admissionForm != null ? String(existing.admissionForm) : '',
+          testimonialFee: existing.testimonialFee != null ? String(existing.testimonialFee) : '',
+          othersFee: existing.othersFee != null ? String(existing.othersFee) : '',
+          transportFee: existing.transportFee != null ? String(existing.transportFee) : '',
         });
       } else {
         setAmounts(BLANK_AMOUNTS);
@@ -230,7 +237,16 @@ export function FeeStructureForm({ schoolId }: Props) {
             academicYear: Number(academicYear),
             month,
             grade,
-            ...amounts,
+            admissionFee: toNum(amounts.admissionFee),
+            tuitionFee: toNum(amounts.tuitionFee),
+            sessionFee: toNum(amounts.sessionFee),
+            assessmentFee: toNum(amounts.assessmentFee),
+            sportsFee: toNum(amounts.sportsFee),
+            syllabusFee: toNum(amounts.syllabusFee),
+            admissionForm: toNum(amounts.admissionForm),
+            testimonialFee: toNum(amounts.testimonialFee),
+            othersFee: toNum(amounts.othersFee),
+            transportFee: toNum(amounts.transportFee),
           }),
         ),
       );
@@ -485,7 +501,7 @@ export function FeeStructureForm({ schoolId }: Props) {
                       type="number"
                       min={0}
                       value={amounts[key]}
-                      onChange={(e) => setAmounts((prev) => ({ ...prev, [key]: Number(e.target.value) || 0 }))}
+                      onChange={(e) => setAmounts((prev) => ({ ...prev, [key]: e.target.value }))}
                       placeholder="BDT"
                       disabled={!academicYear || !grade || selectedMonths.length === 0}
                     />
@@ -497,7 +513,7 @@ export function FeeStructureForm({ schoolId }: Props) {
 
             <div className="flex flex-col gap-3 pt-2 border-t border-gray-100">
               <p className="text-xs text-gray-400">
-                Total: BDT {formatAmount(Object.values(amounts).reduce((s, v) => s + v, 0))}
+                Total: BDT {formatAmount(Object.values(amounts).reduce((s, v) => s + (Number(v) || 0), 0))}
               </p>
               <DraftActionBar
                 hasDraft={draft.hasDraft}

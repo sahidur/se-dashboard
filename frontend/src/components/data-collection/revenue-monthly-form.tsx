@@ -48,6 +48,13 @@ function calcDuesPct(target: number, achievement: number): string {
 
 interface Props { schoolId: string; mode: 'budget' | 'actual' }
 
+// Amount fields are kept as strings so inputs render blank instead of a
+// default "0"; they are converted to numbers at submit time.
+const toNum = (v: unknown) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
 /* ─── Component ─────────────────────────────────────────── */
 
 export function RevenueMonthlyForm({ schoolId, mode }: Props) {
@@ -55,15 +62,15 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
   const [school, setSchool] = useState<DcSchool | null>(null);
   const [academicYear, setAcademicYear] = useState('');
   const [month, setMonth] = useState('');
-  const [tuitionFeeTarget, setTuitionFeeTarget] = useState<number>(0);
-  const [tuitionFeeAchievement, setTuitionFeeAchievement] = useState<number>(0);
+  const [tuitionFeeTarget, setTuitionFeeTarget] = useState('');
+  const [tuitionFeeAchievement, setTuitionFeeAchievement] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [records, setRecords] = useState<DcRevenueMonthlyRecord[]>([]);
   const [loadingRecords, setLoadingRecords] = useState(true);
-  const draft = useFormDraft<{ academicYear: string; month: string; tuitionFeeTarget: number; tuitionFeeAchievement: number }>(`revenue-monthly-${mode}`, schoolId);
+  const draft = useFormDraft<{ academicYear: string; month: string; tuitionFeeTarget: string; tuitionFeeAchievement: string }>(`revenue-monthly-${mode}`, schoolId);
   const draftAppliedRef = useRef(false);
   const skipPrefillRef = useRef(false);
   const [tab, setTab] = useState<'entry' | 'data'>('entry');
@@ -131,11 +138,11 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
         (r) => Number(r.academicYear) === Number(academicYear) && r.month === month,
       );
       if (existing) {
-        setTuitionFeeTarget(Number(existing.tuitionFeeTarget) || 0);
-        setTuitionFeeAchievement(Number(existing.tuitionFeeAchievement) || 0);
+        setTuitionFeeTarget(existing.tuitionFeeTarget != null ? String(existing.tuitionFeeTarget) : '');
+        setTuitionFeeAchievement(existing.tuitionFeeAchievement != null ? String(existing.tuitionFeeAchievement) : '');
       } else {
-        setTuitionFeeTarget(0);
-        setTuitionFeeAchievement(0);
+        setTuitionFeeTarget('');
+        setTuitionFeeAchievement('');
       }
     }
   }, [academicYear, month, records]);
@@ -150,8 +157,8 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
         skipPrefillRef.current = true;
         setAcademicYear(d.academicYear ?? '');
         setMonth(d.month);
-        setTuitionFeeTarget(d.tuitionFeeTarget);
-        setTuitionFeeAchievement(d.tuitionFeeAchievement);
+        setTuitionFeeTarget(d.tuitionFeeTarget != null && d.tuitionFeeTarget !== '' ? String(d.tuitionFeeTarget) : '');
+        setTuitionFeeAchievement(d.tuitionFeeAchievement != null && d.tuitionFeeAchievement !== '' ? String(d.tuitionFeeAchievement) : '');
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -163,16 +170,16 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
 
   const handleClearDraft = async () => {
     await draft.clearDraft();
-    setTuitionFeeTarget(0);
-    setTuitionFeeAchievement(0);
+    setTuitionFeeTarget('');
+    setTuitionFeeAchievement('');
   };
 
   // Changing the academic year re-scopes the month selection, so reset it.
   const handleYearChange = (y: string) => {
     setAcademicYear(y);
     setMonth('');
-    setTuitionFeeTarget(0);
-    setTuitionFeeAchievement(0);
+    setTuitionFeeTarget('');
+    setTuitionFeeAchievement('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -187,8 +194,8 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
         schoolId,
         academicYear: Number(academicYear),
         month,
-        tuitionFeeTarget,
-        tuitionFeeAchievement,
+        tuitionFeeTarget: toNum(tuitionFeeTarget),
+        tuitionFeeAchievement: toNum(tuitionFeeAchievement),
       });
       await draft.clearDraft();
       showToast('success', `Monthly tuition revenue saved for ${month}!`);
@@ -210,10 +217,12 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
       hour: '2-digit', minute: '2-digit', hour12: true,
     });
 
-  const livePct = calcPct(tuitionFeeTarget, tuitionFeeAchievement);
-  const livePctLabel = tuitionFeeTarget > 0 ? livePct.toFixed(1) + '%' : '—';
-  const liveDeficit = tuitionFeeTarget - tuitionFeeAchievement;
-  const pctColor = livePct >= 100 ? 'text-emerald-600' : livePct >= 70 ? 'text-amber-600' : tuitionFeeTarget > 0 ? 'text-red-500' : 'text-gray-400';
+  const numTarget = toNum(tuitionFeeTarget);
+  const numAchievement = toNum(tuitionFeeAchievement);
+  const livePct = calcPct(numTarget, numAchievement);
+  const livePctLabel = numTarget > 0 ? livePct.toFixed(1) + '%' : '—';
+  const liveDeficit = numTarget - numAchievement;
+  const pctColor = livePct >= 100 ? 'text-emerald-600' : livePct >= 70 ? 'text-amber-600' : numTarget > 0 ? 'text-red-500' : 'text-gray-400';
 
   const yearRecords = academicYear
     ? records.filter((r) => Number(r.academicYear) === Number(academicYear))
@@ -382,7 +391,7 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
                   type="number"
                   min={0}
                   value={tuitionFeeTarget}
-                  onChange={(e) => setTuitionFeeTarget(Number(e.target.value) || 0)}
+                  onChange={(e) => setTuitionFeeTarget(e.target.value)}
                   placeholder="BDT"
                   disabled={!academicYear || !month}
                 />
@@ -393,7 +402,7 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
                   type="number"
                   min={0}
                   value={tuitionFeeAchievement}
-                  onChange={(e) => setTuitionFeeAchievement(Number(e.target.value) || 0)}
+                  onChange={(e) => setTuitionFeeAchievement(e.target.value)}
                   placeholder="BDT"
                   disabled={!academicYear || !month}
                 />
@@ -402,7 +411,7 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
                 <Label className="mb-1.5 block text-xs font-medium text-gray-600">{mode === 'budget' ? 'Revenue Deficit (BDT)' : 'Outstanding Dues %'}</Label>
                 <div className="flex h-10 items-center gap-2 rounded-lg border border-gray-100 bg-gray-50/70 px-3">
                   <span className={`font-mono text-sm font-bold ${liveDeficit > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-                    {mode === 'budget' ? formatAmount(liveDeficit) : calcDuesPct(tuitionFeeTarget, tuitionFeeAchievement)}
+                    {mode === 'budget' ? formatAmount(liveDeficit) : calcDuesPct(numTarget, numAchievement)}
                   </span>
                   <span className="text-xs text-gray-400">(auto)</span>
                 </div>
@@ -413,7 +422,7 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
                   <span className={`text-xl font-extrabold ${pctColor}`}>{livePctLabel}</span>
                   <span className="text-xs text-gray-400">(auto-calculated)</span>
                 </div>
-                {tuitionFeeTarget > 0 && (
+                {numTarget > 0 && (
                   <div className="mt-1.5 h-2 w-full rounded-full bg-gray-100">
                     <div
                       className={`h-2 rounded-full transition-all ${livePct >= 100 ? 'bg-emerald-500' : livePct >= 70 ? 'bg-amber-500' : 'bg-red-400'}`}

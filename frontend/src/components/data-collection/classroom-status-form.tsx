@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   Save, CheckCircle2, MapPin, BookOpen, School, AlertCircle,
   Monitor, Users, Columns3, ScanLine, Armchair, Wrench, Pencil, Trash2, RefreshCw,
+  Package, Projector, Laptop, Cpu, DoorOpen,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,35 +34,60 @@ const YEARS = buildYearOptions();
 
 interface FormState {
   academicYear: string;
-  digitallyEquippedClassrooms: number;
-  floorSittingClassrooms: number;
-  classroomsWithWhiteboard: number;
-  classroomsWithBlackboard: number;
+  // Numeric fields kept as strings so inputs render blank instead of a
+  // default "0"; they are converted to numbers at submit time.
+  digitallyEquippedClassrooms: string;
+  floorSittingClassrooms: string;
+  classroomsWithWhiteboard: string;
+  classroomsWithBlackboard: string;
   classroomNewFurniture: boolean | null;
   classroomRenovationRequired: boolean | null;
+  classroomRenovationDetails: string;
+  classroomEmergencyExit: boolean | null;
+  infraTotalAssets: string;
+  infraTotalProjectors: string;
+  infraTotalLaptops: string;
+  infraTotalPcs: string;
 }
 
 const defaultState: FormState = {
   academicYear: '',
-  digitallyEquippedClassrooms: 0,
-  floorSittingClassrooms: 0,
-  classroomsWithWhiteboard: 0,
-  classroomsWithBlackboard: 0,
+  digitallyEquippedClassrooms: '',
+  floorSittingClassrooms: '',
+  classroomsWithWhiteboard: '',
+  classroomsWithBlackboard: '',
   classroomNewFurniture: null,
   classroomRenovationRequired: null,
+  classroomRenovationDetails: '',
+  classroomEmergencyExit: null,
+  infraTotalAssets: '',
+  infraTotalProjectors: '',
+  infraTotalLaptops: '',
+  infraTotalPcs: '',
 };
 
 function mapRecord(d: Record<string, any>): FormState {
   return {
     academicYear: d.academicYear != null ? String(d.academicYear) : '',
-    digitallyEquippedClassrooms: d.digitallyEquippedClassrooms ?? 0,
-    floorSittingClassrooms: d.floorSittingClassrooms ?? 0,
-    classroomsWithWhiteboard: d.classroomsWithWhiteboard ?? 0,
-    classroomsWithBlackboard: d.classroomsWithBlackboard ?? 0,
+    digitallyEquippedClassrooms: d.digitallyEquippedClassrooms ?? '',
+    floorSittingClassrooms: d.floorSittingClassrooms ?? '',
+    classroomsWithWhiteboard: d.classroomsWithWhiteboard ?? '',
+    classroomsWithBlackboard: d.classroomsWithBlackboard ?? '',
     classroomNewFurniture: d.classroomNewFurniture ?? null,
     classroomRenovationRequired: d.classroomRenovationRequired ?? null,
+    classroomRenovationDetails: d.classroomRenovationDetails ?? '',
+    classroomEmergencyExit: d.classroomEmergencyExit ?? null,
+    infraTotalAssets: d.infraTotalAssets ?? '',
+    infraTotalProjectors: d.infraTotalProjectors ?? '',
+    infraTotalLaptops: d.infraTotalLaptops ?? '',
+    infraTotalPcs: d.infraTotalPcs ?? '',
   };
 }
+
+const toNum = (v: unknown) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
 
 interface Props { schoolId: string }
 
@@ -102,7 +128,46 @@ const COUNT_FIELDS = [
 
 type CountKey = (typeof COUNT_FIELDS)[number]['key'];
 
-type ClassroomFieldErrors = Partial<Record<'academicYear' | 'classroomNewFurniture' | 'classroomRenovationRequired', string>>;
+const INFRA_FIELDS = [
+  {
+    key: 'infraTotalAssets' as const,
+    label: 'Total Number of Asset',
+    icon: Package,
+    color: 'text-teal-600',
+    bg: 'bg-teal-50',
+    border: 'border-teal-200',
+  },
+  {
+    key: 'infraTotalProjectors' as const,
+    label: 'Total Number of Projector',
+    icon: Projector,
+    color: 'text-orange-600',
+    bg: 'bg-orange-50',
+    border: 'border-orange-200',
+  },
+  {
+    key: 'infraTotalLaptops' as const,
+    label: 'Total Number of Laptop',
+    icon: Laptop,
+    color: 'text-indigo-600',
+    bg: 'bg-indigo-50',
+    border: 'border-indigo-200',
+  },
+  {
+    key: 'infraTotalPcs' as const,
+    label: 'Total Number of PC',
+    icon: Cpu,
+    color: 'text-pink-600',
+    bg: 'bg-pink-50',
+    border: 'border-pink-200',
+  },
+] as const;
+
+type InfraKey = (typeof INFRA_FIELDS)[number]['key'];
+
+type ClassroomFieldErrors = Partial<
+  Record<'academicYear' | 'classroomNewFurniture' | 'classroomRenovationRequired' | 'classroomRenovationDetails' | 'classroomEmergencyExit', string>
+>;
 
 export function ClassroomStatusForm({ schoolId }: Props) {
   const router = useRouter();
@@ -168,6 +233,9 @@ export function ClassroomStatusForm({ schoolId }: Props) {
           ...COUNT_FIELDS.map(({ key, label }) => [label, String(savedRecord[key as keyof FormState] ?? 0)]),
           ['Classroom with New Designed Furniture', savedRecord.classroomNewFurniture ? 'Yes' : 'No'],
           ['Renovation Required', savedRecord.classroomRenovationRequired ? 'Yes' : 'No'],
+          ['Renovation Details', savedRecord.classroomRenovationRequired ? (savedRecord.classroomRenovationDetails || '') : ''],
+          ['Emergency Exit', savedRecord.classroomEmergencyExit ? 'Yes' : 'No'],
+          ...INFRA_FIELDS.map(({ key, label }) => [label, String(savedRecord[key as keyof FormState] ?? 0)]),
         ] as (string | number | null | undefined)[][],
       }
     : null;
@@ -248,15 +316,20 @@ export function ClassroomStatusForm({ schoolId }: Props) {
     }
   };
 
-  const setNum = (key: CountKey, val: string) =>
-    setForm((prev) => ({ ...prev, [key]: parseInt(val, 10) || 0 }));
+  const setNum = (key: CountKey | InfraKey, val: string) =>
+    setForm((prev) => ({ ...prev, [key]: val }));
 
   const setBool = (
-    key: 'classroomNewFurniture' | 'classroomRenovationRequired',
+    key: 'classroomNewFurniture' | 'classroomRenovationRequired' | 'classroomEmergencyExit',
     val: boolean,
   ) => {
     setForm((prev) => ({ ...prev, [key]: val }));
     setFieldErrors((prev) => { const n = { ...prev }; delete n[key]; return n; });
+  };
+
+  const setDetails = (val: string) => {
+    setForm((prev) => ({ ...prev, classroomRenovationDetails: val }));
+    setFieldErrors((prev) => { const n = { ...prev }; delete n.classroomRenovationDetails; return n; });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -275,6 +348,10 @@ export function ClassroomStatusForm({ schoolId }: Props) {
     const errs: ClassroomFieldErrors = {};
     if (form.classroomNewFurniture === null) errs.classroomNewFurniture = 'Required';
     if (form.classroomRenovationRequired === null) errs.classroomRenovationRequired = 'Required';
+    if (form.classroomRenovationRequired === true && !form.classroomRenovationDetails.trim()) {
+      errs.classroomRenovationDetails = 'Renovation details are required when renovation is required';
+    }
+    if (form.classroomEmergencyExit === null) errs.classroomEmergencyExit = 'Required';
     if (Object.keys(errs).length > 0) {
       setFieldErrors(errs);
       setError('Please answer all required fields before saving.');
@@ -287,12 +364,20 @@ export function ClassroomStatusForm({ schoolId }: Props) {
       const { data: saved } = await api.post('/data-collection/infrastructure', {
         schoolId,
         academicYear: Number(form.academicYear),
-        digitallyEquippedClassrooms: form.digitallyEquippedClassrooms,
-        floorSittingClassrooms: form.floorSittingClassrooms,
-        classroomsWithWhiteboard: form.classroomsWithWhiteboard,
-        classroomsWithBlackboard: form.classroomsWithBlackboard,
+        digitallyEquippedClassrooms: toNum(form.digitallyEquippedClassrooms),
+        floorSittingClassrooms: toNum(form.floorSittingClassrooms),
+        classroomsWithWhiteboard: toNum(form.classroomsWithWhiteboard),
+        classroomsWithBlackboard: toNum(form.classroomsWithBlackboard),
         classroomNewFurniture: form.classroomNewFurniture ?? false,
         classroomRenovationRequired: form.classroomRenovationRequired ?? false,
+        classroomRenovationDetails: form.classroomRenovationRequired
+          ? form.classroomRenovationDetails.trim()
+          : undefined,
+        classroomEmergencyExit: form.classroomEmergencyExit ?? false,
+        infraTotalAssets: toNum(form.infraTotalAssets),
+        infraTotalProjectors: toNum(form.infraTotalProjectors),
+        infraTotalLaptops: toNum(form.infraTotalLaptops),
+        infraTotalPcs: toNum(form.infraTotalPcs),
       });
       await draft.clearDraft();
       setSavedRecord(form);
@@ -447,6 +532,7 @@ export function ClassroomStatusForm({ schoolId }: Props) {
                     min={0}
                     value={form[key]}
                     onChange={(e) => setNum(key, e.target.value)}
+                    placeholder="0"
                     className="h-10 text-center text-xl font-bold text-gray-800 bg-white transition-all focus:ring-2 focus:ring-cyan-300"
                   />
                 </div>
@@ -479,6 +565,69 @@ export function ClassroomStatusForm({ schoolId }: Props) {
               onChange={(v) => setBool('classroomRenovationRequired', v)}
               hasError={!!fieldErrors.classroomRenovationRequired}
             />
+            <YesNoToggle
+              label={<><DoorOpen size={15} className="shrink-0" /> Emergency Exit</>}
+              value={form.classroomEmergencyExit}
+              onChange={(v) => setBool('classroomEmergencyExit', v)}
+              hasError={!!fieldErrors.classroomEmergencyExit}
+            />
+          </div>
+          {form.classroomRenovationRequired === true && (
+            <div className="mt-3">
+              <Label className="mb-1.5 block text-sm font-medium text-gray-700">
+                Renovation Details <span className="text-red-500">*</span>
+              </Label>
+              <textarea
+                value={form.classroomRenovationDetails}
+                onChange={(e) => setDetails(e.target.value)}
+                rows={3}
+                placeholder="Describe the required renovation…"
+                className={`w-full rounded-lg border bg-white px-3 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-violet-400 focus:border-violet-400 ${
+                  fieldErrors.classroomRenovationDetails ? 'border-red-300' : 'border-gray-300'
+                }`}
+              />
+              {fieldErrors.classroomRenovationDetails && (
+                <p className="mt-1.5 text-xs text-red-600">{fieldErrors.classroomRenovationDetails}</p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Section 3: Infrastructure Status ────── */}
+      <Card className="overflow-hidden border-0 shadow-sm transition-all duration-200 hover:shadow-md">
+        <CardHeader className="pb-3 pt-5 px-5">
+          <CardTitle className="flex items-center gap-2.5 text-base font-semibold text-gray-800">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-teal-100 text-xs font-bold text-teal-700">3</span>
+            <Package size={17} className="text-teal-600" />
+            Infrastructure Status
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-5 pb-5">
+          <div className="grid gap-4 sm:grid-cols-2">
+            {INFRA_FIELDS.map(({ key, label, icon: Icon, color, bg, border }) => (
+              <div
+                key={key}
+                className={`group flex items-center gap-4 rounded-2xl border ${border} ${bg} p-4 transition-all duration-200 hover:shadow-sm`}
+              >
+                <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm ${color}`}>
+                  <Icon size={22} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <Label className={`mb-1.5 block text-xs font-medium ${color} leading-tight`}>
+                    {label}
+                  </Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={form[key]}
+                    onChange={(e) => setNum(key, e.target.value)}
+                    placeholder="0"
+                    className="h-10 text-center text-xl font-bold text-gray-800 bg-white transition-all focus:ring-2 focus:ring-teal-300"
+                  />
+                </div>
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>
@@ -551,6 +700,19 @@ export function ClassroomStatusForm({ schoolId }: Props) {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <SummaryItem label="New Designed Furniture" value={savedRecord.classroomNewFurniture ? 'Yes' : 'No'} />
                   <SummaryItem label="Renovation Required" value={savedRecord.classroomRenovationRequired ? 'Yes' : 'No'} />
+                  <SummaryItem label="Emergency Exit" value={savedRecord.classroomEmergencyExit ? 'Yes' : 'No'} />
+                  <SummaryItem
+                    label="Renovation Details"
+                    value={savedRecord.classroomRenovationRequired ? (savedRecord.classroomRenovationDetails || '—') : '—'}
+                  />
+                </div>
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Infrastructure Status</p>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    {INFRA_FIELDS.map(({ key, label }) => (
+                      <SummaryItem key={key} label={label} value={String(savedRecord[key])} />
+                    ))}
+                  </div>
                 </div>
               </div>
             )}

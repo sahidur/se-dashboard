@@ -59,7 +59,7 @@ const SLUG_MAP: Record<string, FormMeta> = {
   'pedagogical-achievements': makeMeta(PedagogicalAchievementsForm, "School's Pedagogical Achievements", 'Annual scholarship and achievement records'),
   'co-curricular-activities': makeMeta(CocurricularForm, 'Participation in Co-curricular Activities', 'Monthly activity participation by grade'),
   'students-performance': makeMeta(StudentsPerformanceForm, "Students' Academic Performance", 'Exam-wise grade results and progress indicators'),
-  'activity-participation': makeMeta(ActivityParticipationForm, "Students' Participation in Corner/Club/Library/Lab Activities", 'Monthly activity participation by grade with photo evidence'),
+  'activity-participation': makeMeta(ActivityParticipationForm, "Students' Participation Activities", 'Monthly activity participation by grade with photo evidence'),
   'event-participation': makeMeta(EventParticipationForm, "School's Participation in Different Events", 'Events, award levels and students awarded'),
 };
 

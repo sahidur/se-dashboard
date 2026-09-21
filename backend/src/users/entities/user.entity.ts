@@ -40,7 +40,12 @@ export class User {
   @Column({ nullable: true })
   profilePicture: string;
 
+  // Personal identifier — never serialized. /users/me and /users/:id
+  // re-include it explicitly for the account owner / Super Admin via
+  // UsersService.toSelfView(), so no join endpoint (surveys assignments,
+  // school-monitoring, roles, audit logs) can leak other users' PINs.
   @Column({ type: 'int', nullable: true })
+  @Exclude()
   pin: number | null;
 
   @Column({ nullable: true, type: 'varchar', length: 150 })

@@ -35,6 +35,8 @@ interface AchievementRecord {
   sscScholarship: number;
   othersParticipated: number;
   othersScholarship: number;
+  talentGrantParticipated: number;
+  talentGrantAwarded: number;
   createdAt: string;
 }
 
@@ -50,6 +52,8 @@ interface FormState {
   sscScholarship: string;
   othersParticipated: string;
   othersScholarship: string;
+  talentGrantParticipated: string;
+  talentGrantAwarded: string;
 }
 
 const BLANK: FormState = {
@@ -59,6 +63,7 @@ const BLANK: FormState = {
   jrParticipated: '', jrScholarship: '',
   sscParticipated: '', sscScholarship: '',
   othersParticipated: '', othersScholarship: '',
+  talentGrantParticipated: '', talentGrantAwarded: '',
 };
 
 /* ─── Year options: current year first, then upcoming, then past ── */
@@ -66,6 +71,7 @@ const ALL_YEARS = buildYearOptions();
 
 /* ─── Scholarship segments ───────────────────────────────── */
 const SEGMENTS = [
+  { key: 'talentGrant', participatedKey: 'talentGrantParticipated', awardedKey: 'talentGrantAwarded', label: 'Sir Fazle Hasan Abed Talent Grants' },
   { key: 'kg',      participatedKey: 'kgParticipated',      awardedKey: 'kgScholarship',      label: 'KG Scholarship' },
   { key: 'primary', participatedKey: 'primaryParticipated', awardedKey: 'primaryScholarship', label: 'Primary Scholarship' },
   { key: 'jr',      participatedKey: 'jrParticipated',      awardedKey: 'jrScholarship',      label: 'Jr. Scholarship' },
@@ -177,6 +183,8 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
         sscScholarship: String(match.sscScholarship ?? ''),
         othersParticipated: String(match.othersParticipated ?? ''),
         othersScholarship: String(match.othersScholarship ?? ''),
+        talentGrantParticipated: String(match.talentGrantParticipated ?? ''),
+        talentGrantAwarded: String(match.talentGrantAwarded ?? ''),
       });
       setExistingMatch(match.id);
     } else {
@@ -206,6 +214,8 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
       sscScholarship: String(rec.sscScholarship || ''),
       othersParticipated: String(rec.othersParticipated || ''),
       othersScholarship: String(rec.othersScholarship || ''),
+      talentGrantParticipated: String(rec.talentGrantParticipated || ''),
+      talentGrantAwarded: String(rec.talentGrantAwarded || ''),
     });
     setYearSearch('');
     setEditingId(rec.id);
@@ -246,6 +256,8 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
         sscScholarship: form.sscScholarship ? Number(form.sscScholarship) : 0,
         othersParticipated: form.othersParticipated ? Number(form.othersParticipated) : 0,
         othersScholarship: form.othersScholarship ? Number(form.othersScholarship) : 0,
+        talentGrantParticipated: form.talentGrantParticipated ? Number(form.talentGrantParticipated) : 0,
+        talentGrantAwarded: form.talentGrantAwarded ? Number(form.talentGrantAwarded) : 0,
       });
       showToast('success', `Achievement data for ${form.year} saved.`);
       await draft.clearDraft();
@@ -267,6 +279,9 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
     { key: 'year', header: 'Year', sortable: true, render: (rec) => (
       <Badge variant="default" className="font-mono text-indigo-700 border-indigo-200 bg-indigo-50">{rec.year}</Badge>
     )},
+    { key: 'talentGrantAwarded', header: 'Talent Grants', className: 'text-right', render: (rec) => (
+      <span className="font-medium">{rec.talentGrantAwarded}<span className="text-xs font-normal text-gray-400"> / {rec.talentGrantParticipated ?? 0}</span></span>
+    )},
     { key: 'kgScholarship', header: 'KG', className: 'text-right', render: (rec) => (
       <span className="font-medium">{rec.kgScholarship}<span className="text-xs font-normal text-gray-400"> / {rec.kgParticipated ?? 0}</span></span>
     )},
@@ -276,14 +291,16 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
     { key: 'jrScholarship', header: 'Jr.', className: 'text-right', render: (rec) => (
       <span className="font-medium">{rec.jrScholarship}<span className="text-xs font-normal text-gray-400"> / {rec.jrParticipated ?? 0}</span></span>
     )},
-    { key: 'sscScholarship', header: 'SSC', className: 'text-right', render: (rec) => (
-      <span className="font-medium">{rec.sscScholarship}<span className="text-xs font-normal text-gray-400"> / {rec.sscParticipated ?? 0}</span></span>
-    )},
+    ...(school?.schoolCategory !== 'brac_academy' ? [{
+      key: 'sscScholarship' as const, header: 'SSC', className: 'text-right', render: (rec: AchievementRecord) => (
+        <span className="font-medium">{rec.sscScholarship}<span className="text-xs font-normal text-gray-400"> / {rec.sscParticipated ?? 0}</span></span>
+      ),
+    }] : []),
     { key: 'othersScholarship', header: 'Others', className: 'text-right', render: (rec) => (
       <span className="font-medium">{rec.othersScholarship}<span className="text-xs font-normal text-gray-400"> / {rec.othersParticipated ?? 0}</span></span>
     )},
     { key: 'total', header: 'Total', className: 'text-right', render: (rec) => {
-      const total = rec.kgScholarship + rec.primaryScholarship + rec.jrScholarship + rec.sscScholarship + rec.othersScholarship;
+      const total = rec.kgScholarship + rec.primaryScholarship + rec.jrScholarship + rec.sscScholarship + rec.othersScholarship + rec.talentGrantAwarded;
       return <Badge variant="default" className="font-semibold">{total}</Badge>;
     }},
   ];
@@ -400,7 +417,9 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
               <div className="space-y-5">
                 <p className="text-sm font-medium text-gray-700">Number of Students Participated &amp; Awarded in Scholarship</p>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {SEGMENTS.map(({ key, participatedKey, awardedKey, label }) => (
+                  {SEGMENTS
+                    .filter(({ key }) => key !== 'ssc' || school?.schoolCategory !== 'brac_academy')
+                    .map(({ key, participatedKey, awardedKey, label }) => (
                     <div key={key} className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
                       <div className="flex items-center gap-2">
                         <div className="h-2 w-2 rounded-full bg-indigo-400" />
@@ -485,9 +504,10 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
                 jrScholarship: (v, rec) => `${Number(v)} of ${Number((rec as any).jrParticipated ?? 0)}`,
                 sscScholarship: (v, rec) => `${Number(v)} of ${Number((rec as any).sscParticipated ?? 0)}`,
                 othersScholarship: (v, rec) => `${Number(v)} of ${Number((rec as any).othersParticipated ?? 0)}`,
+                talentGrantAwarded: (v, rec) => `${Number(v)} of ${Number((rec as any).talentGrantParticipated ?? 0)}`,
                 total: (_v, rec) =>
                   Number(rec.kgScholarship) + Number(rec.primaryScholarship) + Number(rec.jrScholarship)
-                  + Number(rec.sscScholarship) + Number(rec.othersScholarship),
+                  + Number(rec.sscScholarship) + Number(rec.othersScholarship) + Number(rec.talentGrantAwarded),
               })}
             />
           }

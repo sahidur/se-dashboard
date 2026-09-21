@@ -37,19 +37,20 @@ const isImg = (a: MonitoringAttachment) =>
  * is configured) while the database is shared, so the row can outlive the file.
  * Show that explicitly rather than a broken image linking to a raw 404 payload.
  */
-function AttachmentTile({ attachment }: { attachment: MonitoringAttachment }) {
+function AttachmentTile({ attachment, compact }: { attachment: MonitoringAttachment; compact?: boolean }) {
   const [failed, setFailed] = useState(false);
   const href = resolveAssetUrl(attachment.url);
+  const h = compact ? 'h-16' : 'h-28';
 
   if (failed) {
     return (
       <div
-        className="flex h-28 w-full flex-col items-center justify-center rounded-xl border border-dashed border-amber-300 bg-amber-50 p-2 text-center"
+        className={cn('flex w-full flex-col items-center justify-center rounded-xl border border-dashed border-amber-300 bg-amber-50 p-2 text-center', h)}
         title={attachment.name}
       >
-        <ImageOff className="h-6 w-6 text-amber-500" />
+        <ImageOff className={cn('text-amber-500', compact ? 'h-4 w-4' : 'h-6 w-6')} />
         <span className="mt-1 line-clamp-1 text-xs font-medium text-amber-800">{attachment.name}</span>
-        <span className="text-[11px] text-amber-700">File unavailable on this server</span>
+        {!compact && <span className="text-[11px] text-amber-700">File unavailable on this server</span>}
       </div>
     );
   }
@@ -60,18 +61,19 @@ function AttachmentTile({ attachment }: { attachment: MonitoringAttachment }) {
       target="_blank"
       rel="noopener noreferrer"
       className="group relative block overflow-hidden rounded-xl border border-gray-200"
+      title={attachment.name}
     >
       {isImg(attachment) ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={href}
           alt={attachment.name}
-          className="h-28 w-full object-cover"
+          className={cn('w-full object-cover', h)}
           onError={() => setFailed(true)}
         />
       ) : (
-        <div className="flex h-28 w-full flex-col items-center justify-center bg-gray-50 p-2 text-center">
-          <FileText className="h-8 w-8 text-gray-400" />
+        <div className={cn('flex w-full flex-col items-center justify-center bg-gray-50 p-2 text-center', h)}>
+          <FileText className={cn('text-gray-400', compact ? 'h-5 w-5' : 'h-8 w-8')} />
           <span className="mt-1 line-clamp-2 text-xs text-gray-600">{attachment.name}</span>
         </div>
       )}
@@ -128,19 +130,27 @@ export function SubmissionView({ submission }: { submission: MonitoringSubmissio
                   {a?.comment && (
                     <p className="whitespace-pre-wrap break-words text-xs text-gray-500">{a.comment}</p>
                   )}
+                  {a?.attachments && a.attachments.length > 0 && (
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      {a.attachments.map((att) => (
+                        <AttachmentTile key={att.key} attachment={att} />
+                      ))}
+                    </div>
+                  )}
                 </li>
               );
             })}
           </ul>
           {/* sm and up: full table (scrolls inside the card if needed). */}
           <div className="hidden overflow-x-auto sm:block">
-            <table className="w-full min-w-[560px] text-sm">
+            <table className="w-full min-w-[640px] text-sm">
               <thead>
                 <tr className="bg-orange-50 text-left text-xs uppercase tracking-wide text-gray-600">
                   <th className="w-14 px-3 py-2">Sl.</th>
                   <th className="px-3 py-2">Indicator</th>
                   <th className="w-24 px-3 py-2">Result</th>
                   <th className="px-3 py-2">Comment</th>
+                  <th className="w-28 px-3 py-2">Files</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -152,6 +162,17 @@ export function SubmissionView({ submission }: { submission: MonitoringSubmissio
                       <td className="px-3 py-2 text-gray-800">{ind.text}</td>
                       <td className="px-3 py-2"><ResultPill result={a?.result ?? ''} /></td>
                       <td className="px-3 py-2 break-words text-gray-500">{a?.comment || <span className="text-gray-300">—</span>}</td>
+                      <td className="px-3 py-2">
+                        {a?.attachments && a.attachments.length > 0 ? (
+                          <div className="grid grid-cols-1 gap-1.5">
+                            {a.attachments.map((att) => (
+                              <AttachmentTile key={att.key} attachment={att} compact />
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-gray-300">—</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}

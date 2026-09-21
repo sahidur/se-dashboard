@@ -123,6 +123,35 @@ export class SurveysService {
   }
 
   /**
+   * Management-level access for BULK response/assignment listings. These
+   * endpoints expose every respondent's identity + answers, so the coarse
+   * `surveys:read` grant alone is NOT sufficient — holders of that grant
+   * (e.g. Teacher-tier respondents) must not be able to dump everyone's PII.
+   * Allowed: the survey's creator, admin-tier roles (Super Admin/Admin), or
+   * a `surveys:update` (management) grant. `surveyId` may be null for
+   * cross-survey listings (creator scoping not possible there).
+   */
+  private async assertResponseManagementAccess(
+    surveyId: string | null,
+    userId: string,
+  ): Promise<void> {
+    if (surveyId) {
+      const survey = await this.surveysRepository.findOne({
+        where: { id: surveyId },
+      });
+      if (!survey) throw new NotFoundException('Survey not found');
+      if (survey.createdById === userId) return;
+    }
+    const fullUser = await this.usersService.findOneById(userId);
+    const roles = fullUser?.roles?.map((r) => r.name) ?? [];
+    if (this.isAdminRole(roles)) return;
+    if (await this.hasPermission(userId, 'surveys', 'update')) return;
+    throw new ForbiddenException(
+      'You do not have access to survey responses',
+    );
+  }
+
+  /**
    * Object-level guard for school records: creators see their own records;
    * everything else requires the same permission as the admin-wide listing.
    */
@@ -669,7 +698,14 @@ export class SurveysService {
     await this.assignmentsRepository.remove(assignment);
   }
 
-  async getAssignments(surveyId: string): Promise<SurveyAssignment[]> {
+  async getAssignments(
+    surveyId: string,
+    userId?: string,
+  ): Promise<SurveyAssignment[]> {
+    // Assignments expose the identity/contact data of assigned users.
+    if (userId) {
+      await this.assertResponseManagementAccess(surveyId, userId);
+    }
     return this.assignmentsRepository.find({
       where: { surveyId },
       relations: ['user', 'role', 'school'],
@@ -774,6 +810,10 @@ export class SurveysService {
     // Business rule: only assigned users may respond (direct, role or school
     // assignment; managers with surveys:update are allowed through to preview).
     await this.assertCanRespond(submitDto.surveyId, userId);
+
+    // The linked school record (if any) must exist and belong to / be
+    // readable by the respondent.
+    await this.assertSchoolRecordLinkAccess(submitDto.schoolRecordId, userId);
 
     // If school record linkage required, validate
     if (
@@ -894,6 +934,25 @@ export class SurveysService {
     await this.schoolRecordRepository.save(schoolRecord);
   }
 
+  /**
+   * A response may only be linked to a school record the respondent owns or
+   * can read — otherwise responses could be silently attached to (or detached
+   * from) another user's records, corrupting per-record reporting.
+   */
+  private async assertSchoolRecordLinkAccess(
+    schoolRecordId: string | undefined,
+    userId: string,
+  ): Promise<void> {
+    if (!schoolRecordId) return;
+    const record = await this.schoolRecordRepository.findOne({
+      where: { id: schoolRecordId },
+    });
+    if (!record) {
+      throw new BadRequestException('Linked school record not found');
+    }
+    await this.assertSchoolRecordReadAccess(record, userId);
+  }
+
   // Get draft response for a user on a specific survey
   async getUserDraftResponse(
     surveyId: string,
@@ -914,7 +973,12 @@ export class SurveysService {
       startDate?: string;
       endDate?: string;
     },
+    userId?: string,
   ) {
+    // Bulk respondent listing — require management access (see helper).
+    if (userId) {
+      await this.assertResponseManagementAccess(surveyId, userId);
+    }
     const query = this.responsesRepository
       .createQueryBuilder('response')
       .leftJoinAndSelect('response.answers', 'answer')
@@ -969,7 +1033,12 @@ export class SurveysService {
       startDate?: string;
       endDate?: string;
     },
+    userId?: string,
   ) {
+    // Cross-survey respondent listing — require management access.
+    if (userId) {
+      await this.assertResponseManagementAccess(null, userId);
+    }
     const query = this.responsesRepository
       .createQueryBuilder('response')
       .leftJoinAndSelect('response.survey', 'survey')
@@ -1035,7 +1104,29 @@ export class SurveysService {
   }
 
   // Export responses as CSV
-  async exportResponsesCsv(surveyId: string): Promise<string> {
+
+  /**
+   * CSV cell quoting + formula-injection neutralisation. Answer values are
+   * respondent-controlled; a cell beginning with = + - @ (tab/CR) is parsed
+   * as a spreadsheet formula by Excel/LibreOffice/Sheets when an admin opens
+   * the export (DDE/WEBSERVICE exfil or command execution in the admin's
+   * context). Prefixing an apostrophe forces text interpretation; the
+   * apostrophe is not displayed by Excel/LibreOffice.
+   */
+  private static csvCell(value: unknown): string {
+    let s = value === null || value === undefined ? '' : String(value);
+    s = s.replace(/"/g, '""');
+    if (/^[=+\-@\t\r]/.test(s)) {
+      s = `'${s}`;
+    }
+    return s;
+  }
+
+  async exportResponsesCsv(surveyId: string, userId?: string): Promise<string> {
+    // CSV export contains all respondents' PII + answers — management access.
+    if (userId) {
+      await this.assertResponseManagementAccess(surveyId, userId);
+    }
     const survey = await this.findOne(surveyId);
     // Combine section fields and standalone fields
     const allFields = [
@@ -1055,7 +1146,7 @@ export class SurveysService {
       'Submitted At',
       ...allFields.map((f) => f.label),
     ];
-    csv += headers.map((h) => `"${h.replace(/"/g, '""')}"`).join(',') + '\n';
+    csv += headers.map((h) => SurveysService.csvCell(h)).join(',') + '\n';
 
     for (const resp of responses) {
       const row = [
@@ -1089,8 +1180,7 @@ export class SurveysService {
         row.push(value);
       }
 
-      csv +=
-        row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',') + '\n';
+      csv += row.map((v) => SurveysService.csvCell(v)).join(',') + '\n';
     }
 
     return csv;

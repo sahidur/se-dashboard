@@ -321,25 +321,48 @@ export class UsersService {
   }
 
   /**
+   * Serialize a User for a viewer who MAY see the PIN (the account owner or a
+   * Super Admin). Returns a plain object because ClassSerializerInterceptor
+   * only strips @Exclude() fields from class instances — the secret columns
+   * (password, refreshToken) are removed manually here.
+   */
+  private toSelfView(user: User): Record<string, any> {
+    const { password, refreshToken, ...safe } = user as any;
+    void password;
+    void refreshToken;
+    return safe;
+  }
+
+  /**
    * GET /users/:id — detail view with PIN minimisation: the personal PIN is
    * only returned to the user themself or to a Super Admin. Other viewers
    * holding users:read (e.g. plain Admins) get the record without it.
    */
-  async findOneForViewer(id: string, viewerId: string): Promise<User | null> {
+  async findOneForViewer(id: string, viewerId: string): Promise<Record<string, any> | null> {
     const user = await this.findOneById(id);
     if (!user) return null;
-    if (user.id === viewerId) return user;
+    if (user.id === viewerId) return this.toSelfView(user);
     const viewer = await this.usersRepository.findOne({
       where: { id: viewerId },
       relations: ['roles'],
     });
     const isSuperAdmin = viewer?.roles?.some((r) => r.name === 'Super Admin');
     if (!isSuperAdmin) {
-      const { pin, ...withoutPin } = user;
-      void pin;
-      return withoutPin as User;
+      // The entity itself is safe: pin (like password/refreshToken) is
+      // @Exclude()'d in the entity definition.
+      return user as any;
     }
-    return user;
+    return this.toSelfView(user);
+  }
+
+  /**
+   * GET /users/me — the current user's own profile, including their own PIN
+   * (only the owner may see it) but never the password/refresh hashes.
+   */
+  async findOneForSelf(id: string): Promise<Record<string, any> | null> {
+    const user = await this.findOneById(id);
+    if (!user) return null;
+    return this.toSelfView(user);
   }
 
   /**

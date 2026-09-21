@@ -37,15 +37,17 @@ const SCHOOL_CATEGORY_LABELS: Record<string, string> = {
 };
 
 interface FormState {
-  onlineRefresher: number;
-  offlineRefresher: number;
-  developmentForum: number;
-  basicTraining: number;
-  subjectBasedTraining: number;
-  leadershipTraining: number;
-  others: number;
-  teacherDropoutRate: number;
-  headTeacherDropoutRate: number;
+  // Numeric fields kept as strings so inputs render blank instead of a
+  // default "0"; they are converted to numbers at submit time.
+  onlineRefresher: string;
+  offlineRefresher: string;
+  developmentForum: string;
+  basicTraining: string;
+  subjectBasedTraining: string;
+  leadershipTraining: string;
+  others: string;
+  teacherDropoutRate: string;
+  headTeacherDropoutRate: string;
   headTeacherLeadership: HeadTeacherLeadership;
 }
 
@@ -56,16 +58,21 @@ const LEADERSHIP_OPTIONS: { value: HeadTeacherLeadership; label: string }[] = [
 ];
 
 const BLANK_FORM: FormState = {
-  onlineRefresher: 0,
-  offlineRefresher: 0,
-  developmentForum: 0,
-  basicTraining: 0,
-  subjectBasedTraining: 0,
-  leadershipTraining: 0,
-  others: 0,
-  teacherDropoutRate: 0,
-  headTeacherDropoutRate: 0,
+  onlineRefresher: '',
+  offlineRefresher: '',
+  developmentForum: '',
+  basicTraining: '',
+  subjectBasedTraining: '',
+  leadershipTraining: '',
+  others: '',
+  teacherDropoutRate: '',
+  headTeacherDropoutRate: '',
   headTeacherLeadership: 'strong',
+};
+
+const toNum = (v: unknown) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
 };
 
 const DEV_FIELDS: { key: keyof Omit<FormState, 'headTeacherLeadership'>; label: string }[] = [
@@ -178,15 +185,15 @@ export function TeachersDevForm({ schoolId }: Props) {
       );
       if (existing) {
         setForm({
-          onlineRefresher:     existing.onlineRefresher,
-          offlineRefresher:    existing.offlineRefresher,
-          developmentForum:    existing.developmentForum,
-          basicTraining:       existing.basicTraining,
-          subjectBasedTraining: existing.subjectBasedTraining,
-          leadershipTraining:  existing.leadershipTraining,
-          others:              existing.others,
-          teacherDropoutRate:      Number(existing.teacherDropoutRate ?? 0),
-          headTeacherDropoutRate:  Number(existing.headTeacherDropoutRate ?? 0),
+          onlineRefresher:     existing.onlineRefresher != null ? String(existing.onlineRefresher) : '',
+          offlineRefresher:    existing.offlineRefresher != null ? String(existing.offlineRefresher) : '',
+          developmentForum:    existing.developmentForum != null ? String(existing.developmentForum) : '',
+          basicTraining:       existing.basicTraining != null ? String(existing.basicTraining) : '',
+          subjectBasedTraining: existing.subjectBasedTraining != null ? String(existing.subjectBasedTraining) : '',
+          leadershipTraining:  existing.leadershipTraining != null ? String(existing.leadershipTraining) : '',
+          others:              existing.others != null ? String(existing.others) : '',
+          teacherDropoutRate:      existing.teacherDropoutRate != null ? String(existing.teacherDropoutRate) : '',
+          headTeacherDropoutRate:  existing.headTeacherDropoutRate != null ? String(existing.headTeacherDropoutRate) : '',
           headTeacherLeadership:   resolveLeadership(existing),
         });
         setIsEditing(true);
@@ -251,7 +258,7 @@ export function TeachersDevForm({ schoolId }: Props) {
     }
   };
 
-  const setField = (k: keyof Omit<FormState, 'headTeacherLeadership'>, v: number) =>
+  const setField = (k: keyof Omit<FormState, 'headTeacherLeadership'>, v: string) =>
     setForm((prev) => ({ ...prev, [k]: v }));
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -266,7 +273,16 @@ export function TeachersDevForm({ schoolId }: Props) {
         schoolId,
         academicYear: Number(academicYear),
         month,
-        ...form,
+        onlineRefresher: toNum(form.onlineRefresher),
+        offlineRefresher: toNum(form.offlineRefresher),
+        developmentForum: toNum(form.developmentForum),
+        basicTraining: toNum(form.basicTraining),
+        subjectBasedTraining: toNum(form.subjectBasedTraining),
+        leadershipTraining: toNum(form.leadershipTraining),
+        others: toNum(form.others),
+        teacherDropoutRate: toNum(form.teacherDropoutRate),
+        headTeacherDropoutRate: toNum(form.headTeacherDropoutRate),
+        headTeacherLeadership: form.headTeacherLeadership,
       });
       const successText = `${month} development data saved successfully!`;
       showToast('success', successText);
@@ -481,7 +497,7 @@ export function TeachersDevForm({ schoolId }: Props) {
                         type="number"
                         min={0}
                         value={form[key]}
-                        onChange={(e) => setField(key, Number(e.target.value) || 0)}
+                        onChange={(e) => setField(key, e.target.value)}
                         placeholder="0"
                         disabled={!academicYear || !month}
                       />
@@ -503,7 +519,7 @@ export function TeachersDevForm({ schoolId }: Props) {
                         max={100}
                         step="0.1"
                         value={form.teacherDropoutRate}
-                        onChange={(e) => setField('teacherDropoutRate', Number(e.target.value) || 0)}
+                        onChange={(e) => setField('teacherDropoutRate', e.target.value)}
                         placeholder="0"
                         disabled={!academicYear || !month}
                       />
@@ -516,7 +532,7 @@ export function TeachersDevForm({ schoolId }: Props) {
                         max={100}
                         step="0.1"
                         value={form.headTeacherDropoutRate}
-                        onChange={(e) => setField('headTeacherDropoutRate', Number(e.target.value) || 0)}
+                        onChange={(e) => setField('headTeacherDropoutRate', e.target.value)}
                         placeholder="0"
                         disabled={!academicYear || !month}
                       />

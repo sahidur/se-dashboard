@@ -86,7 +86,7 @@ const SUB_FORMS: SubForm[] = [
   {
     key: 'activity-participation',
     slug: 'activity-participation',
-    label: "Students' Participation in Corner/Club/Library/Lab Activities",
+    label: "Students' Participation Activities",
     description: 'Monthly activity participation by grade with photo evidence',
     icon: Library,
     color: 'from-amber-500 to-amber-600',

@@ -10,9 +10,13 @@ import {
   IsArray,
   ArrayMaxSize,
   ValidateNested,
+  ValidateIf,
+  Matches,
+  IsDateString,
   Min,
   Max,
   IsIn,
+  MaxLength,
 } from 'class-validator';
 import { PartialType } from '@nestjs/mapped-types';
 import { Transform, Type } from 'class-transformer';
@@ -155,6 +159,14 @@ export class UpsertInfrastructureDto {
   @IsOptional() @Type(() => Number) @IsNumber() classroomsWithBlackboard?: number;
   @IsOptional() @IsBoolean() classroomNewFurniture?: boolean;
   @IsOptional() @IsBoolean() classroomRenovationRequired?: boolean;
+  @IsOptional() @IsString() @MaxLength(2000) classroomRenovationDetails?: string;
+  @IsOptional() @IsBoolean() classroomEmergencyExit?: boolean;
+
+  // ── Infrastructure Assets ──────────────────────────────────
+  @IsOptional() @Type(() => Number) @IsNumber() infraTotalAssets?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() infraTotalProjectors?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() infraTotalLaptops?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() infraTotalPcs?: number;
 }
 
 // ===================== Students Info =====================
@@ -307,6 +319,36 @@ export class CreateTeacherIndividualDto {
   @IsOptional() @IsString() trainingReceived?: string;
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(100) assessmentScore?: number;
+
+  /** ISO date (yyyy-mm-dd) */
+  @IsOptional() @IsDateString() joiningDate?: string;
+
+  /** Bangladeshi mobile: 01XXXXXXXXX or +8801XXXXXXXXX (operator codes 13–19) */
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.replace(/[\s-]/g, '') : value))
+  @Matches(/^(?:\+?880|0)1[3-9]\d{8}$/)
+  phone?: string;
+
+  /** ISO date (yyyy-mm-dd) */
+  @IsOptional() @IsDateString() lastWorkingDay?: string;
+
+  /** termination | resignation — presence makes separation details required */
+  @IsOptional()
+  @IsString()
+  @IsIn(['termination', 'resignation'])
+  separationType?: string;
+
+  /** Required when separationType is provided */
+  @ValidateIf((o) => o.separationType != null && o.separationType !== '')
+  @IsString() @IsNotEmpty()
+  @MaxLength(500)
+  separationReason?: string;
+
+  /** Required when separationType is provided */
+  @ValidateIf((o) => o.separationType != null && o.separationType !== '')
+  @IsString() @IsNotEmpty()
+  @MaxLength(5000)
+  separationNote?: string;
 }
 
 export class UpdateTeacherIndividualDto extends PartialType(CreateTeacherIndividualDto) {}
@@ -472,6 +514,10 @@ export class UpsertPedagogicalAchievementDto {
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) othersParticipated?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) othersScholarship?: number;
+
+  // Sir Fazle Hasan Abed Talent Grants
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) talentGrantParticipated?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) talentGrantAwarded?: number;
 }
 
 // ===================== Co-curricular =====================
@@ -518,7 +564,8 @@ export class UpsertStudentsPerformanceDto {
   @IsIn(['Half-yearly', 'Annual'])
   examName: string;
 
-  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(100) studentsAppearedPercent?: number;
+  // Students now reported as a count, not a percentage — Max(100) removed.
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) studentsAppearedPercent?: number;
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) gradeAPlus?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) gradeA?: number;
@@ -528,6 +575,12 @@ export class UpsertStudentsPerformanceDto {
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) gradeD?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) gradeF?: number;
 
+  // ── BRAC Academy grade scale ──────────────────────────────
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) academyExcellent?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) academyGood?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) academySatisfactory?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) academyImprovementNeeded?: number;
+
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) progressGood?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) progressSatisfactory?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) progressNeedImprove?: number;
@@ -535,7 +588,7 @@ export class UpsertStudentsPerformanceDto {
 
 // ===================== Student Performance (BA / BPS / BSS) =====================
 
-export const STUDENT_PERFORMANCE_FORM_KEYS = ['ba-1', 'ba-2', 'ba-3', 'bps-1', 'bps-2', 'bss-1'] as const;
+export const STUDENT_PERFORMANCE_FORM_KEYS = ['ba-1', 'ba-2', 'ba-3a', 'ba-3b', 'bps-1', 'bps-2', 'bss-1'] as const;
 
 export class StudentPerformanceRowDto {
   @IsString() @IsNotEmpty() code: string;
@@ -589,6 +642,11 @@ export class UpsertActivityParticipationDto {
     'ICT lab',
     'Agriculture lab',
     'Use of library',
+    'Creativity Corner',
+    'Critical thinking Corner',
+    'Physical Activity Corner',
+    'Computer lab',
+    'Classroom Library',
   ])
   item: string;
 

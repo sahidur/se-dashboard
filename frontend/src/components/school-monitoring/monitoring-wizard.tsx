@@ -123,6 +123,7 @@ export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmi
   const [successSub, setSuccessSub] = useState<MonitoringSubmission | null>(null);
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const qFileInputRef = useRef<HTMLInputElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
 
   // Header fields
@@ -140,12 +141,16 @@ export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmi
   const [attachments, setAttachments] = useState<MonitoringAttachment[]>(existing?.attachments ?? []);
 
   // Answers keyed by indicator code
-  const [answers, setAnswers] = useState<Record<string, { result: MonitoringResult; comment: string }>>(() => {
-    const init: Record<string, { result: MonitoringResult; comment: string }> = {};
+  const [answers, setAnswers] = useState<Record<string, { result: MonitoringResult; comment: string; attachments: MonitoringAttachment[] }>>(() => {
+    const init: Record<string, { result: MonitoringResult; comment: string; attachments: MonitoringAttachment[] }> = {};
     form.sections.forEach((sec) =>
       sec.indicators.forEach((ind) => {
         const found = existing?.answers?.find((a) => a.code === ind.code);
-        init[ind.code] = { result: found?.result ?? '', comment: found?.comment ?? '' };
+        init[ind.code] = {
+          result: found?.result ?? '',
+          comment: found?.comment ?? '',
+          attachments: found?.attachments ?? [],
+        };
       }),
     );
     return init;
@@ -192,7 +197,7 @@ export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmi
   );
 
   const setResult = (code: string, result: MonitoringResult) =>
-    setAnswers((prev) => ({ ...prev, [code]: { ...prev[code], result: prev[code].result === result ? '' : result } }));
+    setAnswers((prev) => ({ ...prev, [code]: { ...prev[code], result } }));
   const setComment = (code: string, comment: string) =>
     setAnswers((prev) => ({ ...prev, [code]: { ...prev[code], comment } }));
 
@@ -225,11 +230,19 @@ export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmi
   const currentQuestion = isQuestionStep ? flatQuestions[step - FIRST_QUESTION_STEP] : null;
 
   const next = () => {
-    if (currentQuestion && needsComment(answers[currentQuestion.ind.code])) {
-      setError(
-        `A comment of at least ${MIN_NO_COMMENT_LENGTH} characters is required when rating "No / Not Satisfied" (indicator ${currentQuestion.ind.code}).`,
-      );
-      return;
+    if (currentQuestion) {
+      const a = answers[currentQuestion.ind.code];
+      // Every question must be rated before moving on.
+      if (!a.result) {
+        setError(`Please select Yes, No or N/A for indicator ${currentQuestion.ind.code} before continuing.`);
+        return;
+      }
+      if (needsComment(a)) {
+        setError(
+          `A comment of at least ${MIN_NO_COMMENT_LENGTH} characters is required when rating "No / Not Satisfied" (indicator ${currentQuestion.ind.code}).`,
+        );
+        return;
+      }
     }
     if (step < REVIEW_STEP) goTo(step + 1);
   };
@@ -269,7 +282,55 @@ export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmi
   const removeAttachment = (key: string) =>
     setAttachments((prev) => prev.filter((a) => a.key !== key));
 
+  /** Upload evidence files for the question currently on screen. */
+  const handleQuestionFiles = async (files: FileList | null) => {
+    if (!currentQuestion || !files || files.length === 0) return;
+    const code = currentQuestion.ind.code;
+    setUploading(true);
+    setError('');
+    try {
+      for (const file of Array.from(files)) {
+        const fd = new FormData();
+        fd.append('file', file);
+        const { data } = await api.post('/files/upload?folder=school-monitoring', fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        setAnswers((prev) => ({
+          ...prev,
+          [code]: {
+            ...prev[code],
+            attachments: [
+              ...(prev[code]?.attachments ?? []),
+              { url: data.url, key: data.key, name: file.name, type: file.type },
+            ],
+          },
+        }));
+      }
+    } catch {
+      setError('Failed to upload one or more files. Please try again.');
+    } finally {
+      setUploading(false);
+      if (qFileInputRef.current) qFileInputRef.current.value = '';
+    }
+  };
+
+  const removeQuestionAttachment = (code: string, key: string) =>
+    setAnswers((prev) => ({
+      ...prev,
+      [code]: { ...prev[code], attachments: (prev[code]?.attachments ?? []).filter((a) => a.key !== key) },
+    }));
+
   const handleSubmit = async () => {
+    // All questions are mandatory — unrated indicators block submission.
+    const unanswered = flatQuestions.filter((q) => !answers[q.ind.code].result).map((q) => q.ind.code);
+    if (unanswered.length) {
+      const firstMissingIdx = flatQuestions.findIndex((q) => !answers[q.ind.code].result);
+      if (firstMissingIdx >= 0) goTo(FIRST_QUESTION_STEP + firstMissingIdx);
+      setError(
+        `Every question must be answered before submitting. Missing ratings for: ${unanswered.join(', ')}`,
+      );
+      return;
+    }
     if (missingComments.length) {
       const firstMissingIdx = flatQuestions.findIndex((q) => needsComment(answers[q.ind.code]));
       if (firstMissingIdx >= 0) goTo(FIRST_QUESTION_STEP + firstMissingIdx);
@@ -295,6 +356,7 @@ export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmi
           section: sec.number,
           result: answers[ind.code].result,
           comment: answers[ind.code].comment || undefined,
+          attachments: answers[ind.code].attachments.length > 0 ? answers[ind.code].attachments : undefined,
         })),
       ),
     };
@@ -513,6 +575,53 @@ export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmi
                   {currentAnswer!.comment.length}/2000
                 </span>
               </div>
+
+              {/* ── Evidence files for this question ── */}
+              <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50/60 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
+                    <UploadCloud className="h-3.5 w-3.5 text-brand-600" />
+                    Attach evidence (photos / documents)
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    loading={uploading}
+                    onClick={() => qFileInputRef.current?.click()}
+                    className="h-7 px-2.5 text-xs"
+                  >
+                    Browse files
+                  </Button>
+                </div>
+                <input
+                  ref={qFileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*,application/pdf,.xls,.xlsx,.csv"
+                  className="hidden"
+                  onChange={(e) => handleQuestionFiles(e.target.files)}
+                />
+                {currentAnswer!.attachments.length > 0 && (
+                  <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {currentAnswer!.attachments.map((a) => (
+                      <div key={a.key} className="group relative overflow-hidden rounded-lg border border-gray-200">
+                        <AttachmentThumb attachment={a} isImage={isImg(a)} />
+                        <button
+                          type="button"
+                          onClick={() => removeQuestionAttachment(currentQuestion.ind.code, a.key)}
+                          className="absolute right-1.5 top-1.5 rounded-full bg-black/50 p-1 text-white transition-opacity hover:bg-black/70"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {currentAnswer!.attachments.length === 0 && (
+                  <p className="mt-2 text-[11px] text-gray-400">Optional — attach photos or files as evidence for this question.</p>
+                )}
+              </div>
             </div>
 
             {/* Back / Next right under the question */}
@@ -618,11 +727,11 @@ export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmi
                   ref={fileInputRef}
                   type="file"
                   multiple
-                  accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
+                  accept="image/*,application/pdf,.xls,.xlsx,.csv"
                   className="hidden"
                   onChange={(e) => handleFiles(e.target.files)}
                 />
-                <p className="mt-2 text-xs text-gray-400">Images, PDF, Word, Excel · up to 10MB each</p>
+                <p className="mt-2 text-xs text-gray-400">Images, PDF, Excel · up to 10MB each</p>
               </div>
 
               {attachments.length > 0 && (
@@ -666,9 +775,12 @@ export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmi
                 <ReviewStat label="Date" value={observationDate} />
               </div>
               {answeredCount < total && (
-                <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>{total - answeredCount} indicator(s) are still unrated. You can submit anyway, or go back to complete them.</span>
+                  <span>
+                    {total - answeredCount} indicator(s) are still unrated. Every question is mandatory — go back and answer
+                    them before submitting.
+                  </span>
                 </div>
               )}
               {missingComments.length > 0 && (

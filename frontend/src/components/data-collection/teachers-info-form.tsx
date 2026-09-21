@@ -28,8 +28,12 @@ const DESIGNATIONS = ['Head Teacher', 'Assistant Teacher', 'Junior Teacher'];
 const GENDERS = ['Male', 'Female'];
 const QUALIFICATIONS = ['HSC', 'Hons', 'Masters'];
 
-const SUBJECT_OPTIONS = ['Math', 'Science', 'Bangla', 'English', 'Others'];
+const SUBJECT_OPTIONS = ['Play World', 'Nursery', 'Math', 'Science', 'Bangla', 'English', 'Others'];
 const TRAINING_OPTIONS = ['Basic', 'Subject-based', 'Leadership', 'Others'];
+const SEPARATION_TYPES = ['termination', 'resignation'];
+
+/** Bangladeshi mobile: 01XXXXXXXXX or +8801XXXXXXXXX (operator codes 13–19) */
+const BD_PHONE_REGEX = /^(?:\+?880|0)1[3-9]\d{8}$/;
 
 const SCHOOL_CATEGORY_LABELS: Record<string, string> = {
   brac_academy: 'BRAC Academy',
@@ -53,6 +57,12 @@ interface FormState {
   trainingReceived: string[];
   trainingOther: string;
   assessmentScore: number | '';
+  joiningDate: string;
+  phone: string;
+  lastWorkingDay: string;
+  separationType: string;
+  separationReason: string;
+  separationNote: string;
 }
 
 const BLANK_FORM: FormState = {
@@ -67,6 +77,12 @@ const BLANK_FORM: FormState = {
   trainingReceived: [],
   trainingOther: '',
   assessmentScore: '',
+  joiningDate: '',
+  phone: '',
+  lastWorkingDay: '',
+  separationType: '',
+  separationReason: '',
+  separationNote: '',
 };
 
 interface Props { schoolId: string }
@@ -211,6 +227,14 @@ export function TeachersInfoForm({ schoolId }: Props) {
     if (form.assessmentScore !== '' && (Number(form.assessmentScore) < 0 || Number(form.assessmentScore) > 100)) {
       errs.assessmentScore = 'Score must be between 0 and 100';
     }
+    if (form.phone.trim() && !BD_PHONE_REGEX.test(form.phone.replace(/[\s-]/g, ''))) {
+      errs.phone = 'Enter a valid Bangladeshi number (e.g. 01712345678 or +8801712345678)';
+    }
+    if (form.separationType) {
+      if (!form.lastWorkingDay) errs.lastWorkingDay = 'Last working day is required for a separated teacher';
+      if (!form.separationReason.trim()) errs.separationReason = 'Reason of separation is required';
+      if (!form.separationNote.trim()) errs.separationNote = 'Note is required for a separated teacher';
+    }
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -254,6 +278,12 @@ export function TeachersInfoForm({ schoolId }: Props) {
       trainingReceived: trainings.selected,
       trainingOther: trainings.other,
       assessmentScore: r.assessmentScore != null ? Number(r.assessmentScore) : '',
+      joiningDate: r.joiningDate ?? '',
+      phone: r.phone ?? '',
+      lastWorkingDay: r.lastWorkingDay ?? '',
+      separationType: r.separationType ?? '',
+      separationReason: r.separationReason ?? '',
+      separationNote: r.separationNote ?? '',
     });
     setEditingId(r.id);
     setEditingName(r.name);
@@ -287,6 +317,12 @@ export function TeachersInfoForm({ schoolId }: Props) {
         subjectExpertise: buildList(form.subjectExpertise, form.subjectOther) || undefined,
         trainingReceived: buildList(form.trainingReceived, form.trainingOther) || undefined,
         assessmentScore: form.assessmentScore !== '' ? Number(form.assessmentScore) : undefined,
+        joiningDate: form.joiningDate || undefined,
+        phone: form.phone.trim() || undefined,
+        lastWorkingDay: form.lastWorkingDay || undefined,
+        separationType: form.separationType || undefined,
+        separationReason: form.separationType ? form.separationReason.trim() : undefined,
+        separationNote: form.separationType ? form.separationNote.trim() : undefined,
       };
       if (editingId) {
         await api.patch(`/data-collection/teachers/individual/${editingId}`, payload);
@@ -337,6 +373,9 @@ export function TeachersInfoForm({ schoolId }: Props) {
       hour: '2-digit', minute: '2-digit', hour12: true,
     });
 
+  const fmtDate = (iso?: string | null) =>
+    iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+
   const teacherInfoColumns: TableColumn<DcTeacherIndividual>[] = [
     { key: 'academicYear', header: 'Academic Year', sortable: true },
     { key: 'name', header: 'Name', sortable: true, render: (r) => <span className="font-semibold text-gray-900 whitespace-nowrap">{r.name}</span> },
@@ -356,6 +395,16 @@ export function TeachersInfoForm({ schoolId }: Props) {
     { key: 'experienceYears', header: 'Exp. (Yrs)', className: 'text-right font-mono', render: (r) => <span className="font-semibold">{Number(r.experienceYears).toFixed(1)}</span> },
     { key: 'subjectExpertise', header: 'Subjects', render: (r) => <span className="text-xs max-w-[160px] block">{fmtList(r.subjectExpertise)}</span> },
     { key: 'trainingReceived', header: 'Training', render: (r) => <span className="text-xs max-w-[160px] block">{fmtList(r.trainingReceived)}</span> },
+    { key: 'phone', header: 'Phone', render: (r) => <span className="whitespace-nowrap font-mono text-xs">{r.phone ?? '—'}</span> },
+    { key: 'joiningDate', header: 'Joining Date', render: (r) => <span className="whitespace-nowrap text-xs">{fmtDate(r.joiningDate)}</span> },
+    { key: 'lastWorkingDay', header: 'Last Working Day', render: (r) => <span className="whitespace-nowrap text-xs">{fmtDate(r.lastWorkingDay)}</span> },
+    { key: 'separationType', header: 'Separation', render: (r) => (
+      r.separationType ? (
+        <span className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
+          r.separationType === 'termination' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+        }`}>{r.separationType}</span>
+      ) : <span className="text-xs text-gray-400">Active</span>
+    )},
     { key: 'assessmentScore', header: 'Score', className: 'text-right', render: (r) => (
       r.assessmentScore != null ? (
         <span className={`font-semibold text-sm ${
@@ -582,6 +631,106 @@ export function TeachersInfoForm({ schoolId }: Props) {
               </div>
             </div>
 
+            {/* Row 4: Joining Date & Phone Number */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label className="mb-1.5 block text-xs font-medium text-gray-600">
+                  Joining Date
+                </Label>
+                <Input
+                  type="date"
+                  value={form.joiningDate}
+                  onChange={(e) => setField('joiningDate', e.target.value)}
+                  max={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+              <div>
+                <Label className="mb-1.5 block text-xs font-medium text-gray-600">
+                  Phone Number
+                </Label>
+                <Input
+                  type="tel"
+                  value={form.phone}
+                  onChange={(e) => setField('phone', e.target.value)}
+                  placeholder="e.g. 01712345678"
+                  className={fieldErrors.phone ? 'border-red-400' : ''}
+                />
+                {fieldErrors.phone && <p className="mt-1 text-xs text-red-500">{fieldErrors.phone}</p>}
+              </div>
+            </div>
+
+            {/* Separation Details */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label className="mb-1.5 block text-xs font-medium text-gray-600">
+                  Last Working Day
+                </Label>
+                <Input
+                  type="date"
+                  value={form.lastWorkingDay}
+                  onChange={(e) => setField('lastWorkingDay', e.target.value)}
+                  className={fieldErrors.lastWorkingDay ? 'border-red-400' : ''}
+                />
+                {fieldErrors.lastWorkingDay && <p className="mt-1 text-xs text-red-500">{fieldErrors.lastWorkingDay}</p>}
+              </div>
+              <div>
+                <Label className="mb-1.5 block text-xs font-medium text-gray-600">
+                  Separation Type
+                </Label>
+                <div className="relative">
+                  <select
+                    value={form.separationType}
+                    onChange={(e) => {
+                      setField('separationType', e.target.value);
+                      if (!e.target.value) {
+                        setForm((prev) => ({ ...prev, separationType: '', separationReason: '', separationNote: '' }));
+                        setFieldErrors((prev) => ({ ...prev, separationReason: '', separationNote: '' }));
+                      }
+                    }}
+                    className={`w-full appearance-none rounded-lg border bg-white px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300 ${fieldErrors.separationType ? 'border-red-400' : 'border-gray-200'}`}
+                  >
+                    <option value="">Select separation type...</option>
+                    {SEPARATION_TYPES.map((s) => (
+                      <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-3 text-gray-400" />
+                </div>
+              </div>
+            </div>
+
+            {form.separationType && (
+              <div className="space-y-4 rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+                <div>
+                  <Label className="mb-1.5 block text-xs font-medium text-gray-600">
+                    Reason of Separation <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    value={form.separationReason}
+                    onChange={(e) => setField('separationReason', e.target.value)}
+                    placeholder={`Reason for ${form.separationType}...`}
+                    maxLength={500}
+                    className={fieldErrors.separationReason ? 'border-red-400' : ''}
+                  />
+                  {fieldErrors.separationReason && <p className="mt-1 text-xs text-red-500">{fieldErrors.separationReason}</p>}
+                </div>
+                <div>
+                  <Label className="mb-1.5 block text-xs font-medium text-gray-600">
+                    Note <span className="text-red-500">*</span>
+                  </Label>
+                  <textarea
+                    value={form.separationNote}
+                    onChange={(e) => setField('separationNote', e.target.value)}
+                    placeholder="Detailed note about the separation..."
+                    rows={4}
+                    maxLength={5000}
+                    className={`w-full rounded-lg border bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-300 ${fieldErrors.separationNote ? 'border-red-400' : 'border-gray-200'}`}
+                  />
+                  {fieldErrors.separationNote && <p className="mt-1 text-xs text-red-500">{fieldErrors.separationNote}</p>}
+                </div>
+              </div>
+            )}
+
             {/* Subject Expertise */}
             <div>
               <Label className="mb-2 block text-xs font-medium text-gray-600">Subject Expertise</Label>
@@ -642,6 +791,9 @@ export function TeachersInfoForm({ schoolId }: Props) {
             payload={exportPayloadFromColumns(teacherInfoColumns, records, 'teachers-information', {
               experienceYears: (v) => Number(v ?? 0).toFixed(1),
               assessmentScore: (v) => (v == null ? '' : Number(v).toFixed(0)),
+              joiningDate: (v) => (v ? fmtDate(String(v)) : ''),
+              lastWorkingDay: (v) => (v ? fmtDate(String(v)) : ''),
+              separationType: (v) => (v ? String(v) : 'Active'),
               createdAt: (v) =>
                 v ? new Date(String(v)).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '',
             })}

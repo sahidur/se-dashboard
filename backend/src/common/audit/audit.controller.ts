@@ -40,7 +40,8 @@ export class AuditController {
     @CurrentUser('id') userId: string,
     @Query() query: QueryAuditLogDto,
   ) {
-    return this.auditService.findForUser(userId, query);
+    // actorId = self so a Super Admin still sees their own privileged entries.
+    return this.auditService.findForUser(userId, query, userId);
   }
 
   @Get('me/stats')
@@ -78,7 +79,8 @@ export class AuditController {
   findForUser(
     @Param('id', ParseUUIDPipe) id: string,
     @Query() query: QueryAuditLogDto,
+    @CurrentUser('id') actorId: string,
   ) {
-    return this.auditService.findForUser(id, query);
+    return this.auditService.findForUser(id, query, actorId);
   }
 }

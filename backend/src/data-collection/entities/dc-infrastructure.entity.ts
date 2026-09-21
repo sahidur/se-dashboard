@@ -111,6 +111,27 @@ export class DcInfrastructure {
   @Column({ name: 'classroom_renovation_required', type: 'boolean', nullable: true, default: null })
   classroomRenovationRequired: boolean | null;
 
+  /** Details of the renovation needed; mandatory when classroomRenovationRequired is true */
+  @Column({ name: 'classroom_renovation_details', type: 'text', nullable: true })
+  classroomRenovationDetails: string;
+
+  @Column({ name: 'classroom_emergency_exit', type: 'boolean', nullable: true, default: null })
+  classroomEmergencyExit: boolean | null;
+
+  // ── Infrastructure Assets ──────────────────────────────────
+
+  @Column({ name: 'infra_total_assets', type: 'int', default: 0 })
+  infraTotalAssets: number;
+
+  @Column({ name: 'infra_total_projectors', type: 'int', default: 0 })
+  infraTotalProjectors: number;
+
+  @Column({ name: 'infra_total_laptops', type: 'int', default: 0 })
+  infraTotalLaptops: number;
+
+  @Column({ name: 'infra_total_pcs', type: 'int', default: 0 })
+  infraTotalPcs: number;
+
   @ManyToOne(() => User)
   @JoinColumn({ name: 'created_by_id' })
   createdBy: User;

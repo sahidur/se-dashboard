@@ -190,9 +190,18 @@ export function StudentPerformanceForm({ schoolId, formKey }: Props) {
     if (!isValidAcademicYear(academicYear)) { setError('Please select a valid academic year (1970-2100).'); return; }
     if (!grade) { setError('Please select a grade.'); return; }
     if (!evaluationPeriod) { setError(`Please select a ${def.periodLabel.toLowerCase()}.`); return; }
-    if (filledRows === 0) { setError(`Please enter performance figures for at least one ${def.rowHeader.toLowerCase().replace(/s$/, '')}.`); return; }
+    if (numberOfStudents === '') { setError('Please enter the Number of Students.'); return; }
+    if (appearedPercent === '') { setError(`Please enter "${def.appearedLabel}".`); return; }
 
-    if (appearedPercent !== '' && Number(appearedPercent) > 0) {
+    // All cells of every row are mandatory — the user cannot submit with any
+    // performance value left blank.
+    const incompleteRow = rowDefs.find((r) => def.scale.some((s) => cell(r.code, s.label) === ''));
+    if (incompleteRow) {
+      setError(`Please fill in all performance values for every row (missing in "${incompleteRow.label}").`);
+      return;
+    }
+
+    if (Number(appearedPercent) > 0) {
       const appearedNum = Number(appearedPercent);
       for (const r of rowDefs) {
         const total = rowTotal(r.code);
@@ -232,7 +241,7 @@ export function StudentPerformanceForm({ schoolId, formKey }: Props) {
           ),
         })),
       });
-      showToast('success', `${academicYear} • ${grade} • ${evaluationPeriod} saved.`);
+      showToast('success', `${academicYear} • ${getGradeDisplayName(grade, school?.schoolCategory)} • ${evaluationPeriod} saved.`);
       await draft.clearDraft();
       resetForm();
       loadRecords();
@@ -364,10 +373,12 @@ export function StudentPerformanceForm({ schoolId, formKey }: Props) {
                       disabled={gradeDisabled}
                       className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-400 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {def.grades.length === 1
-                        ? <option value={def.grades[0]}>{def.grades[0]}</option>
-                        : <option value="">Select grade…</option>}
-                      {def.grades.length > 1 && def.grades.map((g) => <option key={g} value={g}>{g}</option>)}
+                      {/* Grade options render dynamically per school category
+                          (e.g. "Play & Learn" shows as "Play World" for BRAC Academy). */}
+                      {def.grades.length > 1 && <option value="">Select grade…</option>}
+                      {def.grades.map((g) => (
+                        <option key={g} value={g}>{getGradeDisplayName(g, school?.schoolCategory)}</option>
+                      ))}
                     </select>
                     {gradeDisabled && (
                       <p className="mt-1 text-[11px] text-amber-600">Select an academic year first.</p>
@@ -534,7 +545,7 @@ export function StudentPerformanceForm({ schoolId, formKey }: Props) {
                   </div>
 
                   <p className="mt-2 text-[11px] text-gray-400">
-                    Enter the number of students for each performance level. Each row total must match the &quot;Students appeared in the Evaluation (Number)&quot; value.
+                    All fields are required. Enter the number of students for each performance level. Each row total must match the &quot;{def.appearedLabel}&quot; value.
                   </p>
                 </div>
 

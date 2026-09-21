@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { GeoLocation, GeoLocationType } from './entities/geo-location.entity';
@@ -81,6 +81,36 @@ export class GeoLocationsService {
 
   async update(id: string, dto: UpdateGeoLocationDto): Promise<GeoLocation> {
     const entity = await this.findOne(id);
+    // Cycle guard: a self-parent or ancestor-loop (A.parent=B, B.parent=A)
+    // would send collectWithDescendants() into an unbounded loop on delete
+    // and corrupt the tree endpoints. Reject self and any parent that is a
+    // descendant of this node.
+    if (dto.parentId) {
+      if (dto.parentId === id) {
+        throw new BadRequestException(
+          'A location cannot be its own parent',
+        );
+      }
+      let cursor = await this.geoRepo.findOne({
+        where: { id: dto.parentId },
+      });
+      if (!cursor) {
+        throw new BadRequestException('Parent location not found');
+      }
+      const visited = new Set<string>();
+      while (cursor) {
+        if (cursor.id === id) {
+          throw new BadRequestException(
+            'A location cannot be moved under one of its own descendants',
+          );
+        }
+        if (visited.has(cursor.id)) break; // pre-existing cycle, stop walking
+        visited.add(cursor.id);
+        cursor = cursor.parentId
+          ? await this.geoRepo.findOne({ where: { id: cursor.parentId } })
+          : null;
+      }
+    }
     Object.assign(entity, dto);
     return this.geoRepo.save(entity);
   }

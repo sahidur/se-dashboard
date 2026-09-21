@@ -41,24 +41,13 @@ let refreshPromise: Promise<void> | null = null;
 function refreshSession(): Promise<void> {
   if (!refreshPromise) {
     refreshPromise = (async () => {
-      // Cookie-first refresh: the httpOnly `se360_rt` cookie authenticates the
-      // call when present. A body token is only included for transitional
-      // sessions that still hold a persisted legacy refresh token.
-      const refreshToken = useAuthStore.getState().refreshToken;
-      const hadLegacyTokens = !!refreshToken;
-
-      const response = await axios.post(
-        `${API_BASE_URL}/auth/refresh`,
-        refreshToken ? { refreshToken } : {},
-        { withCredentials: true },
-      );
-
-      const { accessToken, refreshToken: newRefreshToken } = response.data;
-      // Only keep tokens on the store for legacy tabs; cookie-only sessions
-      // rely entirely on the rotated cookies the server just set.
-      if (hadLegacyTokens && accessToken && newRefreshToken) {
-        useAuthStore.getState().setTokens(accessToken, newRefreshToken);
-      }
+      // Cookie-only refresh: the httpOnly `se360_rt` cookie authenticates the
+      // call and the server rotates both cookies in its response. Never send
+      // a token in the request body — request bodies are more likely to end
+      // up in logs/proxies than cookies scoped to /api/auth.
+      await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
+        withCredentials: true,
+      });
     })().finally(() => {
       refreshPromise = null;
     });

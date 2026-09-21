@@ -56,18 +56,20 @@ interface FormState {
   academicYear: string;
   campusStatus: string;
   buildingStatus: string[];
-  roomHeadTeachers: number;
-  roomTeachers: number;
-  roomClassroom: number;
-  roomPlayroom: number;
-  roomLibrary: number;
-  roomLab: number;
-  roomStoreroom: number;
-  roomKitchen: number;
-  roomSickbay: number;
-  roomOthers: number;
-  washroomMale: number;
-  washroomFemale: number;
+  // Numeric fields kept as strings so inputs render blank instead of a
+  // default "0"; they are converted to numbers at submit time.
+  roomHeadTeachers: string;
+  roomTeachers: string;
+  roomClassroom: string;
+  roomPlayroom: string;
+  roomLibrary: string;
+  roomLab: string;
+  roomStoreroom: string;
+  roomKitchen: string;
+  roomSickbay: string;
+  roomOthers: string;
+  washroomMale: string;
+  washroomFemale: string;
   hasHandWashPoint: boolean | null;
   hasPlayground: boolean | null;
   hasSchoolGarden: boolean | null;
@@ -78,22 +80,27 @@ const defaultState: FormState = {
   academicYear: '',
   campusStatus: '',
   buildingStatus: [],
-  roomHeadTeachers: 0,
-  roomTeachers: 0,
-  roomClassroom: 0,
-  roomPlayroom: 0,
-  roomLibrary: 0,
-  roomLab: 0,
-  roomStoreroom: 0,
-  roomKitchen: 0,
-  roomSickbay: 0,
-  roomOthers: 0,
-  washroomMale: 0,
-  washroomFemale: 0,
+  roomHeadTeachers: '',
+  roomTeachers: '',
+  roomClassroom: '',
+  roomPlayroom: '',
+  roomLibrary: '',
+  roomLab: '',
+  roomStoreroom: '',
+  roomKitchen: '',
+  roomSickbay: '',
+  roomOthers: '',
+  washroomMale: '',
+  washroomFemale: '',
   hasHandWashPoint: null,
   hasPlayground: null,
   hasSchoolGarden: null,
   infraRenovationRequired: null,
+};
+
+const toNum = (v: unknown) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
 };
 
 interface Props { schoolId: string }
@@ -111,18 +118,18 @@ function mapRecord(d: Record<string, any>): FormState {
     academicYear: d.academicYear != null ? String(d.academicYear) : '',
     campusStatus: d.campusStatus || '',
     buildingStatus,
-    roomHeadTeachers: d.roomHeadTeachers ?? 0,
-    roomTeachers: d.roomTeachers ?? 0,
-    roomClassroom: d.roomClassroom ?? 0,
-    roomPlayroom: d.roomPlayroom ?? 0,
-    roomLibrary: d.roomLibrary ?? 0,
-    roomLab: d.roomLab ?? 0,
-    roomStoreroom: d.roomStoreroom ?? 0,
-    roomKitchen: d.roomKitchen ?? 0,
-    roomSickbay: d.roomSickbay ?? 0,
-    roomOthers: d.roomOthers ?? 0,
-    washroomMale: d.washroomMale ?? 0,
-    washroomFemale: d.washroomFemale ?? 0,
+    roomHeadTeachers: d.roomHeadTeachers ?? '',
+    roomTeachers: d.roomTeachers ?? '',
+    roomClassroom: d.roomClassroom ?? '',
+    roomPlayroom: d.roomPlayroom ?? '',
+    roomLibrary: d.roomLibrary ?? '',
+    roomLab: d.roomLab ?? '',
+    roomStoreroom: d.roomStoreroom ?? '',
+    roomKitchen: d.roomKitchen ?? '',
+    roomSickbay: d.roomSickbay ?? '',
+    roomOthers: d.roomOthers ?? '',
+    washroomMale: d.washroomMale ?? '',
+    washroomFemale: d.washroomFemale ?? '',
     hasHandWashPoint: d.hasHandWashPoint ?? null,
     hasPlayground: d.hasPlayground ?? null,
     hasSchoolGarden: d.hasSchoolGarden ?? null,
@@ -199,7 +206,7 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
           ['Campus Status', savedRecord.campusStatus || ''],
           ['Building Status', savedRecord.buildingStatus.join(', ') || ''],
           ...ROOM_TYPES.map(({ key, label }) => [label, String(savedRecord[key as RoomKey] ?? 0)]),
-          ['Total Rooms', String(ROOM_TYPES.reduce((sum, rt) => sum + (savedRecord[rt.key as RoomKey] || 0), 0))],
+          ['Total Rooms', String(ROOM_TYPES.reduce((sum, rt) => sum + (Number(savedRecord[rt.key as RoomKey]) || 0), 0))],
           ['Washrooms (Male)', String(savedRecord.washroomMale)],
           ['Washrooms (Female)', String(savedRecord.washroomFemale)],
           ['Hand Wash Point', savedRecord.hasHandWashPoint ? 'Yes' : 'No'],
@@ -287,7 +294,7 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
   };
 
   const totalRooms = ROOM_TYPES.reduce(
-    (sum, rt) => sum + (form[rt.key as RoomKey] || 0),
+    (sum, rt) => sum + (Number(form[rt.key as RoomKey]) || 0),
     0,
   );
 
@@ -302,7 +309,7 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
   };
 
   const setNum = (key: RoomKey | 'washroomMale' | 'washroomFemale', val: string) =>
-    setForm((prev) => ({ ...prev, [key]: parseInt(val, 10) || 0 }));
+    setForm((prev) => ({ ...prev, [key]: val }));
 
   const setBool = (
     key: 'hasHandWashPoint' | 'hasPlayground' | 'hasSchoolGarden' | 'infraRenovationRequired',
@@ -352,19 +359,19 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
         buildingStatus: form.buildingStatus.length > 0
           ? JSON.stringify(form.buildingStatus)
           : undefined,
-        roomHeadTeachers: form.roomHeadTeachers,
-        roomTeachers: form.roomTeachers,
-        roomClassroom: form.roomClassroom,
-        roomPlayroom: form.roomPlayroom,
-        roomLibrary: form.roomLibrary,
-        roomLab: form.roomLab,
-        roomStoreroom: form.roomStoreroom,
-        roomKitchen: form.roomKitchen,
-        roomSickbay: form.roomSickbay,
-        roomOthers: form.roomOthers,
+        roomHeadTeachers: toNum(form.roomHeadTeachers),
+        roomTeachers: toNum(form.roomTeachers),
+        roomClassroom: toNum(form.roomClassroom),
+        roomPlayroom: toNum(form.roomPlayroom),
+        roomLibrary: toNum(form.roomLibrary),
+        roomLab: toNum(form.roomLab),
+        roomStoreroom: toNum(form.roomStoreroom),
+        roomKitchen: toNum(form.roomKitchen),
+        roomSickbay: toNum(form.roomSickbay),
+        roomOthers: toNum(form.roomOthers),
         roomTotal: totalRooms,
-        washroomMale: form.washroomMale,
-        washroomFemale: form.washroomFemale,
+        washroomMale: toNum(form.washroomMale),
+        washroomFemale: toNum(form.washroomFemale),
         hasHandWashPoint: form.hasHandWashPoint ?? false,
         hasPlayground: form.hasPlayground ?? false,
         hasSchoolGarden: form.hasSchoolGarden ?? false,
@@ -605,6 +612,7 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
                   min={0}
                   value={form[key as RoomKey]}
                   onChange={(e) => setNum(key as RoomKey, e.target.value)}
+                  placeholder="0"
                   className="text-center font-bold text-gray-800 transition-all focus:ring-2 focus:ring-blue-300"
                 />
               </div>
@@ -643,6 +651,7 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
                 min={0}
                 value={form.washroomMale}
                 onChange={(e) => setNum('washroomMale', e.target.value)}
+                placeholder="0"
                 className="text-center text-lg font-bold transition-all focus:ring-2 focus:ring-cyan-300"
               />
             </div>
@@ -655,6 +664,7 @@ export function InfrastructureStatusForm({ schoolId }: Props) {
                 min={0}
                 value={form.washroomFemale}
                 onChange={(e) => setNum('washroomFemale', e.target.value)}
+                placeholder="0"
                 className="text-center text-lg font-bold transition-all focus:ring-2 focus:ring-cyan-300"
               />
             </div>

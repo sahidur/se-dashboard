@@ -37,6 +37,14 @@ const GRADE_FIELDS: { key: keyof GradeWiseFields; label: string }[] = [
   { key: 'gradeF',      label: 'F' },
 ];
 
+// BRAC Academy scale — replaces the A+…F grade fields for those schools.
+const ACAD_GRADE_FIELDS: { key: keyof AcademyGradeFields; label: string }[] = [
+  { key: 'academyExcellent',       label: 'Excellent' },
+  { key: 'academyGood',            label: 'Good' },
+  { key: 'academySatisfactory',    label: 'Satisfactory' },
+  { key: 'academyImprovementNeeded', label: 'Improvement Needed' },
+];
+
 const PROGRESS_FIELDS: { key: keyof ProgressFields; label: string }[] = [
   { key: 'progressGood',         label: 'Good' },
   { key: 'progressSatisfactory', label: 'Satisfactory' },
@@ -55,13 +63,20 @@ interface GradeWiseFields {
   gradeF: string;
 }
 
+interface AcademyGradeFields {
+  academyExcellent: string;
+  academyGood: string;
+  academySatisfactory: string;
+  academyImprovementNeeded: string;
+}
+
 interface ProgressFields {
   progressGood: string;
   progressSatisfactory: string;
   progressNeedImprove: string;
 }
 
-interface FormState extends GradeWiseFields, ProgressFields {
+interface FormState extends GradeWiseFields, AcademyGradeFields, ProgressFields {
   academicYear: string;
   grade: string;
   numberOfStudents: string;
@@ -72,6 +87,7 @@ interface FormState extends GradeWiseFields, ProgressFields {
 const BLANK: FormState = {
   academicYear: '', grade: '', numberOfStudents: '', examName: '', studentsAppearedPercent: '',
   gradeAPlus: '', gradeA: '', gradeAMinus: '', gradeB: '', gradeC: '', gradeD: '', gradeF: '',
+  academyExcellent: '', academyGood: '', academySatisfactory: '', academyImprovementNeeded: '',
   progressGood: '', progressSatisfactory: '', progressNeedImprove: '',
 };
 
@@ -96,7 +112,11 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
   const [tab, setTab] = useState<'entry' | 'data'>('entry');
 
   const isPlayLearn = form.grade === 'Play & Learn';
-  const gradeSumPreview = GRADE_FIELDS.reduce((sum, { key }) => sum + (form[key] !== '' ? Number(form[key]) : 0), 0);
+  const isAcademy = school?.schoolCategory === 'brac_academy';
+  // The grade scale used depends on the school category: BRAC Academy uses
+  // Excellent/Good/Satisfactory/Improvement Needed; all others use A+…F.
+  const activeGradeFields = isAcademy ? ACAD_GRADE_FIELDS : GRADE_FIELDS;
+  const gradeSumPreview = activeGradeFields.reduce((sum, { key }) => sum + (form[key] !== '' ? Number(form[key]) : 0), 0);
 
   // Memoized so its identity is stable across renders (prevents repeated effects).
   const showToast = useCallback((type: 'success' | 'error', msg: string) => {
@@ -162,6 +182,10 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
       progressGood: rec.progressGood != null ? String(rec.progressGood) : '',
       progressSatisfactory: rec.progressSatisfactory != null ? String(rec.progressSatisfactory) : '',
       progressNeedImprove: rec.progressNeedImprove != null ? String(rec.progressNeedImprove) : '',
+      academyExcellent: rec.academyExcellent != null ? String(rec.academyExcellent) : '',
+      academyGood: rec.academyGood != null ? String(rec.academyGood) : '',
+      academySatisfactory: rec.academySatisfactory != null ? String(rec.academySatisfactory) : '',
+      academyImprovementNeeded: rec.academyImprovementNeeded != null ? String(rec.academyImprovementNeeded) : '',
     });
     setEditingId(rec.id);
     setError('');
@@ -188,7 +212,7 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
     if (!form.grade) { setError('Please select a grade.'); return; }
     if (!form.examName) { setError('Please select an exam name.'); return; }
 
-    const gradeSum = GRADE_FIELDS.reduce((sum, { key }) => sum + (form[key] !== '' ? Number(form[key]) : 0), 0);
+    const gradeSum = activeGradeFields.reduce((sum, { key }) => sum + (form[key] !== '' ? Number(form[key]) : 0), 0);
     const totalStudents = form.numberOfStudents !== '' ? Number(form.numberOfStudents) : 0;
     if (totalStudents > 0 && gradeSum !== totalStudents) {
       setError(
@@ -208,6 +232,9 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
         studentsAppearedPercent: form.studentsAppearedPercent !== '' ? Number(form.studentsAppearedPercent) : undefined,
       };
       for (const { key } of GRADE_FIELDS) {
+        payload[key] = form[key] !== '' ? Number(form[key]) : 0;
+      }
+      for (const { key } of ACAD_GRADE_FIELDS) {
         payload[key] = form[key] !== '' ? Number(form[key]) : 0;
       }
       if (isPlayLearn) {
@@ -357,13 +384,11 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
 
                 <div>
                   <Label className="mb-1.5 block text-sm font-medium text-gray-700">
-                    Students Appeared in the Exam (%)
+                    Students Appeared in the Exam (Number)
                   </Label>
                   <Input
                     type="number"
                     min={0}
-                    max={100}
-                    step={0.01}
                     disabled={inputsDisabled}
                     value={form.studentsAppearedPercent}
                     onChange={(e) => set('studentsAppearedPercent', e.target.value)}
@@ -375,10 +400,10 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
 
               <div>
                 <p className="mb-3 text-sm font-medium text-gray-700">
-                  Grade-wise (Exam) Students Number
+                  {isAcademy ? 'Performance-wise Students Number' : 'Grade-wise (Exam) Students Number'}
                 </p>
-                <div className="grid gap-3 sm:grid-cols-4 lg:grid-cols-7">
-                  {GRADE_FIELDS.map(({ key, label }) => (
+                <div className={`grid gap-3 ${isAcademy ? 'sm:grid-cols-4' : 'sm:grid-cols-4 lg:grid-cols-7'}`}>
+                  {activeGradeFields.map(({ key, label }) => (
                     <div key={key}>
                       <Label className="mb-1 block text-xs text-gray-500">{label}</Label>
                       <Input
@@ -495,7 +520,7 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
                 ),
               },
               { key: 'numberOfStudents', header: 'Students', className: 'text-right font-medium text-gray-700' },
-              ...GRADE_FIELDS.map(({ key, label }) => ({
+              ...activeGradeFields.map(({ key, label }) => ({
                 key,
                 header: label,
                 className: 'text-right font-medium text-gray-700',
@@ -510,13 +535,13 @@ export function StudentsPerformanceForm({ schoolId }: Props) {
               <ExportButtons
                 payload={{
                   filename: 'students-academic-performance',
-                  headers: ['Academic Year', 'Grade', 'Exam', 'Students', ...GRADE_FIELDS.map((f) => f.label)],
+                  headers: ['Academic Year', 'Grade', 'Exam', 'Students', ...activeGradeFields.map((f) => f.label)],
                   rows: sortedRecords.map((rec) => [
                     rec.academicYear,
                     getGradeDisplayName(rec.grade, school?.schoolCategory),
                     rec.examName,
                     rec.numberOfStudents,
-                    ...GRADE_FIELDS.map((f) => rec[f.key as keyof DcStudentsPerformance] ?? 0),
+                    ...activeGradeFields.map((f) => rec[f.key as keyof DcStudentsPerformance] ?? 0),
                   ]),
                 }}
               />

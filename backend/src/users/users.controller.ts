@@ -63,7 +63,8 @@ export class UsersController {
   @Get('me')
   @ApiOperation({ summary: 'Get current user profile' })
   async getProfile(@CurrentUser('id') userId: string) {
-    return this.usersService.findOneById(userId);
+    // Own profile: includes the account's own PIN, excludes secrets.
+    return this.usersService.findOneForSelf(userId);
   }
 
   @Patch('me/profile')

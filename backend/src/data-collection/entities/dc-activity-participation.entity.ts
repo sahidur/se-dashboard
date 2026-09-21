@@ -30,7 +30,7 @@ export class DcActivityParticipation {
   @Column({ name: 'school_id' })
   schoolId: string;
 
-  /** Corner activity | one of the five clubs | Science/ICT/Agriculture lab | Use of library */
+  /** Corner activity | one of the five clubs | Science/ICT/Agriculture lab | Use of library | Creativity/Critical thinking/Physical Activity corner | Computer lab | Classroom Library */
   @Column({ length: 30 })
   item: string;
 

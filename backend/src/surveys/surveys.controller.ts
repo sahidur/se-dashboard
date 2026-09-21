@@ -190,11 +190,13 @@ export class SurveysController {
     @Query('limit') limit?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @CurrentUser('id') userId?: string,
   ) {
     return this.surveysService.getAllResponses(
       parseInt(page || '1', 10) || 1,
       parseInt(limit || '20', 10) || 20,
       { startDate, endDate },
+      userId,
     );
   }
 
@@ -272,8 +274,11 @@ export class SurveysController {
   @Get(':id/assignments')
   @Permissions({ module: 'surveys', action: 'read' })
   @ApiOperation({ summary: 'Get all assignments for a survey' })
-  async getAssignments(@Param('id', ParseUUIDPipe) id: string) {
-    return this.surveysService.getAssignments(id);
+  async getAssignments(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.surveysService.getAssignments(id, userId);
   }
 
   @Post(':id/assignments')
@@ -339,12 +344,14 @@ export class SurveysController {
     @Query('limit') limit?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @CurrentUser('id') userId?: string,
   ) {
     return this.surveysService.getResponses(
       id,
       parseInt(page || '1', 10) || 1,
       parseInt(limit || '20', 10) || 20,
       { startDate, endDate },
+      userId,
     );
   }
 
@@ -353,9 +360,10 @@ export class SurveysController {
   @ApiOperation({ summary: 'Export survey responses as CSV' })
   async exportResponses(
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
     @Res() res: Response,
   ) {
-    const csv = await this.surveysService.exportResponsesCsv(id);
+    const csv = await this.surveysService.exportResponsesCsv(id, userId);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader(
       'Content-Disposition',

@@ -70,6 +70,19 @@ export class DcStudentsPerformance {
   @Column({ name: 'grade_f', type: 'int', default: 0 })
   gradeF: number;
 
+  // ── BRAC Academy grade scale ─────────────────────────────
+  @Column({ name: 'academy_excellent', type: 'int', default: 0 })
+  academyExcellent: number;
+
+  @Column({ name: 'academy_good', type: 'int', default: 0 })
+  academyGood: number;
+
+  @Column({ name: 'academy_satisfactory', type: 'int', default: 0 })
+  academySatisfactory: number;
+
+  @Column({ name: 'academy_improvement_needed', type: 'int', default: 0 })
+  academyImprovementNeeded: number;
+
   // ── Progress indicators (Play & Learn only) ───────────────
   @Column({ name: 'progress_good', type: 'int', nullable: true })
   progressGood: number;

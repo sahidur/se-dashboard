@@ -542,7 +542,11 @@ export class DataCollectionService {
     if (!record) throw new NotFoundException('Alumni record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
     await this.assertCanEditExisting(true, userId, roles);
-    Object.assign(record, dto);
+    // Strip schoolId: the access check above validated the record's CURRENT
+    // school. Honouring a new schoolId here would silently relocate the record
+    // to another school (cross-tenant injection) without any access check.
+    const { schoolId: _ignored, ...rest } = dto as CreateAlumniDto & { schoolId?: string };
+    Object.assign(record, rest);
     return this.alumniRepo.save(record);
   }
 
@@ -980,7 +984,9 @@ export class DataCollectionService {
     if (!record) throw new NotFoundException('Event participation record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
     await this.assertCanEditExisting(true, userId, roles);
-    Object.assign(record, dto);
+    // Strip schoolId — see updateAlumni (cross-tenant relocation guard).
+    const { schoolId: _ignored, ...rest } = dto as CreateEventParticipationDto & { schoolId?: string };
+    Object.assign(record, rest);
     record.totalAwarded = (record.maleAwarded || 0) + (record.femaleAwarded || 0) + (record.othersAwarded || 0);
     return this.eventPartRepo.save(record);
   }
@@ -1344,7 +1350,8 @@ export class DataCollectionService {
             Number(pedagMap[school.id].primaryScholarship) +
             Number(pedagMap[school.id].jrScholarship) +
             Number(pedagMap[school.id].sscScholarship) +
-            Number(pedagMap[school.id].othersScholarship)
+            Number(pedagMap[school.id].othersScholarship) +
+            Number(pedagMap[school.id].talentGrantAwarded)
           : null,
         performance: perfBySchool[school.id] ?? [],
         hasEvents: !!eventHas[school.id],

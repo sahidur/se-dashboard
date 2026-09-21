@@ -24,6 +24,14 @@ import type { DcSchool, GeoLocation } from '@/types';
 
 const PAGE_SIZE = 10;
 
+const GRADE_COVERAGE_COMMON = Array.from({ length: 10 }, (_, i) => `Grade ${i + 1}`);
+
+// BRAC Academy covers "Play World"; all other categories use "Play & Learn".
+const gradeCoverageOptions = (schoolCategory: string): string[] =>
+  schoolCategory === 'brac_academy'
+    ? ['Play World', ...GRADE_COVERAGE_COMMON]
+    : ['Play & Learn', ...GRADE_COVERAGE_COMMON];
+
 const emptyForm = {
   name: '',
   schoolCategory: '',
@@ -39,8 +47,19 @@ const emptyForm = {
   governmentApproval: '',
   totalTeachers: '',
   totalStudents: '',
-  gradeCoverage: '',
+  gradeCoverage: [] as string[],
 };
+
+// Parse a stored comma-separated coverage string back into the multi-select
+// values, keeping only entries valid for the school's category.
+function parseGradeCoverage(stored: string | null | undefined, schoolCategory: string): string[] {
+  if (!stored) return [];
+  const options = gradeCoverageOptions(schoolCategory);
+  return stored
+    .split(',')
+    .map((g) => g.trim())
+    .filter((g) => options.includes(g));
+}
 
 function normalizeName(value?: string | null): string {
   return (value ?? '').trim().toLowerCase();
@@ -236,7 +255,7 @@ export default function DcSchoolsPage() {
       governmentApproval: s.governmentApproval == null ? '' : s.governmentApproval ? 'yes' : 'no',
       totalTeachers: s.totalTeachers != null ? String(s.totalTeachers) : '',
       totalStudents: s.totalStudents != null ? String(s.totalStudents) : '',
-      gradeCoverage: s.gradeCoverage || '',
+      gradeCoverage: parseGradeCoverage(s.gradeCoverage, s.schoolCategory || ''),
     });
     setModalOpen(true);
   };
@@ -257,7 +276,7 @@ export default function DcSchoolsPage() {
           form.governmentApproval === '' ? undefined : form.governmentApproval === 'yes',
         totalTeachers: form.totalTeachers ? Number(form.totalTeachers) : undefined,
         totalStudents: form.totalStudents ? Number(form.totalStudents) : undefined,
-        gradeCoverage: form.gradeCoverage || undefined,
+        gradeCoverage: form.gradeCoverage.length > 0 ? form.gradeCoverage.join(', ') : undefined,
       };
       if (editSchool) {
         await api.patch(`/data-collection/schools/${editSchool.id}`, payload);
@@ -511,7 +530,16 @@ export default function DcSchoolsPage() {
               <label className={labelClass}>School Category</label>
               <select
                 value={form.schoolCategory}
-                onChange={(e) => setForm({ ...form, schoolCategory: e.target.value })}
+                onChange={(e) => {
+                  const category = e.target.value;
+                  setForm({
+                    ...form,
+                    schoolCategory: category,
+                    // Pre-grade selection differs between categories, so
+                    // drop any coverage value that is no longer offered.
+                    gradeCoverage: form.gradeCoverage.filter((g) => gradeCoverageOptions(category).includes(g)),
+                  });
+                }}
                 className={selectClass}
               >
                 <option value="">Select category...</option>
@@ -673,13 +701,50 @@ export default function DcSchoolsPage() {
             </div>
           </div>
 
-          {/* Grade Coverage */}
-          <Input
-            label="Grade Coverage"
-            value={form.gradeCoverage}
-            onChange={(e) => setForm({ ...form, gradeCoverage: e.target.value })}
-            placeholder="e.g. Class 1 - Class 10"
-          />
+          {/* Grade Coverage — multi-select */}
+          <div>
+            <label className={labelClass}>
+              Grade Coverage
+              <span className="ml-2 text-xs font-normal text-gray-400">(select all that apply)</span>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {gradeCoverageOptions(form.schoolCategory).map((g) => {
+                const checked = form.gradeCoverage.includes(g);
+                return (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({
+                        ...prev,
+                        gradeCoverage: prev.gradeCoverage.includes(g)
+                          ? prev.gradeCoverage.filter((x) => x !== g)
+                          : [...prev.gradeCoverage, g],
+                      }));
+                    }}
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+                      checked
+                        ? 'border-brand-500 bg-brand-50 text-brand-700 shadow-sm'
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-brand-300 hover:bg-brand-50/40'
+                    }`}
+                  >
+                    <span
+                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border-2 transition-colors ${
+                        checked ? 'border-brand-500 bg-brand-500' : 'border-gray-300'
+                      }`}
+                    >
+                      {checked && (
+                        <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 12 12">
+                          <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </span>
+                    {g}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => { setModalOpen(false); resetForm(); }}>

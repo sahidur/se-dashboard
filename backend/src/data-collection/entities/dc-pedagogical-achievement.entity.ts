@@ -84,6 +84,13 @@ export class DcPedagogicalAchievement {
   @Column({ name: 'others_unique_approach', type: 'text', nullable: true })
   othersUniqueApproach: string;
 
+  // ── Sir Fazle Hasan Abed Talent Grants ──────────────────
+  @Column({ name: 'talent_grant_participated', type: 'int', default: 0 })
+  talentGrantParticipated: number;
+
+  @Column({ name: 'talent_grant_awarded', type: 'int', default: 0 })
+  talentGrantAwarded: number;
+
   // ── Audit ────────────────────────────────────────────────
   @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'created_by_id' })

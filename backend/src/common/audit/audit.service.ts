@@ -141,17 +141,21 @@ export class AuditService {
 
   /**
    * A single user's history: everything they did, plus changes made to their
-   * own account by others.
+   * own account by others. The privileged (Role/Permission) filter must also
+   * apply here — otherwise an admin could read a Super Admin's privilege
+   * audit trail via GET /audit-logs/user/:id, which the main feed hides.
    */
   async findForUser(
     userId: string,
     dto: QueryAuditLogDto,
+    actorId?: string,
   ): Promise<PaginatedAuditLogs> {
     const { page, limit } = this.resolvePaging(dto);
     const qb = this.applyFilters(this.baseQuery(), dto).andWhere(
       '(log.userId = :userId OR (log.module = :userModule AND log.entityId = CAST(:userId AS varchar)))',
       { userId, userModule: 'User' },
     );
+    this.applyPrivilegedFilter(qb, await this.isSuperAdmin(actorId));
     qb.orderBy('log.createdAt', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);

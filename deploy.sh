@@ -9,6 +9,11 @@
 set -euo pipefail
 IFS=$'\n\t'
 
+# Never create world-readable files: env files (with DB passwords / JWT
+# secrets) are written below — without this there is a window between the
+# heredoc write and the later `chmod 600` in which any local user could read.
+umask 077
+
 # ── Colour helpers ────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 BLUE='\033[0;34m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
@@ -50,20 +55,26 @@ SKIP_SSL="${SKIP_SSL:-false}"     # Set to 'true' to skip certbot (CI/testing)
 # bucket every visitor under nginx's 127.0.0.1 and record that as the audit IP.
 TRUST_PROXY="${TRUST_PROXY:-1}"
 
-# DB / S3 defaults (populated from current .env – override via env vars)
-DB_HOST="${DB_HOST:-db-postgresql-ams-do-user-2226216-0.i.db.ondigitalocean.com}"
+# DB / S3 connection details — infra identifiers, so they are NOT hard-coded
+# here (a public checkout would disclose the DB host/username/bucket).
+# Provide them via env vars or answer the prompts.
+DB_HOST="${DB_HOST:-}"
 DB_PORT="${DB_PORT:-25060}"
-DB_USERNAME="${DB_USERNAME:-bep_se_admin}"
+DB_USERNAME="${DB_USERNAME:-}"
 DB_DATABASE="${DB_DATABASE:-bep_se}"
 DB_SCHEMA="${DB_SCHEMA:-bep}"
 DB_SSL="${DB_SSL:-true}"
-DB_SSL_REJECT_UNAUTHORIZED="${DB_SSL_REJECT_UNAUTHORIZED:-false}"
+# Secure by default: TLS without certificate validation is still MITM-able.
+# The repo ships the DigitalOcean CA (ca-certificate.crt) and DB_CA_CERT points
+# at it, so validation can and should be ON. Override only for hosts whose CA
+# chain is not yet trusted.
+DB_SSL_REJECT_UNAUTHORIZED="${DB_SSL_REJECT_UNAUTHORIZED:-true}"
 # Path to the CA certificate file (relative to backend/). Required when
 # DB_SSL=true and the DB provider uses a self-signed CA (e.g. DigitalOcean).
 DB_CA_CERT="${DB_CA_CERT:-ca-certificate.crt}"
 S3_ENDPOINT="${S3_ENDPOINT:-https://sgp1.digitaloceanspaces.com}"
 S3_REGION="${S3_REGION:-sgp1}"
-S3_BUCKET="${S3_BUCKET:-dev-shomadhanhobe-resources}"
+S3_BUCKET="${S3_BUCKET:-}"
 S3_FOLDER="${S3_FOLDER:-bep-se}" # keep in sync with existing uploads folder in the bucket
 S3_ACCESS_KEY="${S3_ACCESS_KEY:-}"
 S3_SECRET_KEY="${S3_SECRET_KEY:-}"
@@ -74,26 +85,48 @@ WEBAUTHN_ORIGIN="${WEBAUTHN_ORIGIN:-https://${DOMAIN}}"
 # =============================================================================
 #  Step 0 – Collect secrets interactively (skip if already exported)
 # =============================================================================
+# Generated secrets are recorded in a root-only file instead of being echoed
+# to stdout: terminal scrollback, CI logs and `tee`'d SSH sessions are all
+# classic credential-leak channels.
+SECRETS_FILE="${SECRETS_FILE:-/root/se360-secrets.txt}"
+touch "$SECRETS_FILE"
+chmod 600 "$SECRETS_FILE"
+record_secret() { # $1 = name, $2 = value
+  printf '%s=%s\n' "$1" "$2" >> "$SECRETS_FILE"
+}
+
 step "Collecting required secrets"
 
 if [[ -z "${SSL_EMAIL:-}" ]]; then
   ask "Email address for Let's Encrypt renewal notices" SSL_EMAIL
 fi
 
+if [[ -z "${DB_HOST:-}" ]]; then
+  ask "DigitalOcean PostgreSQL host (e.g. db-xxx.b.db.ondigitalocean.com)" DB_HOST
+fi
+
+if [[ -z "${DB_USERNAME:-}" ]]; then
+  ask "DigitalOcean PostgreSQL username" DB_USERNAME
+fi
+
 if [[ -z "${DB_PASSWORD:-}" ]]; then
   askpw "DigitalOcean PostgreSQL password (DB_PASSWORD)" DB_PASSWORD
 fi
 
+if [[ -n "${S3_ACCESS_KEY:-}" && -z "${S3_BUCKET:-}" ]]; then
+  ask "DigitalOcean Spaces bucket name" S3_BUCKET
+fi
+
 if [[ -z "${JWT_SECRET:-}" ]]; then
   JWT_SECRET=$(openssl rand -hex 64)
-  warn "Auto-generated JWT_SECRET – save this in a password manager!"
-  warn "  JWT_SECRET=${JWT_SECRET}"
+  record_secret "JWT_SECRET" "$JWT_SECRET"
+  warn "Auto-generated JWT_SECRET – recorded in ${SECRETS_FILE}"
 fi
 
 if [[ -z "${JWT_REFRESH_SECRET:-}" ]]; then
   JWT_REFRESH_SECRET=$(openssl rand -hex 64)
-  warn "Auto-generated JWT_REFRESH_SECRET – save this in a password manager!"
-  warn "  JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}"
+  record_secret "JWT_REFRESH_SECRET" "$JWT_REFRESH_SECRET"
+  warn "Auto-generated JWT_REFRESH_SECRET – recorded in ${SECRETS_FILE}"
 fi
 
 # Reject the placeholder/short secrets that shipped in .env.example — a guessable
@@ -110,8 +143,8 @@ ok "JWT secrets validated"
 # satisfy the app's policy: 8+ chars with an upper, a lower and a digit.
 if [[ -z "${SEED_ADMIN_PASSWORD:-}" ]]; then
   SEED_ADMIN_PASSWORD="$(openssl rand -base64 12 | tr -d '/+=')Aa1"
-  warn "Auto-generated SEED_ADMIN_PASSWORD – save this in a password manager!"
-  warn "  SEED_ADMIN_PASSWORD=${SEED_ADMIN_PASSWORD}"
+  record_secret "SEED_ADMIN_PASSWORD" "$SEED_ADMIN_PASSWORD"
+  warn "Auto-generated SEED_ADMIN_PASSWORD – recorded in ${SECRETS_FILE}"
   warn "  (used only by 'npm run seed' when admin@bep.org does not exist yet)"
 fi
 
@@ -120,8 +153,8 @@ fi
 # other's artifacts. Only relevant while S3 credentials are unset (local mode).
 if [[ -z "${UPLOAD_URL_SECRET:-}" ]]; then
   UPLOAD_URL_SECRET=$(openssl rand -hex 64)
-  warn "Auto-generated UPLOAD_URL_SECRET – save this in a password manager!"
-  warn "  UPLOAD_URL_SECRET=${UPLOAD_URL_SECRET}"
+  record_secret "UPLOAD_URL_SECRET" "$UPLOAD_URL_SECRET"
+  warn "Auto-generated UPLOAD_URL_SECRET – recorded in ${SECRETS_FILE}"
 fi
 
 # If no repo URL and code is not present, ask
@@ -202,7 +235,9 @@ else
       "Either:\n" \
       "  a) Set REPO_URL=https://github.com/your/repo.git and re-run, or\n" \
       "  b) Upload the project to ${APP_DIR} first:\n" \
-      "       rsync -av --exclude node_modules --exclude .next ./SE360/ root@<droplet-ip>:${APP_DIR}/"
+      "       rsync -av --exclude node_modules --exclude .next --exclude .git \\\n" \
+      "             --exclude .env --exclude '.env.*' ./SE360/ root@<droplet-ip>:${APP_DIR}/\n" \
+      "     NEVER rsync your dev .env files — they may hold production credentials."
 fi
 
 chown -R "$APP_USER":"$APP_USER" "$APP_DIR"
@@ -233,8 +268,8 @@ DB_DATABASE=${DB_DATABASE}
 DB_SCHEMA=${DB_SCHEMA}
 DB_SSL=${DB_SSL}
 # Secure by default: TLS without certificate validation is still MITM-able.
-# DigitalOcean managed DBs need this set to false (their CA is not in the
-# default trust store). Set to true only when your host trusts the DB CA.
+# The repo ships the provider CA (DB_CA_CERT below), so full validation is on.
+# Only set to false for hosts whose CA chain is not trusted yet.
 DB_SSL_REJECT_UNAUTHORIZED=${DB_SSL_REJECT_UNAUTHORIZED}
 # Path to the CA certificate file (relative to backend/). Required when
 # DB_SSL=true and the DB provider uses a self-signed CA.
@@ -906,7 +941,7 @@ echo -e "    Test with:  certbot renew --dry-run"
 echo ""
 echo -e "  ${BOLD}Seeding${NC}: roles, permissions and admin@bep.org were seeded automatically."
 echo -e "    Login: admin@bep.org"
-echo -e "    ${YELLOW}The seed admin password was printed above during secret collection.${NC}"
+echo -e "    ${YELLOW}The seed admin password is in ${SECRETS_FILE} (root-only, chmod 600).${NC}"
 echo -e "    ${YELLOW}Change this password immediately after the first login.${NC}"
 echo ""
 echo -e "  ${BOLD}Database maintenance${NC} (dev deps are pruned – use the compiled scripts):"

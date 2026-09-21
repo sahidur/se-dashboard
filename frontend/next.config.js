@@ -13,6 +13,7 @@ const nextConfig = {
   },
   async headers() {
     const isDev = process.env.NODE_ENV !== 'production';
+    void isDev;
 
     return [
       {
@@ -34,35 +35,10 @@ const nextConfig = {
             key: 'Strict-Transport-Security',
             value: 'max-age=31536000; includeSubDomains',
           },
-          // Content Security Policy
-          {
-            key: 'Content-Security-Policy',
-            value: [
-              "default-src 'self'",
-              // 'unsafe-eval' is required in dev mode for Next.js Fast Refresh/HMR
-              // (webpack eval-source-maps). Without it, React event handlers can
-              // silently fail to attach, causing forms to fall back to native
-              // browser submission (full page reload, credentials leaked in URL).
-              // It is NOT included in production builds.
-              isDev
-                ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
-                : "script-src 'self' 'unsafe-inline'",
-              "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: https://*.digitaloceanspaces.com",
-              "font-src 'self'",
-              // Dev needs localhost API + HMR websocket; production only the
-              // real API/storage origins.
-              "connect-src 'self' https://*.digitaloceanspaces.com" +
-                (isDev
-                  ? ' http://localhost:4000 ws://localhost:3000'
-                  : ` ${process.env.NEXT_PUBLIC_API_URL || ''}`),
-              "frame-ancestors 'none'",
-              "object-src 'none'",
-              "base-uri 'self'",
-              "form-action 'self'",
-              "upgrade-insecure-requests",
-            ].join('; '),
-          },
+          // NOTE: the Content-Security-Policy header is set by src/proxy.ts
+          // (nonce-based, per-request). Setting it here as well would emit TWO
+          // CSP headers and browsers enforce their intersection, which breaks
+          // the nonce. Keep the CSP in proxy.ts only.
         ],
       },
     ];
