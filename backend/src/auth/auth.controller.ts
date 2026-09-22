@@ -150,6 +150,10 @@ export class AuthController {
     @CurrentUser('id') userId: string,
     @Body() body: VerifyRegistrationDto,
   ) {
+    // Step-up auth: the session alone is not enough to add a passkey —
+    // require the account password so a hijacked access token cannot enrol
+    // an attacker credential that would survive password changes.
+    await this.authService.verifyUserPassword(userId, body.password);
     return this.webAuthnService.verifyRegistration(
       userId,
       body.response,

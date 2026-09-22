@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Save, CheckCircle2, AlertCircle, CalendarDays, School,
@@ -19,6 +19,7 @@ import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import api, { getErrorMessage } from '@/lib/api';
 import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
+import { getFeeFieldsForCategory, SCHOOL_CATEGORY_LABELS } from '@/components/data-collection/school-category-fields';
 import type { DcSchool, DcRevenueMonthlyRecord } from '@/types';
 
 /* ─── Constants ─────────────────────────────────── */
@@ -29,12 +30,6 @@ const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
-
-const SCHOOL_CATEGORY_LABELS: Record<string, string> = {
-  brac_academy: 'BRAC Academy',
-  brac_primary: 'BRAC Primary',
-  brac_secondary: 'BRAC Secondary',
-};
 
 function calcPct(target: number, achievement: number): number {
   if (!target) return 0;
@@ -62,15 +57,16 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
   const [school, setSchool] = useState<DcSchool | null>(null);
   const [academicYear, setAcademicYear] = useState('');
   const [month, setMonth] = useState('');
-  const [tuitionFeeTarget, setTuitionFeeTarget] = useState('');
-  const [tuitionFeeAchievement, setTuitionFeeAchievement] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [records, setRecords] = useState<DcRevenueMonthlyRecord[]>([]);
   const [loadingRecords, setLoadingRecords] = useState(true);
-  const draft = useFormDraft<{ academicYear: string; month: string; tuitionFeeTarget: string; tuitionFeeAchievement: string }>(`revenue-monthly-${mode}`, schoolId);
+  // Fee target/achievement values keyed by `${feeKey}Target` / `${feeKey}Achievement`;
+  // kept as strings so inputs render blank instead of a default "0".
+  const [form, setForm] = useState<Record<string, string>>({});
+  const draft = useFormDraft<{ academicYear: string; month: string; form: Record<string, string> }>(`revenue-monthly-${mode}`, schoolId);
   const draftAppliedRef = useRef(false);
   const skipPrefillRef = useRef(false);
   const [tab, setTab] = useState<'entry' | 'data'>('entry');
@@ -85,6 +81,22 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
   const accentClasses = mode === 'budget'
     ? { bar: 'from-orange-400 to-amber-500', btn: 'bg-orange-500 hover:bg-orange-600', badgeBase: 'bg-orange-100 text-orange-700' }
     : { bar: 'from-yellow-400 to-yellow-500', btn: 'bg-yellow-500 hover:bg-yellow-600', badgeBase: 'bg-yellow-100 text-yellow-700' };
+
+  // Fee fields resolved from the school's category (same logic as Fee
+  // Structure); unknown/missing category falls back to all fee fields.
+  const feeRows = useMemo(() => getFeeFieldsForCategory(school?.schoolCategory), [school?.schoolCategory]);
+  const feeKeys = useMemo(() => feeRows.map((f) => f.key), [feeRows]);
+
+  const blankForm = useCallback((): Record<string, string> => {
+    const f: Record<string, string> = {};
+    feeKeys.forEach((k) => {
+      f[`${k}Target`] = '';
+      f[`${k}Achievement`] = '';
+    });
+    return f;
+  }, [feeKeys]);
+
+  const setField = (k: string, v: string) => setForm((prev) => ({ ...prev, [k]: v }));
 
   const showToast = useCallback((type: 'success' | 'error', msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -137,15 +149,17 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
       const existing = records.find(
         (r) => Number(r.academicYear) === Number(academicYear) && r.month === month,
       );
-      if (existing) {
-        setTuitionFeeTarget(existing.tuitionFeeTarget != null ? String(existing.tuitionFeeTarget) : '');
-        setTuitionFeeAchievement(existing.tuitionFeeAchievement != null ? String(existing.tuitionFeeAchievement) : '');
-      } else {
-        setTuitionFeeTarget('');
-        setTuitionFeeAchievement('');
-      }
+      const rec = existing as unknown as Record<string, unknown> | undefined;
+      const next: Record<string, string> = {};
+      feeKeys.forEach((k) => {
+        const t = rec?.[`${k}Target`];
+        const a = rec?.[`${k}Achievement`];
+        next[`${k}Target`] = t != null && t !== '' ? String(t) : '';
+        next[`${k}Achievement`] = a != null && a !== '' ? String(a) : '';
+      });
+      setForm(next);
     }
-  }, [academicYear, month, records]);
+  }, [academicYear, month, records, feeKeys]);
 
   // Overlay the user's private draft (if any) once records have loaded.
   useEffect(() => {
@@ -156,30 +170,34 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
         draftAppliedRef.current = true;
         skipPrefillRef.current = true;
         setAcademicYear(d.academicYear ?? '');
-        setMonth(d.month);
-        setTuitionFeeTarget(d.tuitionFeeTarget != null && d.tuitionFeeTarget !== '' ? String(d.tuitionFeeTarget) : '');
-        setTuitionFeeAchievement(d.tuitionFeeAchievement != null && d.tuitionFeeAchievement !== '' ? String(d.tuitionFeeAchievement) : '');
+        setMonth(d.month ?? '');
+        const normalized: Record<string, string> = {};
+        feeKeys.forEach((k) => {
+          const t = d.form?.[`${k}Target`];
+          const a = d.form?.[`${k}Achievement`];
+          normalized[`${k}Target`] = t != null && t !== '' ? String(t) : '';
+          normalized[`${k}Achievement`] = a != null && a !== '' ? String(a) : '';
+        });
+        setForm(normalized);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadingRecords]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingRecords, feeKeys]);
 
   const handleSaveDraft = async () => {
-    await draft.saveDraft({ academicYear, month, tuitionFeeTarget, tuitionFeeAchievement });
+    await draft.saveDraft({ academicYear, month, form });
   };
 
   const handleClearDraft = async () => {
     await draft.clearDraft();
-    setTuitionFeeTarget('');
-    setTuitionFeeAchievement('');
+    setForm(blankForm());
   };
 
   // Changing the academic year re-scopes the month selection, so reset it.
   const handleYearChange = (y: string) => {
     setAcademicYear(y);
     setMonth('');
-    setTuitionFeeTarget('');
-    setTuitionFeeAchievement('');
+    setForm(blankForm());
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -190,15 +208,16 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
     setSaving(true);
     setError('');
     try {
+      const numericForm: Record<string, number> = {};
+      Object.entries(form).forEach(([k, v]) => { numericForm[k] = toNum(v); });
       await api.post(endpoint, {
         schoolId,
         academicYear: Number(academicYear),
         month,
-        tuitionFeeTarget: toNum(tuitionFeeTarget),
-        tuitionFeeAchievement: toNum(tuitionFeeAchievement),
+        ...numericForm,
       });
       await draft.clearDraft();
-      showToast('success', `Monthly tuition revenue saved for ${month}!`);
+      showToast('success', `Monthly revenue saved for ${month}!`);
       await loadRecords();
     } catch (err: unknown) {
       const anyErr = err as { response?: { data?: { message?: string } } };
@@ -217,12 +236,24 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
       hour: '2-digit', minute: '2-digit', hour12: true,
     });
 
-  const numTarget = toNum(tuitionFeeTarget);
-  const numAchievement = toNum(tuitionFeeAchievement);
-  const livePct = calcPct(numTarget, numAchievement);
-  const livePctLabel = numTarget > 0 ? livePct.toFixed(1) + '%' : '—';
-  const liveDeficit = numTarget - numAchievement;
-  const pctColor = livePct >= 100 ? 'text-emerald-600' : livePct >= 70 ? 'text-amber-600' : numTarget > 0 ? 'text-red-500' : 'text-gray-400';
+  // Totals across the category's fee fields.
+  const totalTarget = feeKeys.reduce((s, k) => s + (Number(form[`${k}Target`]) || 0), 0);
+  const totalAchievement = feeKeys.reduce((s, k) => s + (Number(form[`${k}Achievement`]) || 0), 0);
+  const livePct = calcPct(totalTarget, totalAchievement);
+  const livePctLabel = totalTarget > 0 ? livePct.toFixed(1) + '%' : '—';
+  const liveDeficit = totalTarget - totalAchievement;
+  const pctColor = livePct >= 100 ? 'text-emerald-600' : livePct >= 70 ? 'text-amber-600' : totalTarget > 0 ? 'text-red-500' : 'text-gray-400';
+
+  const recordTotals = useCallback((r: DcRevenueMonthlyRecord) => {
+    const rec = r as unknown as Record<string, unknown>;
+    let t = 0;
+    let a = 0;
+    feeKeys.forEach((k) => {
+      t += Number(rec[`${k}Target`]) || 0;
+      a += Number(rec[`${k}Achievement`]) || 0;
+    });
+    return { target: t, achievement: a };
+  }, [feeKeys]);
 
   const yearRecords = academicYear
     ? records.filter((r) => Number(r.academicYear) === Number(academicYear))
@@ -231,25 +262,24 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
   const sortedRecords = [...records].sort(
     (a, b) => (Number(b.academicYear) - Number(a.academicYear)) || (MONTHS.indexOf(a.month) - MONTHS.indexOf(b.month)),
   );
-  const totalTarget = records.reduce((s, r) => s + Number(r.tuitionFeeTarget), 0);
-  const totalAchievement = records.reduce((s, r) => s + Number(r.tuitionFeeAchievement), 0);
-  const totalPct = calcPct(totalTarget, totalAchievement);
 
   const revenueColumns: TableColumn<DcRevenueMonthlyRecord>[] = [
     { key: 'academicYear', header: 'Academic Year', sortable: true },
     { key: 'month', header: 'Month', render: (r) => (
       <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${accentClasses.badgeBase}`}>{r.month}</span>
     )},
-    { key: 'tuitionFeeTarget', header: `${mode === 'budget' ? 'Planned' : 'Actual'} Revenue Target (BDT)`, className: 'text-right font-mono', render: (r) => <span className="text-sm">{formatAmount(Number(r.tuitionFeeTarget))}</span> },
-    { key: 'tuitionFeeAchievement', header: 'Actual Collected Revenue (BDT)', className: 'text-right font-mono', render: (r) => <span className="text-sm">{formatAmount(Number(r.tuitionFeeAchievement))}</span> },
+    { key: 'totalTarget', header: `${mode === 'budget' ? 'Planned' : 'Actual'} Revenue Target (BDT)`, className: 'text-right font-mono', render: (r) => <span className="text-sm">{formatAmount(recordTotals(r).target)}</span> },
+    { key: 'totalAchievement', header: 'Actual Collected Revenue (BDT)', className: 'text-right font-mono', render: (r) => <span className="text-sm">{formatAmount(recordTotals(r).achievement)}</span> },
     { key: 'deficit', header: `${mode === 'budget' ? 'Revenue Deficit (BDT)' : 'Outstanding Dues %'}`, className: 'text-right font-mono', render: (r) => {
-      const deficit = Number(r.tuitionFeeTarget) - Number(r.tuitionFeeAchievement);
+      const { target, achievement } = recordTotals(r);
+      const deficit = target - achievement;
       return <span className={`text-sm ${deficit > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-        {mode === 'budget' ? formatAmount(deficit) : calcDuesPct(Number(r.tuitionFeeTarget), Number(r.tuitionFeeAchievement))}
+        {mode === 'budget' ? formatAmount(deficit) : calcDuesPct(target, achievement)}
       </span>;
     }},
     { key: 'pctCollection', header: '% Collection', className: 'text-center', render: (r) => {
-      const pct = calcPct(Number(r.tuitionFeeTarget), Number(r.tuitionFeeAchievement));
+      const { target, achievement } = recordTotals(r);
+      const pct = calcPct(target, achievement);
       const pctColor = pct >= 100 ? 'text-emerald-600' : pct >= 70 ? 'text-amber-600' : 'text-red-500';
       const barColor = pct >= 100 ? 'bg-emerald-500' : pct >= 70 ? 'bg-amber-500' : 'bg-red-400';
       return (
@@ -297,6 +327,7 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
               <h2 className="text-lg font-bold text-gray-900 truncate">{school.name}</h2>
               <div className="flex flex-wrap gap-3 mt-1">
                 <span className="flex items-center gap-1 text-xs text-gray-500"><School size={12} /> {school.code}</span>
+                {school.schoolCategory && <span className="flex items-center gap-1 text-xs text-gray-500"><School size={12} /> {SCHOOL_CATEGORY_LABELS[school.schoolCategory] ?? school.schoolCategory}</span>}
                 {school.district && <span className="flex items-center gap-1 text-xs text-gray-500"><MapPin size={12} /> {school.district}</span>}
               </div>
             </div>
@@ -330,8 +361,11 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
         <Card className="overflow-hidden border-0 shadow-sm">
           <CardHeader className="pb-3 pt-5 px-5">
             <CardTitle className="text-base font-semibold text-gray-800">
-              {mode === 'budget' ? 'Planned' : 'Actual'} Revenue Collection - Monthly (Tuition Fee)
+              {mode === 'budget' ? 'Planned' : 'Actual'} Revenue Collection - Monthly
             </CardTitle>
+            <p className="text-xs text-gray-400 mt-1">
+              Enter monthly targets per fee area. The system will auto-calculate deficit and % collection.
+            </p>
           </CardHeader>
           <CardContent className="px-5 pb-5 space-y-5">
             {error && (
@@ -383,54 +417,92 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
               </div>
             </div>
 
-            {/* Value inputs */}
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              <div>
-                <Label className="mb-1.5 block text-xs font-medium text-gray-600">{mode === 'budget' ? 'Planned' : 'Actual'} Revenue Target (Monthly) - BDT</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={tuitionFeeTarget}
-                  onChange={(e) => setTuitionFeeTarget(e.target.value)}
-                  placeholder="BDT"
-                  disabled={!academicYear || !month}
-                />
-              </div>
-              <div>
-                <Label className="mb-1.5 block text-xs font-medium text-gray-600">Actual Collected Revenue (Monthly) - BDT</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={tuitionFeeAchievement}
-                  onChange={(e) => setTuitionFeeAchievement(e.target.value)}
-                  placeholder="BDT"
-                  disabled={!academicYear || !month}
-                />
-              </div>
-              <div>
-                <Label className="mb-1.5 block text-xs font-medium text-gray-600">{mode === 'budget' ? 'Revenue Deficit (BDT)' : 'Outstanding Dues %'}</Label>
-                <div className="flex h-10 items-center gap-2 rounded-lg border border-gray-100 bg-gray-50/70 px-3">
-                  <span className={`font-mono text-sm font-bold ${liveDeficit > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-                    {mode === 'budget' ? formatAmount(liveDeficit) : calcDuesPct(numTarget, numAchievement)}
-                  </span>
-                  <span className="text-xs text-gray-400">(auto)</span>
-                </div>
-              </div>
-              <div>
-                <Label className="mb-1.5 block text-xs font-medium text-gray-600">% of Revenue Collection</Label>
-                <div className="flex h-10 items-center gap-2 rounded-lg border border-gray-100 bg-gray-50/70 px-3">
-                  <span className={`text-xl font-extrabold ${pctColor}`}>{livePctLabel}</span>
-                  <span className="text-xs text-gray-400">(auto-calculated)</span>
-                </div>
-                {numTarget > 0 && (
-                  <div className="mt-1.5 h-2 w-full rounded-full bg-gray-100">
-                    <div
-                      className={`h-2 rounded-full transition-all ${livePct >= 100 ? 'bg-emerald-500' : livePct >= 70 ? 'bg-amber-500' : 'bg-red-400'}`}
-                      style={{ width: `${Math.min(livePct, 100)}%` }}
-                    />
-                  </div>
-                )}
-              </div>
+            {/* Fee rows */}
+            <div className="overflow-x-auto rounded-xl border border-gray-100">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50/70 border-b border-gray-100">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 w-48">Area of Revenue Collection</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{mode === 'budget' ? 'Planned' : 'Actual'} Revenue Target (Monthly) - BDT</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Actual Collected Revenue (Monthly) - BDT</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 w-44">{mode === 'budget' ? 'Revenue Deficit (BDT)' : 'Outstanding Dues %'}</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase text-gray-500 w-28">% Collection</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {feeRows.map(({ key, label, hint }, idx) => {
+                    const target = Number(form[`${key}Target`]) || 0;
+                    const achievement = Number(form[`${key}Achievement`]) || 0;
+                    const deficit = target - achievement;
+                    const pct = target > 0 ? (achievement / target) * 100 : 0;
+                    const pctLabel = target > 0 ? (Math.min((achievement / target) * 100, 9999.99)).toFixed(1) + '%' : '—';
+                    const rowPctColor = pct >= 100 ? 'text-emerald-600' : pct >= 70 ? 'text-amber-600' : target > 0 ? 'text-red-500' : 'text-gray-400';
+                    return (
+                      <tr key={key} className={idx % 2 === 0 ? 'bg-white' : `bg-${accentColor}-50/20`}>
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-gray-800 text-sm">{label}</p>
+                          {hint && <p className="text-[10px] text-gray-400">{hint}</p>}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Input
+                            type="number"
+                            min={0}
+                            value={form[`${key}Target`] ?? ''}
+                            onChange={(e) => setField(`${key}Target`, e.target.value)}
+                            placeholder="BDT"
+                            className="max-w-[180px]"
+                            disabled={!academicYear || !month}
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <Input
+                            type="number"
+                            min={0}
+                            value={form[`${key}Achievement`] ?? ''}
+                            onChange={(e) => setField(`${key}Achievement`, e.target.value)}
+                            placeholder="BDT"
+                            className="max-w-[180px]"
+                            disabled={!academicYear || !month}
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex h-10 max-w-[180px] items-center rounded-lg border border-gray-100 bg-gray-50/70 px-3">
+                            <span className={`font-mono text-sm font-semibold ${deficit > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                              {mode === 'budget' ? formatAmount(deficit) : calcDuesPct(target, achievement)}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="space-y-1">
+                            <p className={`text-sm font-bold ${rowPctColor}`}>{pctLabel}</p>
+                            {target > 0 && (
+                              <div className="h-1.5 w-full rounded-full bg-gray-100">
+                                <div
+                                  className={`h-1.5 rounded-full transition-all ${pct >= 100 ? 'bg-emerald-500' : pct >= 70 ? 'bg-amber-500' : 'bg-red-400'}`}
+                                  style={{ width: `${Math.min(pct, 100)}%` }}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className={`border-t-2 border-${accentColor}-200 bg-${accentColor}-50/40 font-bold`}>
+                    <td className="px-4 py-3 text-sm text-gray-700">Total</td>
+                    <td className="px-4 py-3 text-sm font-mono text-gray-800">{formatAmount(totalTarget)}</td>
+                    <td className="px-4 py-3 text-sm font-mono text-gray-800">{formatAmount(totalAchievement)}</td>
+                    <td className={`px-4 py-3 text-sm font-mono ${totalTarget - totalAchievement > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                      {mode === 'budget' ? formatAmount(totalTarget - totalAchievement) : calcDuesPct(totalTarget, totalAchievement)}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`text-sm font-bold ${pctColor}`}>{livePctLabel}</span>
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
 
             <div className="pt-2">
@@ -502,21 +574,25 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
               filename: mode === 'budget' ? 'revenue-budget-monthly' : 'revenue-actual-monthly',
               headers: [
                 'Academic Year', 'Month',
-                `${mode === 'budget' ? 'Planned' : 'Actual'} Revenue Target (BDT)`,
-                'Actual Collected Revenue (BDT)',
+                ...feeRows.flatMap(({ label }) => [`${label} - Target (BDT)`, `${label} - Collected (BDT)`]),
+                'Total Target (BDT)', 'Total Collected (BDT)',
                 mode === 'budget' ? 'Revenue Deficit (BDT)' : 'Outstanding Dues %',
                 '% Collection', 'Updated',
               ],
               rows: sortedRecords.map((r) => {
-                const target = Number(r.tuitionFeeTarget);
-                const achieved = Number(r.tuitionFeeAchievement);
+                const rec = r as unknown as Record<string, unknown>;
+                const { target, achievement } = recordTotals(r);
                 return [
                   r.academicYear,
                   r.month,
+                  ...feeRows.map(({ key }) => [
+                    Number(rec[`${key}Target`]) || 0,
+                    Number(rec[`${key}Achievement`]) || 0,
+                  ]).flat(),
                   target,
-                  achieved,
-                  mode === 'budget' ? target - achieved : calcDuesPct(target, achieved),
-                  `${calcPct(target, achieved).toFixed(1)}%`,
+                  achievement,
+                  mode === 'budget' ? target - achievement : calcDuesPct(target, achievement),
+                  `${calcPct(target, achievement).toFixed(1)}%`,
                   r.updatedAt ? formatDateTime(r.updatedAt) : '',
                 ];
               }),

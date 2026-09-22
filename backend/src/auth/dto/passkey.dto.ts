@@ -1,11 +1,20 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsObject, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 /** Verify a passkey registration (enrolment) ceremony. */
 export class VerifyRegistrationDto {
   @ApiProperty({ description: 'The RegistrationResponseJSON from the browser' })
   @IsObject()
   response: any;
+
+  @ApiProperty({
+    description:
+      'Current account password — re-verification so a hijacked session ' +
+      'cannot enrol an attacker passkey for persistence',
+  })
+  @IsString()
+  @MinLength(1)
+  password: string;
 
   @ApiPropertyOptional({ description: 'Friendly label for the passkey' })
   @IsOptional()

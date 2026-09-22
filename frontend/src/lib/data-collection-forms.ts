@@ -68,7 +68,7 @@ export const DC_FORM_RESOURCES: DcFormResource[] = [
     resource: 'revenue-budget-monthly',
     label: 'Planned Revenue - Monthly',
     group: 'Revenue & Fees',
-    description: 'Monthly tuition fee budget tracking with % collection achieved',
+    description: 'Monthly fee-wise revenue budget tracking with % collection achieved',
   },
   {
     resource: 'revenue-actual-total',

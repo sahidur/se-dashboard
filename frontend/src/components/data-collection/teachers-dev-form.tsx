@@ -46,6 +46,7 @@ interface FormState {
   subjectBasedTraining: string;
   leadershipTraining: string;
   others: string;
+  othersTrainingName: string;
   teacherDropoutRate: string;
   headTeacherDropoutRate: string;
   headTeacherLeadership: HeadTeacherLeadership;
@@ -65,6 +66,7 @@ const BLANK_FORM: FormState = {
   subjectBasedTraining: '',
   leadershipTraining: '',
   others: '',
+  othersTrainingName: '',
   teacherDropoutRate: '',
   headTeacherDropoutRate: '',
   headTeacherLeadership: 'strong',
@@ -76,12 +78,12 @@ const toNum = (v: unknown) => {
 };
 
 const DEV_FIELDS: { key: keyof Omit<FormState, 'headTeacherLeadership'>; label: string }[] = [
-  { key: 'onlineRefresher',     label: 'Online Refresher' },
-  { key: 'offlineRefresher',    label: 'Offline Refresher' },
-  { key: 'developmentForum',    label: 'Development Forum' },
-  { key: 'basicTraining',       label: 'Basic Training' },
-  { key: 'subjectBasedTraining', label: 'Subject-Based Training' },
-  { key: 'leadershipTraining',  label: 'Leadership Training' },
+  { key: 'onlineRefresher',     label: 'Number of Online Refresher' },
+  { key: 'offlineRefresher',    label: 'Number of Offline Refresher' },
+  { key: 'developmentForum',    label: 'Number of Development Forum' },
+  { key: 'basicTraining',       label: 'Number of Teacher Receive Basic Training' },
+  { key: 'subjectBasedTraining', label: 'Number of Teacher Received Subject-Based Training' },
+  { key: 'leadershipTraining',  label: 'Number of Teacher Received Leadership Training' },
   { key: 'others',              label: 'Others' },
 ];
 
@@ -192,6 +194,7 @@ export function TeachersDevForm({ schoolId }: Props) {
           subjectBasedTraining: existing.subjectBasedTraining != null ? String(existing.subjectBasedTraining) : '',
           leadershipTraining:  existing.leadershipTraining != null ? String(existing.leadershipTraining) : '',
           others:              existing.others != null ? String(existing.others) : '',
+          othersTrainingName:  existing.othersTrainingName ?? '',
           teacherDropoutRate:      existing.teacherDropoutRate != null ? String(existing.teacherDropoutRate) : '',
           headTeacherDropoutRate:  existing.headTeacherDropoutRate != null ? String(existing.headTeacherDropoutRate) : '',
           headTeacherLeadership:   resolveLeadership(existing),
@@ -266,6 +269,10 @@ export function TeachersDevForm({ schoolId }: Props) {
     if (!academicYear) { setError('Please select an academic year.'); return; }
     if (!isValidAcademicYear(academicYear)) { setError('Please select a valid academic year (1970-2100).'); return; }
     if (!month) { setError('Please select a month.'); return; }
+    if (toNum(form.others) > 0 && !form.othersTrainingName.trim()) {
+      setError('Please write the name of the training in the Others field.');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
@@ -280,6 +287,7 @@ export function TeachersDevForm({ schoolId }: Props) {
         subjectBasedTraining: toNum(form.subjectBasedTraining),
         leadershipTraining: toNum(form.leadershipTraining),
         others: toNum(form.others),
+        othersTrainingName: form.othersTrainingName.trim() || undefined,
         teacherDropoutRate: toNum(form.teacherDropoutRate),
         headTeacherDropoutRate: toNum(form.headTeacherDropoutRate),
         headTeacherLeadership: form.headTeacherLeadership,
@@ -317,6 +325,9 @@ export function TeachersDevForm({ schoolId }: Props) {
     { key: 'subjectBasedTraining', header: 'Subject Train.', className: 'text-right font-mono' },
     { key: 'leadershipTraining', header: 'Leadership', className: 'text-right font-mono' },
     { key: 'others', header: 'Others', className: 'text-right font-mono' },
+    { key: 'othersTrainingName', header: 'Others (Training Name)', render: (r) => (
+      <span className="text-xs text-gray-600 whitespace-nowrap">{r.othersTrainingName || '—'}</span>
+    )},
     { key: 'total', header: 'Total', className: 'text-right', render: (r) => {
       const total = r.onlineRefresher + r.offlineRefresher + r.developmentForum +
         r.basicTraining + r.subjectBasedTraining + r.leadershipTraining + r.others;
@@ -505,6 +516,23 @@ export function TeachersDevForm({ schoolId }: Props) {
                   ))}
                 </div>
 
+                {/* Others training name — shown when Others count is entered */}
+                {toNum(form.others) > 0 && (
+                  <div>
+                    <Label className="mb-1.5 block text-xs font-medium text-gray-600">
+                      Others — Training Name <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      type="text"
+                      value={form.othersTrainingName}
+                      onChange={(e) => setField('othersTrainingName', e.target.value)}
+                      placeholder="Write the name of the training..."
+                      maxLength={255}
+                      disabled={!academicYear || !month}
+                    />
+                  </div>
+                )}
+
                 {/* Retention / Leadership metrics (feed the Status Breakdown grades) */}
                 <div className="rounded-xl border border-rose-100 bg-rose-50/40 p-4">
                   <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-rose-700/80">
@@ -628,7 +656,7 @@ export function TeachersDevForm({ schoolId }: Props) {
           <ExportButtons
             payload={{
               filename: 'teachers-development',
-              headers: ['Academic Year', 'Month', 'Online Ref.', 'Offline Ref.', 'Dev. Forum', 'Basic Train.', 'Subject Train.', 'Leadership', 'Others', 'Total', 'Updated At'],
+              headers: ['Academic Year', 'Month', 'Online Ref.', 'Offline Ref.', 'Dev. Forum', 'Basic Train.', 'Subject Train.', 'Leadership', 'Others', 'Others (Training Name)', 'Total', 'Updated At'],
               rows: allRecords.map((r) => [
                 r.academicYear,
                 r.month,
@@ -639,6 +667,7 @@ export function TeachersDevForm({ schoolId }: Props) {
                 r.subjectBasedTraining,
                 r.leadershipTraining,
                 r.others,
+                r.othersTrainingName || '',
                 r.onlineRefresher + r.offlineRefresher + r.developmentForum
                   + r.basicTraining + r.subjectBasedTraining + r.leadershipTraining + r.others,
                 r.updatedAt ? formatDateTime(r.updatedAt) : '',

@@ -72,6 +72,50 @@ export class DcFeeStructure {
   @Column({ name: 'transport_fee', type: 'decimal', precision: 12, scale: 2, default: 0 })
   transportFee: number;
 
+  /** BRAC Primary: exercise/book list charge */
+  @Column({ name: 'exercise_book_fee', type: 'decimal', precision: 12, scale: 2, default: 0 })
+  exerciseBookFee: number;
+
+  /** BRAC Secondary: laboratory / library charge */
+  @Column({ name: 'lab_library_fee', type: 'decimal', precision: 12, scale: 2, default: 0 })
+  labLibraryFee: number;
+
+  /** BRAC Secondary: project / club activity charge */
+  @Column({ name: 'project_club_fee', type: 'decimal', precision: 12, scale: 2, default: 0 })
+  projectClubFee: number;
+
+  /** BRAC Secondary: SSC board registration charge */
+  @Column({ name: 'ssc_registration_fee', type: 'decimal', precision: 12, scale: 2, default: 0 })
+  sscRegistrationFee: number;
+
+  /** BRAC Secondary: boat fare charge */
+  @Column({ name: 'boat_fee', type: 'decimal', precision: 12, scale: 2, default: 0 })
+  boatFee: number;
+
+  /** BRAC Academy: terminal assessment 1 */
+  @Column({ name: 'terminal_assessment_1_fee', type: 'decimal', precision: 12, scale: 2, default: 0 })
+  terminalAssessment1Fee: number;
+
+  /** BRAC Academy: terminal assessment 2 */
+  @Column({ name: 'terminal_assessment_2_fee', type: 'decimal', precision: 12, scale: 2, default: 0 })
+  terminalAssessment2Fee: number;
+
+  /** BRAC Academy: formative assessment */
+  @Column({ name: 'formative_assessment_fee', type: 'decimal', precision: 12, scale: 2, default: 0 })
+  formativeAssessmentFee: number;
+
+  /** BRAC Academy: classroom library */
+  @Column({ name: 'classroom_library_fee', type: 'decimal', precision: 12, scale: 2, default: 0 })
+  classroomLibraryFee: number;
+
+  /** BRAC Academy: school event */
+  @Column({ name: 'event_fee', type: 'decimal', precision: 12, scale: 2, default: 0 })
+  eventFee: number;
+
+  /** BRAC Academy: play based activity materials */
+  @Column({ name: 'play_activity_fee', type: 'decimal', precision: 12, scale: 2, default: 0 })
+  playActivityFee: number;
+
   @Column({ name: 'created_by_id', nullable: true })
   createdById: string;
 

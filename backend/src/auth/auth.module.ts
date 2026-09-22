@@ -26,7 +26,9 @@ import { UsersModule } from '../users/users.module';
         return {
           secret,
           signOptions: {
-            expiresIn: configService.get('JWT_EXPIRES_IN', '6h'),
+            // Matches the default in AuthService.generateTokens (15m access
+            // token; silently rotated via /auth/refresh).
+            expiresIn: configService.get('JWT_EXPIRES_IN', '15m'),
           },
         };
       },

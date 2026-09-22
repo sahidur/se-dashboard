@@ -177,29 +177,34 @@ const CARD_ACCENTS: Record<string, { card: string; icon: string }> = {
 };
 
 function KpiCard({
-  title, value, valueDisplay, icon: Icon, accent, href,
+  title, value, valueDisplay, icon: Icon, accent, href, compact,
 }: {
   title: string; value: number; valueDisplay?: string; icon: React.ElementType;
-  accent: keyof typeof CARD_ACCENTS; href?: string;
+  accent: keyof typeof CARD_ACCENTS; href?: string; compact?: boolean;
 }) {
   const tones = CARD_ACCENTS[accent];
+  const padSize = compact ? 'p-3 sm:p-4' : 'p-4 sm:p-5';
+  const chipSize = compact ? 'h-7 w-7 sm:h-8 sm:w-8' : 'h-8 w-8 sm:h-9 sm:w-9';
+  const iconSize = compact ? 14 : 16;
+  const titleSize = compact ? 'text-[10px] sm:text-[11px]' : 'text-[11px] sm:text-xs';
+  const valueSize = compact ? 'text-base sm:text-lg xl:text-xl' : 'text-xl sm:text-2xl lg:text-3xl';
   return (
-    <Link href={href ?? '#'} className="group block h-full">
+    <Link href={href ?? '#'} className="group block h-full min-w-0">
       <Card
-        className={`relative flex h-full flex-col overflow-hidden rounded-2xl border shadow-md shadow-gray-200/50 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${tones.card}`}
+        className={`relative flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border shadow-md shadow-gray-200/50 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${tones.card}`}
       >
-        <CardContent className="flex flex-1 flex-col p-4 sm:p-5">
-          <div className="flex items-start justify-between gap-3">
-            <p className="text-[11px] font-semibold uppercase leading-snug tracking-wide text-gray-500 sm:text-xs">
+        <CardContent className={`flex flex-1 flex-col ${padSize}`}>
+          <div className="flex min-w-0 items-start justify-between gap-2">
+            <p className={`min-w-0 font-semibold uppercase leading-tight tracking-wide text-gray-500 ${titleSize}`}>
               {title}
             </p>
             <span
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white shadow-lg transition-transform duration-300 group-hover:scale-110 ${tones.icon}`}
+              className={`flex shrink-0 items-center justify-center rounded-xl text-white shadow-lg transition-transform duration-300 group-hover:scale-110 ${tones.icon} ${chipSize}`}
             >
-              <Icon size={18} />
+              <Icon size={iconSize} />
             </span>
           </div>
-          <p className="mt-2 break-words text-2xl font-bold leading-tight tabular-nums tracking-tight text-gray-900 sm:text-3xl">
+          <p className={`mt-1.5 break-words font-bold leading-tight tabular-nums tracking-tight text-gray-900 sm:mt-2 ${valueSize}`}>
             {valueDisplay ?? <AnimatedNumber value={value} />}
           </p>
         </CardContent>
@@ -788,6 +793,8 @@ export default function ProgrammeOverviewPage() {
 
   /* Collected minus the planned (budgeted) target — negative means shortfall. */
   const revenueDeficit = (t?.actualRevenueAchievement ?? 0) - (t?.budgetRevenueTarget ?? 0);
+  /* Billed to actually-enrolled students but not yet collected; over-collection reports as zero. */
+  const outstandingDues = Math.max((t?.actualRevenueTarget ?? 0) - (t?.actualRevenueAchievement ?? 0), 0);
 
   if (loading && !data) {
     return (
@@ -903,21 +910,35 @@ export default function ProgrammeOverviewPage() {
             href={detailHref('actual-target')}
           />
           <KpiCard
-            title="Actual Revenue Achievement"
+            title="Actual Collected Revenue"
             value={t?.actualRevenueAchievement ?? 0}
             valueDisplay={fmtTaka(t?.actualRevenueAchievement ?? 0)}
             icon={Sparkles}
             accent="green"
             href={detailHref('actual-achievement')}
           />
-          <KpiCard
-            title="Revenue Deficit"
-            value={revenueDeficit}
-            valueDisplay={signedTaka(revenueDeficit)}
-            icon={AlertTriangle}
-            accent="red"
-            href={detailHref('revenue-gap')}
-          />
+          {/* Last cell split into two half-width cards (Outstanding Due + Revenue Deficit)
+              so the grid keeps the same 8-slot footprint as before. */}
+          <div className="grid h-full min-w-0 grid-cols-2 gap-3">
+            <KpiCard
+              title="Total Outstanding Due"
+              value={outstandingDues}
+              valueDisplay={fmtTaka(outstandingDues)}
+              icon={AlertTriangle}
+              accent="cyan"
+              href={detailHref('outstanding-dues')}
+              compact
+            />
+            <KpiCard
+              title="Revenue Deficit"
+              value={revenueDeficit}
+              valueDisplay={signedTaka(revenueDeficit)}
+              icon={AlertTriangle}
+              accent="red"
+              href={detailHref('revenue-gap')}
+              compact
+            />
+          </div>
         </div>
 
         {/* Category summary tables */}

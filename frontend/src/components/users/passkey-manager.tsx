@@ -101,9 +101,13 @@ export function PasskeyManager() {
     const suggested = `Passkey on ${navigator.platform || 'this device'}`;
     const name = window.prompt('Name this passkey', suggested);
     if (name === null) return; // cancelled
+    // Step-up auth: confirm the account password before enrolling so a
+    // hijacked session cannot add a passkey for persistence.
+    const password = window.prompt('Confirm your account password to continue');
+    if (password === null || !password) return; // cancelled
     try {
       setEnrolling(true);
-      await enrollPasskey(name || undefined);
+      await enrollPasskey(name || undefined, password);
       await load();
     } catch (err: any) {
       if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') {

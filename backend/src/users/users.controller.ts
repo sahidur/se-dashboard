@@ -147,8 +147,11 @@ export class UsersController {
   @Get(':id/activity')
   @Permissions({ module: 'users', action: 'read' })
   @ApiOperation({ summary: "Get a user's recent activity log" })
-  async getActivity(@Param('id', ParseUUIDPipe) id: string) {
-    return this.usersService.getActivity(id);
+  async getActivity(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') actorId: string,
+  ) {
+    return this.usersService.getActivity(id, actorId);
   }
 
   @Get(':id/schools')

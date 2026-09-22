@@ -534,6 +534,27 @@ ensure_env WEBAUTHN_RP_ID   "${DOMAIN}"
 ensure_env WEBAUTHN_RP_NAME "SE360"
 ensure_env WEBAUTHN_ORIGIN  "${DEFAULT_WEBAUTHN_ORIGIN}"
 
+# CORS origin allowlist. The backend refuses to start in production when
+# CORS_ORIGIN is missing or contains http:// origins, so reconcile it here:
+# add it if absent and upgrade any plain-HTTP entry to https://.
+ensure_env CORS_ORIGIN "https://${DOMAIN}"
+# Migrate legacy http:// CORS/WebAuthn origins to https:// (localhost entries
+# have no business on a production box and would fail the backend boot check).
+for _origin_key in CORS_ORIGIN WEBAUTHN_ORIGIN; do
+  _origin_val="$(grep -E "^${_origin_key}=" "$BACKEND_ENV_FILE" | tail -n 1 | cut -d'=' -f2- || true)"
+  if [[ -n "$_origin_val" && "$_origin_val" == http://* && "$_origin_val" != http://localhost* && "$_origin_val" != http://127.0.0.1* ]]; then
+    sed -i "s|^${_origin_key}=.*|${_origin_key}=https://${_origin_val#http://}|" "$BACKEND_ENV_FILE"
+    ok "Upgraded ${_origin_key} → https://${_origin_val#http://}"
+  fi
+  # The backend fail-fasts on http:// origins in production; surface a clear
+  # message here rather than letting systemd report an opaque boot failure.
+  _origin_val="$(grep -E "^${_origin_key}=" "$BACKEND_ENV_FILE" | tail -n 1 | cut -d'=' -f2- || true)"
+  if [[ -n "$_origin_val" && "$_origin_val" == http://* ]]; then
+    die "${_origin_key}=${_origin_val} uses plain http:// — the backend refuses to start with that in production. Set an https:// origin."
+  fi
+done
+unset _origin_key _origin_val
+
 # Without TRUST_PROXY the backend ignores X-Forwarded-For, so every request
 # looks like it came from nginx (127.0.0.1): the login throttle becomes a single
 # shared bucket for all visitors and audit logs record the wrong IP.
@@ -556,12 +577,13 @@ if ! grep -qE '^JWT_REFRESH_EXPIRES_IN=7d$' "$BACKEND_ENV_FILE"; then
   ok "Updated JWT_REFRESH_EXPIRES_IN → 7d (7-day sessions)"
 fi
 
-# Access-token session length: 6 hours. Existing env files still carry the old
-# 15m value, which would override the default baked into the code, so
-# normalise it in place.
-if ! grep -qE '^JWT_EXPIRES_IN=6h$' "$BACKEND_ENV_FILE"; then
-  sed -i 's|^JWT_EXPIRES_IN=.*|JWT_EXPIRES_IN=6h|' "$BACKEND_ENV_FILE"
-  ok "Updated JWT_EXPIRES_IN → 6h (6-hour sessions)"
+# Access-token session length: 15 minutes. The frontend silently rotates it
+# via /auth/refresh, so a stolen access token has a tiny usable window.
+# Existing env files still carry older values (6h / 15m variants), which would
+# override the default baked into the code, so normalise it in place.
+if ! grep -qE '^JWT_EXPIRES_IN=15m$' "$BACKEND_ENV_FILE"; then
+  sed -i 's|^JWT_EXPIRES_IN=.*|JWT_EXPIRES_IN=15m|' "$BACKEND_ENV_FILE"
+  ok "Updated JWT_EXPIRES_IN → 15m (short-lived access tokens, auto-refreshed)"
 fi
 
 # DB_SSL_REJECT_UNAUTHORIZED defaults to 'true' in the backend (secure by
@@ -758,6 +780,10 @@ echo -e "    · TRUST_PROXY set — login throttling and audit logs now see the 
 echo -e "    · nginx: server_tokens off, /api/auth/ 10 req/min per IP, dotfiles denied"
 echo -e "    · nginx: /api/uploads/ served with nosniff + 'default-src none; sandbox' CSP"
 echo -e "    · JWT secrets validated (>= 32 chars, no placeholders)"
+echo -e "    · 15-minute access tokens (auto-refreshed) + passwordChangedAt token version:"
+echo -e "      password changes / admin resets instantly invalidate old access tokens"
+echo -e "    · Passkey enrolment requires password re-verification"
+echo -e "    · CORS/WebAuthn origins enforced as https:// (backend fail-fast honoured)"
 echo -e "    · Cookie sessions (httpOnly se360_at/se360_rt) — no tokens in localStorage"
 UPLOAD_MODE="$(grep -E '^UPLOADS_ALLOW_UNSIGNED=' "$BACKEND_ENV_FILE" | tail -n 1 | cut -d'=' -f2 || true)"
 if [[ "$UPLOAD_MODE" == "false" ]]; then

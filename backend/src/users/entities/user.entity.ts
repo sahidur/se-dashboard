@@ -82,6 +82,17 @@ export class User {
   @Exclude()
   refreshToken: string | null;
 
+  /**
+   * Token-version anchor: set every time the password is set or changed
+   * (create, change-password, admin reset). The value is signed into every
+   * access token (`pwv` claim) and re-checked against the DB by JwtStrategy
+   * on each request, so access tokens issued BEFORE a password change or
+   * admin reset stop working immediately instead of surviving up to their
+   * full TTL (account-takeover mitigation).
+   */
+  @Column({ name: 'password_changed_at', type: 'timestamptz', nullable: true })
+  passwordChangedAt: Date | null;
+
   @ManyToMany(() => Role, (role) => role.users, { eager: true })
   @JoinTable({
     name: 'user_roles',

@@ -25,7 +25,7 @@ const SUB_FORMS = [
   {
     key: 'fee-structure-primary',
     slug: 'fee-structure-primary',
-    label: 'Fee Structure (Primary)',
+    label: 'Fee Structure',
     description: 'Monthly fee data per grade: tuition, session, sports, transport and other charges',
     icon: Receipt,
     color: 'from-amber-500 to-amber-600',
@@ -50,7 +50,7 @@ const SUB_FORMS = [
     key: 'revenue-budget-monthly',
     slug: 'revenue-budget-monthly',
     label: 'Planned Revenue Collection - Monthly',
-    description: 'Monthly tuition fee budget tracking with % collection achieved',
+    description: 'Monthly fee-wise revenue budget tracking with % collection achieved',
     icon: CalendarDays,
     color: 'from-orange-400 to-amber-500',
     bg: 'bg-orange-50',

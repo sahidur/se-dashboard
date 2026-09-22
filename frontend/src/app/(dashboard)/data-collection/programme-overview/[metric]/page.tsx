@@ -216,7 +216,7 @@ const METRICS: Record<string, MetricConfig> = {
     ],
   },
   'actual-achievement': {
-    title: 'Actual Revenue Achievement',
+    title: 'Actual Collected Revenue',
     description: 'Actual revenue achieved per school versus its target.',
     columns: [
       schoolCol,
@@ -230,6 +230,34 @@ const METRICS: Record<string, MetricConfig> = {
         key: 'actualAch', label: 'Achievement', align: 'right',
         value: (s) => s.actualRevenueAchievement, sum: true, money: true,
         cell: (s) => achievementCell(s.actualRevenueAchievement, s.actualRevenueTarget),
+      },
+    ],
+  },
+  'outstanding-dues': {
+    title: 'Total Outstanding Due',
+    description:
+      'Fees billed to the students actually enrolled but not yet collected — Actual Revenue Target − revenue collected, floored at ৳0 (over-collection reports as zero dues).',
+    columns: [
+      schoolCol,
+      categoryCol,
+      {
+        key: 'actualTarget', label: 'Actual Target', align: 'right',
+        value: (s) => s.actualRevenueTarget, sum: true, money: true,
+        cell: (s) => <span className="text-gray-600">{fmtTaka(s.actualRevenueTarget)}</span>,
+      },
+      {
+        key: 'collected', label: 'Collected', align: 'right',
+        value: (s) => s.actualRevenueAchievement, sum: true, money: true,
+        cell: (s) => achievementCell(s.actualRevenueAchievement, s.actualRevenueTarget),
+      },
+      {
+        key: 'dues', label: 'Outstanding Due', align: 'right',
+        value: (s) => dues(s), sum: true, money: true,
+        cell: (s) => (
+          <span className={`font-semibold ${dues(s) > 0 ? 'text-red-600' : 'text-green-600'}`}>
+            {fmtTaka(dues(s))}
+          </span>
+        ),
       },
     ],
   },

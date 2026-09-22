@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Save, CheckCircle2, AlertCircle, Banknote, School,
@@ -18,27 +18,18 @@ import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import api, { getErrorMessage } from '@/lib/api';
 import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
+import { getFeeFieldsForCategory, SCHOOL_CATEGORY_LABELS, type FeeKey } from '@/components/data-collection/school-category-fields';
 import type { DcSchool, DcRevenueTotalRecord } from '@/types';
 
 /* ─── Constants ─────────────────────────────────── */
 
 const YEARS = buildYearOptions();
 
-const SCHOOL_CATEGORY_LABELS: Record<string, string> = {
-  brac_academy: 'BRAC Academy',
-  brac_primary: 'BRAC Primary',
-  brac_secondary: 'BRAC Secondary',
-};
-
-const FEE_ROWS: { key: string; label: string; hint?: string }[] = [
-  { key: 'admissionFee',  label: 'Admission Fee' },
-  { key: 'sessionFee',    label: 'Session Fee' },
-  { key: 'assessmentFee', label: 'Assessment Fee' },
-  { key: 'sportsFee',     label: 'Sports Fee' },
-  { key: 'syllabusFee',   label: 'Syllabus Fee' },
-  { key: 'testimonialFee',label: 'Testimonial Fee' },
-  { key: 'othersFee',     label: 'Others Fee', hint: 'Badge, Tie, Diary, ID card, Shoulder' },
-  { key: 'transportFee',  label: 'Transport Fee' },
+/* Fee areas stored on the yearly revenue tables; visibility per school
+   category is resolved at runtime via getFeeFieldsForCategory. */
+const TOTAL_FEE_KEYS: FeeKey[] = [
+  'admissionFee', 'sessionFee', 'assessmentFee', 'sportsFee',
+  'syllabusFee', 'testimonialFee', 'othersFee', 'transportFee',
 ];
 
 type RevenueFormState = {
@@ -46,10 +37,12 @@ type RevenueFormState = {
 } & Record<string, string>;
 
 // Amount fields are kept as strings so inputs render blank instead of a
-// default "0"; they are converted to numbers at submit time.
+// default "0"; they are converted to numbers at submit time. The form state
+// covers every stored fee key so values outside the current category's field
+// list are never silently zeroed on resubmit.
 function buildBlank(): RevenueFormState {
   const f: RevenueFormState = { totalStudentsTarget: '' };
-  FEE_ROWS.forEach(({ key }) => {
+  TOTAL_FEE_KEYS.forEach((key) => {
     f[`${key}Target`] = '';
     f[`${key}Achievement`] = '';
   });
@@ -59,7 +52,7 @@ function buildBlank(): RevenueFormState {
 function recordToForm(data: DcRevenueTotalRecord): RevenueFormState {
   const f = buildBlank();
   f.totalStudentsTarget = data.totalStudentsTarget != null ? String(data.totalStudentsTarget) : '';
-  FEE_ROWS.forEach(({ key }) => {
+  TOTAL_FEE_KEYS.forEach((key) => {
     const rec = data as unknown as Record<string, unknown>;
     f[`${key}Target`] = rec[`${key}Target`] != null && rec[`${key}Target`] !== '' ? String(rec[`${key}Target`]) : '';
     f[`${key}Achievement`] = rec[`${key}Achievement`] != null && rec[`${key}Achievement`] !== '' ? String(rec[`${key}Achievement`]) : '';
@@ -105,6 +98,15 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
     s.hasPermission('data-collection', 'delete', mode === 'budget' ? 'revenue-budget-total' : 'revenue-actual-total'));
   const [editDenied, setEditDenied] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Fee rows resolved from the school's category (same logic as Fee
+  // Structure); unknown/missing category falls back to all fee areas.
+  const feeRows = useMemo(() => {
+    const rows = getFeeFieldsForCategory(school?.schoolCategory, TOTAL_FEE_KEYS);
+    return rows.map((r) => r.key === 'othersFee'
+      ? { ...r, label: 'Others Fee', hint: 'Badge, Tie, Diary, ID card, Shoulder' }
+      : r);
+  }, [school?.schoolCategory]);
 
   // "Edit" on the View Data tab: the record shown is already loaded into the
   // form for the selected year, so switching back to the entry tab is the
@@ -267,8 +269,8 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
     );
   }
 
-  const totalTarget = FEE_ROWS.reduce((s, { key }) => s + (Number(form[`${key}Target`]) || 0), 0);
-  const totalAchievement = FEE_ROWS.reduce((s, { key }) => s + (Number(form[`${key}Achievement`]) || 0), 0);
+  const totalTarget = feeRows.reduce((s, { key }) => s + (Number(form[`${key}Target`]) || 0), 0);
+  const totalAchievement = feeRows.reduce((s, { key }) => s + (Number(form[`${key}Achievement`]) || 0), 0);
 
   return (
     <div className="space-y-5 pb-10">
@@ -295,6 +297,7 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
               <h2 className="text-lg font-bold text-gray-900 truncate">{school.name}</h2>
               <div className="flex flex-wrap gap-3 mt-1">
                 <span className="flex items-center gap-1 text-xs text-gray-500"><School size={12} /> {school.code}</span>
+                {school.schoolCategory && <span className="flex items-center gap-1 text-xs text-gray-500"><School size={12} /> {SCHOOL_CATEGORY_LABELS[school.schoolCategory] ?? school.schoolCategory}</span>}
                 {school.district && <span className="flex items-center gap-1 text-xs text-gray-500"><MapPin size={12} /> {school.district}</span>}
               </div>
             </div>
@@ -381,7 +384,7 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {FEE_ROWS.map(({ key, label, hint }, idx) => {
+                  {feeRows.map(({ key, label, hint }, idx) => {
                     const target = Number(form[`${key}Target`]) || 0;
                     const achievement = Number(form[`${key}Achievement`]) || 0;
                     const deficit = target - achievement;
@@ -493,7 +496,7 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
                   <ExportButtons
                     payload={(() => {
                       const rec = record as unknown as Record<string, number>;
-                      const rows = FEE_ROWS.map(({ key, label }) => {
+                      const rows = feeRows.map(({ key, label }) => {
                         const target = Number(rec[`${key}Target`]) || 0;
                         const achievement = Number(rec[`${key}Achievement`]) || 0;
                         return [
@@ -504,8 +507,8 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
                           calcPct(target, achievement),
                         ];
                       });
-                      const totalTarget = FEE_ROWS.reduce((s, { key }) => s + (Number(rec[`${key}Target`]) || 0), 0);
-                      const totalAchievement = FEE_ROWS.reduce((s, { key }) => s + (Number(rec[`${key}Achievement`]) || 0), 0);
+                      const totalTarget = feeRows.reduce((s, { key }) => s + (Number(rec[`${key}Target`]) || 0), 0);
+                      const totalAchievement = feeRows.reduce((s, { key }) => s + (Number(rec[`${key}Achievement`]) || 0), 0);
                       rows.push([
                         'Total',
                         formatAmount(totalTarget),
@@ -559,8 +562,8 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
               </div>
             ) : (() => {
               const rec = record as unknown as Record<string, number>;
-              const savedTotalTarget = FEE_ROWS.reduce((s, { key }) => s + (Number(rec[`${key}Target`]) || 0), 0);
-              const savedTotalAchievement = FEE_ROWS.reduce((s, { key }) => s + (Number(rec[`${key}Achievement`]) || 0), 0);
+              const savedTotalTarget = feeRows.reduce((s, { key }) => s + (Number(rec[`${key}Target`]) || 0), 0);
+              const savedTotalAchievement = feeRows.reduce((s, { key }) => s + (Number(rec[`${key}Achievement`]) || 0), 0);
               return (
                 <div className="space-y-4">
                   <div className="grid gap-4 sm:grid-cols-2 max-w-xl">
@@ -585,7 +588,7 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
-                        {FEE_ROWS.map(({ key, label, hint }, idx) => {
+                        {feeRows.map(({ key, label, hint }, idx) => {
                           const target = Number(rec[`${key}Target`]) || 0;
                           const achievement = Number(rec[`${key}Achievement`]) || 0;
                           return (

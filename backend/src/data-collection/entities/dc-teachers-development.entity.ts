@@ -58,6 +58,10 @@ export class DcTeachersDevelopment {
   @Column({ name: 'others', type: 'int', default: 0 })
   others: number;
 
+  /** Free-text name of the "Others" training, filled when others > 0. */
+  @Column({ name: 'others_training_name', type: 'varchar', length: 255, nullable: true, default: null })
+  othersTrainingName: string | null;
+
   /** % of teachers who left during the year (school-level, reported monthly). */
   @Column({ name: 'teacher_dropout_rate', type: 'decimal', precision: 5, scale: 2, nullable: true })
   teacherDropoutRate: number | null;

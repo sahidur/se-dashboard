@@ -2,6 +2,7 @@ import {
   Injectable,
   UnauthorizedException,
   ConflictException,
+  Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -15,6 +16,8 @@ import { getAuditContext } from '../common/audit/audit-context';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
@@ -282,8 +285,11 @@ export class AuthService {
 
   async refreshTokens(refreshToken: string) {
     try {
+      // Pin the algorithm just like JwtStrategy does, so a token produced
+      // with any other alg can never verify.
       const payload = this.jwtService.verify(refreshToken, {
         secret: this.configService.get('JWT_REFRESH_SECRET'),
+        algorithms: ['HS256'],
       });
 
       const user = await this.usersService.findOneById(payload.sub);
@@ -305,6 +311,13 @@ export class AuthService {
         // Grace window: a duplicate refresh sent an instant apart by another
         // tab/device must not force a logout (see retiredRefreshTokens).
         if (!this.isRecentlyRetiredRefreshToken(user.id, refreshToken)) {
+          // The presented refresh token is well-formed but no longer the
+          // stored one and not within the grace window — the classic reuse
+          // signal of a stolen/rotated token. Log for auditing without ever
+          // logging the token itself.
+          this.logger.warn(
+            `Refresh token reuse rejected for user ${user.id} — possible token theft or stale session`,
+          );
           throw new UnauthorizedException('Invalid refresh token');
         }
       }
@@ -336,6 +349,23 @@ export class AuthService {
     return { message: 'Logged out successfully' };
   }
 
+  /**
+   * Step-up verification for sensitive account actions (passkey enrolment):
+   * proves the session holder still knows the account password, so a stolen
+   * access token alone cannot add a persistence credential.
+   */
+  async verifyUserPassword(userId: string, password: string): Promise<void> {
+    const user = await this.usersService.findOneById(userId);
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      // Same message class as login to avoid confirming the account state.
+      throw new UnauthorizedException('Password verification failed');
+    }
+  }
+
   async changePassword(
     userId: string,
     currentPassword: string,
@@ -355,7 +385,11 @@ export class AuthService {
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 12);
-    await this.usersService.updatePassword(userId, hashedPassword);
+    // Single source of truth for the new token version: updatePassword
+    // persists it and the fresh token pair below signs it, so every access
+    // token issued before this change is rejected by JwtStrategy.
+    const changedAt = new Date();
+    await this.usersService.updatePassword(userId, hashedPassword, changedAt);
 
     // Rotate the refresh token so any OTHER session (other devices/browsers
     // holding the old refresh token) is invalidated. The current device stays
@@ -365,6 +399,7 @@ export class AuthService {
     const tokens = await this.generateTokens({
       ...user,
       password: hashedPassword,
+      passwordChangedAt: changedAt,
     });
     await this.usersService.updateRefreshToken(user.id, tokens.refreshToken);
 
@@ -385,10 +420,13 @@ export class AuthService {
   }
 
   private async generateTokens(user: any) {
+    // Minimal claim set — no email/roles (they are re-read from the DB per
+    // request; baking PII into a base64-decodable token leaks it for free).
+    // `pwv` (password-changed-at) is the token version checked by the JWT
+    // strategy so credential changes instantly invalidate older tokens.
     const payload: JwtPayload = {
       sub: user.id,
-      email: user.email,
-      roles: user.roles?.map((r: any) => r.name) || [],
+      pwv: user.passwordChangedAt ? new Date(user.passwordChangedAt).getTime() : 0,
     };
 
     const jwtSecret = this.configService.get<string>('JWT_SECRET');
@@ -400,11 +438,14 @@ export class AuthService {
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
         secret: jwtSecret,
-        expiresIn: this.configService.get('JWT_EXPIRES_IN', '6h'),
+        // Short-lived access token; the frontend silently rotates it via
+        // /auth/refresh, so a stolen one has a tiny window.
+        expiresIn: this.configService.get('JWT_EXPIRES_IN', '15m'),
       }),
       this.jwtService.signAsync(payload, {
         secret: refreshSecret,
-        expiresIn: this.configService.get('JWT_REFRESH_EXPIRES_IN', '24h'),
+        // Matches the refresh-cookie TTL default in auth/cookies.ts.
+        expiresIn: this.configService.get('JWT_REFRESH_EXPIRES_IN', '7d'),
       }),
     ]);
 

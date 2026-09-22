@@ -17,6 +17,7 @@ import { FormTabs } from '@/components/data-collection/form-tabs';
 import { ExportButtons } from '@/components/data-collection/export-buttons';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
+import { ALL_FEE_KEYS, getFeeFieldsForCategory, SCHOOL_CATEGORY_LABELS } from '@/components/data-collection/school-category-fields';
 import api, { getErrorMessage } from '@/lib/api';
 import { buildYearOptions, isValidAcademicYear, gradeEquals } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth-store';
@@ -35,25 +36,6 @@ const MONTHS = [
 // form is labeled "(Primary)" — extending the list keeps them visible/editable.
 const GRADES = ['Play & Learn', 'Nursery', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10'];
 
-const SCHOOL_CATEGORY_LABELS: Record<string, string> = {
-  brac_academy: 'BRAC Academy',
-  brac_primary: 'BRAC Primary',
-  brac_secondary: 'BRAC Secondary',
-};
-
-const FEE_FIELDS: { key: keyof FeeAmounts; label: string; hint?: string }[] = [
-  { key: 'admissionFee',   label: 'Admission Fee' },
-  { key: 'tuitionFee',     label: 'Tuition Fee' },
-  { key: 'sessionFee',     label: 'Session Fee' },
-  { key: 'assessmentFee',  label: 'Assessment Fee' },
-  { key: 'sportsFee',      label: 'Sports Fee' },
-  { key: 'syllabusFee',    label: 'Syllabus Fee' },
-  { key: 'admissionForm',  label: 'Admission Form Fee' },
-  { key: 'testimonialFee', label: 'Testimonial Fee' },
-  { key: 'othersFee',      label: 'Others Fee', hint: 'Badge, Tie, Diary, ID card, Shoulder' },
-  { key: 'transportFee',   label: 'Transport Fee' },
-];
-
 interface FeeAmounts {
   // Fee fields kept as strings so inputs render blank instead of a
   // default "0"; they are converted to numbers at submit time.
@@ -67,13 +49,29 @@ interface FeeAmounts {
   testimonialFee: string;
   othersFee: string;
   transportFee: string;
+  exerciseBookFee: string;
+  labLibraryFee: string;
+  projectClubFee: string;
+  sscRegistrationFee: string;
+  boatFee: string;
+  terminalAssessment1Fee: string;
+  terminalAssessment2Fee: string;
+  formativeAssessmentFee: string;
+  classroomLibraryFee: string;
+  eventFee: string;
+  playActivityFee: string;
 }
 
 const BLANK_AMOUNTS: FeeAmounts = {
   admissionFee: '', tuitionFee: '', sessionFee: '', assessmentFee: '',
   sportsFee: '', syllabusFee: '', admissionForm: '', testimonialFee: '',
-  othersFee: '', transportFee: '',
+  othersFee: '', transportFee: '', exerciseBookFee: '', labLibraryFee: '',
+  projectClubFee: '', sscRegistrationFee: '', boatFee: '',
+  terminalAssessment1Fee: '', terminalAssessment2Fee: '', formativeAssessmentFee: '',
+  classroomLibraryFee: '', eventFee: '', playActivityFee: '',
 };
+
+const AMOUNT_KEYS = ALL_FEE_KEYS as (keyof FeeAmounts)[];
 
 const toNum = (v: unknown) => {
   const n = Number(v);
@@ -175,18 +173,12 @@ export function FeeStructureForm({ schoolId }: Props) {
         (r) => Number(r.academicYear) === Number(academicYear) && r.month === selectedMonths[0] && gradeEquals(r.grade, grade),
       );
       if (existing) {
-        setAmounts({
-          admissionFee: existing.admissionFee != null ? String(existing.admissionFee) : '',
-          tuitionFee: existing.tuitionFee != null ? String(existing.tuitionFee) : '',
-          sessionFee: existing.sessionFee != null ? String(existing.sessionFee) : '',
-          assessmentFee: existing.assessmentFee != null ? String(existing.assessmentFee) : '',
-          sportsFee: existing.sportsFee != null ? String(existing.sportsFee) : '',
-          syllabusFee: existing.syllabusFee != null ? String(existing.syllabusFee) : '',
-          admissionForm: existing.admissionForm != null ? String(existing.admissionForm) : '',
-          testimonialFee: existing.testimonialFee != null ? String(existing.testimonialFee) : '',
-          othersFee: existing.othersFee != null ? String(existing.othersFee) : '',
-          transportFee: existing.transportFee != null ? String(existing.transportFee) : '',
-        });
+        setAmounts(
+          AMOUNT_KEYS.reduce((acc, k) => {
+            acc[k] = existing[k] != null ? String(existing[k]) : '';
+            return acc;
+          }, {} as FeeAmounts),
+        );
       } else {
         setAmounts(BLANK_AMOUNTS);
       }
@@ -211,6 +203,8 @@ export function FeeStructureForm({ schoolId }: Props) {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingRecords]);
+
+  const feeFields = getFeeFieldsForCategory(school?.schoolCategory);
 
   const handleSaveDraft = async () => {
     await draft.saveDraft({ academicYear, selectedMonths, grade, amounts });
@@ -237,16 +231,7 @@ export function FeeStructureForm({ schoolId }: Props) {
             academicYear: Number(academicYear),
             month,
             grade,
-            admissionFee: toNum(amounts.admissionFee),
-            tuitionFee: toNum(amounts.tuitionFee),
-            sessionFee: toNum(amounts.sessionFee),
-            assessmentFee: toNum(amounts.assessmentFee),
-            sportsFee: toNum(amounts.sportsFee),
-            syllabusFee: toNum(amounts.syllabusFee),
-            admissionForm: toNum(amounts.admissionForm),
-            testimonialFee: toNum(amounts.testimonialFee),
-            othersFee: toNum(amounts.othersFee),
-            transportFee: toNum(amounts.transportFee),
+            ...Object.fromEntries(feeFields.map((f) => [f.key, toNum(amounts[f.key])])),
           }),
         ),
       );
@@ -490,7 +475,7 @@ export function FeeStructureForm({ schoolId }: Props) {
 
             {/* Fee amounts */}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {FEE_FIELDS.map(({ key, label, hint }) => (
+              {feeFields.map(({ key, label, hint }) => (
                 <div key={key}>
                   <Label className="mb-1.5 block text-xs font-medium text-gray-600">
                     {label}
@@ -590,7 +575,7 @@ export function FeeStructureForm({ schoolId }: Props) {
               <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">{r.month}</span>
             ),
           },
-          ...FEE_FIELDS.map((f) => ({
+          ...feeFields.map((f) => ({
             key: f.key,
             header: f.label,
             className: 'whitespace-nowrap text-right font-mono text-xs',
@@ -601,7 +586,7 @@ export function FeeStructureForm({ schoolId }: Props) {
             header: 'Total',
             className: 'text-right font-bold text-emerald-700 text-xs',
             render: (r) => {
-              const total = FEE_FIELDS.reduce((s, f) => s + Number(r[f.key] ?? 0), 0);
+              const total = feeFields.reduce((s, f) => s + Number(r[f.key] ?? 0), 0);
               return formatAmount(total);
             },
           },
@@ -614,7 +599,7 @@ export function FeeStructureForm({ schoolId }: Props) {
         ]}
         data={sortedDataRecords.map((r) => ({
           ...r,
-          _total: FEE_FIELDS.reduce((s, f) => s + Number(r[f.key] ?? 0), 0),
+          _total: feeFields.reduce((s, f) => s + Number(r[f.key] ?? 0), 0),
         }))}
         loading={loadingRecords}
         emptyMessage={(dataYear || dataGrade) ? 'No records match the selected filters.' : 'No records yet.'}
@@ -628,13 +613,13 @@ export function FeeStructureForm({ schoolId }: Props) {
           <ExportButtons
             payload={{
               filename: 'fee-structure',
-              headers: ['Academic Year', 'Month', 'Grade', ...FEE_FIELDS.map((f) => f.label), 'Total', 'Updated At'],
+              headers: ['Academic Year', 'Month', 'Grade', ...feeFields.map((f) => f.label), 'Total', 'Updated At'],
               rows: sortedDataRecords.map((r) => [
                 r.academicYear,
                 r.month,
                 getGradeDisplayName(r.grade, school?.schoolCategory),
-                ...FEE_FIELDS.map((f) => Number(r[f.key as keyof DcFeeStructure] ?? 0)),
-                FEE_FIELDS.reduce((s, f) => s + Number(r[f.key as keyof DcFeeStructure] ?? 0), 0),
+                ...feeFields.map((f) => Number(r[f.key as keyof DcFeeStructure] ?? 0)),
+                feeFields.reduce((s, f) => s + Number(r[f.key as keyof DcFeeStructure] ?? 0), 0),
                 r.updatedAt ? formatDateTime(r.updatedAt) : '',
               ]),
             }}
@@ -718,7 +703,7 @@ export function FeeStructureForm({ schoolId }: Props) {
                       <div className="rounded-lg border border-red-100 bg-red-50/50 p-3">
                         <p className="mb-2 text-xs font-semibold text-red-600">Previous Values</p>
                         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                          {FEE_FIELDS.map((f) => (
+                          {feeFields.map((f) => (
                             <div key={f.key} className="flex justify-between text-xs">
                               <span className="text-gray-500">{f.label}</span>
                               <span className="font-mono text-red-700">{formatAmount(Number((log.previousData as any)[f.key] ?? 0))}</span>
@@ -729,7 +714,7 @@ export function FeeStructureForm({ schoolId }: Props) {
                       <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 p-3">
                         <p className="mb-2 text-xs font-semibold text-emerald-600">New Values</p>
                         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                          {FEE_FIELDS.map((f) => (
+                          {feeFields.map((f) => (
                             <div key={f.key} className="flex justify-between text-xs">
                               <span className="text-gray-500">{f.label}</span>
                               <span className="font-mono text-emerald-700">{formatAmount(Number((log.newData as any)[f.key] ?? 0))}</span>

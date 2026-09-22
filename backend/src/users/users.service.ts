@@ -1,4 +1,4 @@
-import { Repository, In, ILike } from 'typeorm';
+import { Repository, In, ILike, Brackets } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
@@ -14,6 +14,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { Role } from '../roles/entities/role.entity';
 import { DcSchool } from '../data-collection/entities/dc-school.entity';
 import { AuditLog } from '../common/entities/audit-log.entity';
+import { PRIVILEGED_AUDIT_MODULES } from '../common/audit/privileged-modules';
 
 @Injectable()
 export class UsersService {
@@ -190,6 +191,8 @@ export class UsersService {
       // as an "already hashed" shortcut, which silently persisted any password
       // beginning with those characters in plaintext.
       password: await bcrypt.hash(createUserDto.password, 12),
+      // Fresh accounts start with a current token version.
+      passwordChangedAt: new Date(),
       phone: createUserDto.phone,
       pin: createUserDto.pin,
       designation: createUserDto.designation,
@@ -323,14 +326,30 @@ export class UsersService {
   /**
    * Serialize a User for a viewer who MAY see the PIN (the account owner or a
    * Super Admin). Returns a plain object because ClassSerializerInterceptor
-   * only strips @Exclude() fields from class instances — the secret columns
-   * (password, refreshToken) are removed manually here.
+   * only strips @Exclude() fields from class instances — so an explicit
+   * field ALLOWLIST is used instead of a blacklist destructure: any sensitive
+   * column added to the User entity later cannot silently leak through here.
    */
   private toSelfView(user: User): Record<string, any> {
-    const { password, refreshToken, ...safe } = user as any;
-    void password;
-    void refreshToken;
-    return safe;
+    return {
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      phone: user.phone,
+      profilePicture: user.profilePicture,
+      pin: user.pin ?? null,
+      designation: user.designation,
+      base: user.base,
+      geoLocationId: user.geoLocationId,
+      geoLocation: user.geoLocation,
+      schools: user.schools,
+      isActive: user.isActive,
+      lastLoginAt: user.lastLoginAt,
+      roles: user.roles,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
   }
 
   /**
@@ -367,20 +386,21 @@ export class UsersService {
 
   /**
    * Lightweight lookup used by JwtStrategy on every request.
-   * Fetches id, active flag and role names only (roles are re-read live so
-   * demotions take effect immediately instead of at next token refresh).
+   * Fetches id, active flag, email, passwordChangedAt (token version) and
+   * role names only (roles are re-read live so demotions take effect
+   * immediately instead of at next token refresh).
    * Returns null if the user does not exist or is deactivated.
    */
   async findActiveUserById(
     id: string,
-  ): Promise<(Pick<User, 'id' | 'isActive'> & { roles: Role[] }) | null> {
+  ): Promise<(Pick<User, 'id' | 'isActive' | 'email' | 'passwordChangedAt'> & { roles: Role[] }) | null> {
     const user = await this.usersRepository.findOne({
       where: { id },
-      select: ['id', 'isActive'],
+      select: ['id', 'isActive', 'email', 'passwordChangedAt'],
       relations: ['roles'],
     });
     if (!user || !user.isActive) return null;
-    return user as (Pick<User, 'id' | 'isActive'> & { roles: Role[] }) | null;
+    return user as (Pick<User, 'id' | 'isActive' | 'email' | 'passwordChangedAt'> & { roles: Role[] }) | null;
   }
 
   async findOneByEmail(email: string): Promise<User | null> {
@@ -558,21 +578,34 @@ export class UsersService {
     return user.schools;
   }
 
-  async getActivity(userId: string, limit = 50): Promise<AuditLog[]> {
+  async getActivity(userId: string, actorId?: string, limit = 50): Promise<AuditLog[]> {
     const user = await this.usersRepository.findOne({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    return this.auditLogRepository
-      .createQueryBuilder('log')
-      .where('log.userId = :userId', { userId })
-      .orWhere('(log.module = :module AND log.entityId = CAST(:userId AS varchar))', {
-        module: 'users',
-        userId,
-      })
-      .orderBy('log.createdAt', 'DESC')
-      .take(limit)
-      .getMany();
+    // Same privileged-module filter as AuditService: a plain admin with
+    // users:read must not see how the platform's roles/permissions were
+    // configured via another user's (e.g. a Super Admin's) activity trail.
+    const power = await this.actorPower(actorId);
+    const isSuperAdmin = power?.isSuperAdmin ?? false;
+    const qb = this.auditLogRepository.createQueryBuilder('log');
+    // Brackets keep (A OR B) AND C precedence — without them TypeORM emits
+    // "A OR B AND C", which would let the Role/Permission entries through.
+    qb.where(
+      new Brackets((w) => {
+        w.where('log.userId = :userId', { userId }).orWhere(
+          '(log.module = :module AND log.entityId = CAST(:userId AS varchar))',
+          { module: 'users', userId },
+        );
+      }),
+    );
+    if (!isSuperAdmin) {
+      qb.andWhere('log.module NOT IN (:...privileged)', {
+        privileged: PRIVILEGED_AUDIT_MODULES,
+      });
+    }
+    qb.orderBy('log.createdAt', 'DESC').take(limit);
+    return qb.getMany();
   }
 
   async resetPassword(id: string, actorId?: string): Promise<{ newPassword: string }> {
@@ -604,10 +637,13 @@ export class UsersService {
     pwArr[spIdx] = specials[randomBytes(1)[0] % specials.length];
     newPassword = pwArr.join('');
     const hashedPassword = await bcrypt.hash(newPassword, 12);
+    const changedAt = new Date();
     // Also revoke the refresh token: any session obtained before the reset
-    // must not survive it.
+    // must not survive it. passwordChangedAt additionally invalidates every
+    // outstanding ACCESS token (checked per request by JwtStrategy).
     await this.usersRepository.update(id, {
       password: hashedPassword,
+      passwordChangedAt: changedAt,
       refreshToken: null as any,
     });
     await this.logActivity({
@@ -650,8 +686,18 @@ export class UsersService {
     await this.usersRepository.update(userId, { lastLoginAt: new Date() });
   }
 
-  async updatePassword(userId: string, hashedPassword: string): Promise<void> {
-    await this.usersRepository.update(userId, { password: hashedPassword });
+  async updatePassword(
+    userId: string,
+    hashedPassword: string,
+    changedAt: Date = new Date(),
+  ): Promise<void> {
+    // passwordChangedAt acts as the token version: JwtStrategy compares the
+    // `pwv` claim in every access token against this timestamp, killing
+    // tokens issued before the change.
+    await this.usersRepository.update(userId, {
+      password: hashedPassword,
+      passwordChangedAt: changedAt,
+    });
   }
 
   async updateProfilePicture(

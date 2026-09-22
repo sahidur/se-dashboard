@@ -370,6 +370,7 @@ export class UpsertTeachersDevelopmentDto {
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) subjectBasedTraining?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) leadershipTraining?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) others?: number;
+  @IsOptional() @IsString() @MaxLength(255) othersTrainingName?: string;
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(100) teacherDropoutRate?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(100) headTeacherDropoutRate?: number;
@@ -401,6 +402,17 @@ export class UpsertFeeStructureDto {
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) testimonialFee?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) othersFee?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) transportFee?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) exerciseBookFee?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) labLibraryFee?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) projectClubFee?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) sscRegistrationFee?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) boatFee?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) terminalAssessment1Fee?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) terminalAssessment2Fee?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) formativeAssessmentFee?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) classroomLibraryFee?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) eventFee?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) playActivityFee?: number;
 }
 
 // ===================== Revenue Budget Total =====================
@@ -446,6 +458,66 @@ export class UpsertRevenueBudgetMonthlyDto {
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) tuitionFeeTarget?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) tuitionFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) admissionFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) admissionFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) sessionFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) sessionFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) assessmentFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) assessmentFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) sportsFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) sportsFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) syllabusFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) syllabusFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) admissionFormTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) admissionFormAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) testimonialFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) testimonialFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) othersFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) othersFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) transportFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) transportFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) exerciseBookFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) exerciseBookFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) labLibraryFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) labLibraryFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) projectClubFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) projectClubFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) sscRegistrationFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) sscRegistrationFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) boatFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) boatFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) terminalAssessment1FeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) terminalAssessment1FeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) terminalAssessment2FeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) terminalAssessment2FeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) formativeAssessmentFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) formativeAssessmentFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) classroomLibraryFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) classroomLibraryFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) eventFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) eventFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) playActivityFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) playActivityFeeAchievement?: number;
 }
 
 // ===================== Revenue Actual Total =====================
@@ -491,6 +563,66 @@ export class UpsertRevenueActualMonthlyDto {
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) tuitionFeeTarget?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) tuitionFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) admissionFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) admissionFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) sessionFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) sessionFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) assessmentFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) assessmentFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) sportsFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) sportsFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) syllabusFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) syllabusFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) admissionFormTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) admissionFormAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) testimonialFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) testimonialFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) othersFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) othersFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) transportFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) transportFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) exerciseBookFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) exerciseBookFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) labLibraryFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) labLibraryFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) projectClubFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) projectClubFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) sscRegistrationFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) sscRegistrationFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) boatFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) boatFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) terminalAssessment1FeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) terminalAssessment1FeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) terminalAssessment2FeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) terminalAssessment2FeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) formativeAssessmentFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) formativeAssessmentFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) classroomLibraryFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) classroomLibraryFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) eventFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) eventFeeAchievement?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) playActivityFeeTarget?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) playActivityFeeAchievement?: number;
 }
 
 // ===================== Pedagogical Achievement =====================

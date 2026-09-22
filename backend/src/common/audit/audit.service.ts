@@ -5,13 +5,12 @@ import { AuditLog } from '../entities/audit-log.entity';
 import { QueryAuditLogDto } from './dto/query-audit-log.dto';
 import { UsersService } from '../../users/users.service';
 import { getAuditContext } from './audit-context';
+import { PRIVILEGED_AUDIT_MODULES } from './privileged-modules';
 
-/**
- * Entity modules whose audit entries are sensitive (they expose exactly how
- * the platform's privilege model is configured). Only Super Admins may see
- * these categories in the activity-log viewer.
- */
-export const PRIVILEGED_AUDIT_MODULES = ['Role', 'Permission'];
+// Kept as a re-export so existing importers of `PRIVILEGED_AUDIT_MODULES`
+// from './audit.service' keep working; the definition lives in
+// ./privileged-modules (shared with services that cannot depend on this one).
+export { PRIVILEGED_AUDIT_MODULES };
 
 export interface PaginatedAuditLogs {
   data: AuditLog[];

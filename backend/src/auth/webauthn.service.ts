@@ -61,11 +61,44 @@ export class WebAuthnService {
       'WEBAUTHN_RP_NAME',
       'SE360',
     );
+    // Never fall back to http://localhost:3000 in production: a permissive
+    // WebAuthn RP origin would let a localhost page perform ceremonies against
+    // the real deployment. NOTE: the strictness lives in
+    // assertWebAuthnOriginConfig() at ceremony time, not here — utility boots
+    // (schema-sync, seed) force APP_ENV=production but must not require the
+    // production origin config to exist.
+    const isProduction = process.env.APP_ENV === 'production';
     const originEnv =
       this.configService.get<string>('WEBAUTHN_ORIGIN') ||
       this.configService.get<string>('CORS_ORIGIN') ||
-      'http://localhost:3000';
-    this.origins = originEnv.split(',').map((o) => o.trim());
+      '';
+    if (!originEnv && !isProduction) {
+      this.logger.warn(
+        'WEBAUTHN_ORIGIN/CORS_ORIGIN not set — defaulting WebAuthn origins to http://localhost:3000 (development only)',
+      );
+    }
+    this.origins = (originEnv || 'http://localhost:3000')
+      .split(',')
+      .map((o) => o.trim());
+  }
+
+  /**
+   * Ceremony-time guard: passkey enrolment/login must never run against an
+   * insecure or unconfigured RP origin. Redeploy/deploy scripts validate the
+   * same rule at deploy time; this catches a misconfigured live box.
+   */
+  private assertWebAuthnOriginConfig(): void {
+    const isProduction = process.env.APP_ENV === 'production';
+    if (!this.origins.length || !this.origins[0]) {
+      throw new Error(
+        'WEBAUTHN_ORIGIN (or CORS_ORIGIN) must be set for WebAuthn ceremonies',
+      );
+    }
+    if (isProduction && this.origins.some((o) => o.startsWith('http://'))) {
+      throw new Error(
+        `WebAuthn origins must be https:// in production: ${this.origins.join(', ')}`,
+      );
+    }
   }
 
   // ── Challenge helpers ────────────────────────────────────────────────
@@ -87,6 +120,7 @@ export class WebAuthnService {
 
   // ── Registration (enrolling a new passkey; requires an authenticated user) ─
   async generateRegistration(userId: string) {
+    this.assertWebAuthnOriginConfig();
     const user = await this.usersService.findOneById(userId);
     if (!user) throw new NotFoundException('User not found');
 
@@ -185,6 +219,7 @@ export class WebAuthnService {
 
   // ── Authentication (login with a passkey; public) ────────────────────
   async generateAuthentication(email?: string) {
+    this.assertWebAuthnOriginConfig();
     let allowCredentials:
       | { id: string; transports?: AuthenticatorTransportFuture[] }[]
       | undefined;

@@ -50,9 +50,9 @@ const SLUG_MAP: Record<string, FormMeta> = {
   'students-information': makeMeta(StudentsInfoForm, "Students' Information", 'Monthly enrollment by grade'),
   'teachers-information': makeMeta(TeachersInfoForm, "Teachers' Information", 'Individual teacher records'),
   'teachers-development': makeMeta(TeachersDevForm, "Teachers' Development", 'Monthly training & development data'),
-  'fee-structure-primary': makeMeta(FeeStructureForm, 'Fee Structure (Primary)', 'Monthly fee structure per grade'),
+  'fee-structure-primary': makeMeta(FeeStructureForm, 'Fee Structure', 'Monthly fee structure per grade'),
   'revenue-budget-total': makeMeta(RevenueTotalForm, 'Planned Revenue Collection - Total', 'Yearly budget targets and achievements per fee category'),
-  'revenue-budget-monthly': makeMeta(RevenueMonthlyForm, 'Planned Revenue Collection - Monthly', 'Monthly tuition fee budget and collection tracking'),
+  'revenue-budget-monthly': makeMeta(RevenueMonthlyForm, 'Planned Revenue Collection - Monthly', 'Monthly fee-wise budget and collection tracking'),
   'revenue-actual-total': makeMeta(RevenueTotalForm, 'Actual Revenue Collection - Total', 'Yearly actual student revenue targets and achievements'),
   'revenue-actual-monthly': makeMeta(RevenueMonthlyForm, 'Actual Revenue Collection - Monthly', 'Monthly actual student revenue tracking'),
   'alumni-information': makeMeta(AlumniForm, 'Alumni Information', 'School alumni records'),
@@ -241,7 +241,7 @@ const FORM_CONFIGS: Record<string, FormConfig> = {
 
   /* ── Revenue & Fee Structure ── */
   'fee-structure-primary': {
-    title: 'Fee Structure (Primary)',
+    title: 'Fee Structure',
     description: 'Monthly tuition, session charges and exam fees',
     color: 'from-amber-500 to-amber-600',
     sections: [

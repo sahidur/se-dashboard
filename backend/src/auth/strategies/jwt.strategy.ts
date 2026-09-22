@@ -6,10 +6,15 @@ import { Request } from 'express';
 import { UsersService } from '../../users/users.service';
 import { ACCESS_TOKEN_COOKIE } from '../cookies';
 
+/**
+ * Minimal claim set. Deliberately NO email / role names: the token is re-read
+ * from the DB on every request anyway, so baking PII into the (base64-decodable)
+ * JWT only leaks data without buying anything. `pwv` is the token version —
+ * the timestamp of the user's last password set/change.
+ */
 export interface JwtPayload {
   sub: string;
-  email: string;
-  roles: string[];
+  pwv?: number;
 }
 
 /**
@@ -48,15 +53,25 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // Re-check the DB on every request to catch deactivated accounts within
     // the token's remaining TTL, AND read live role names from the DB: role
     // claims baked into the JWT at login would otherwise keep a demoted or
-    // exiled admin fully privileged until the 15-minute access-token TTL
-    // expires.
+    // exiled admin fully privileged until the access-token TTL expires.
     const user = await this.usersService.findActiveUserById(payload.sub);
     if (!user) {
       throw new UnauthorizedException('Account is deactivated or not found');
     }
+
+    // Token-version check: a token signed before the user's most recent
+    // password set/change (self change or admin reset) is rejected even if
+    // still cryptographically valid. Tokens without the `pwv` claim are
+    // legacy and rejected too — the frontend transparently rotates them via
+    // /auth/refresh on the first 401.
+    const currentPwv = user.passwordChangedAt ? user.passwordChangedAt.getTime() : 0;
+    if (payload.pwv === undefined || payload.pwv < currentPwv) {
+      throw new UnauthorizedException('Session expired due to a credential change. Please sign in again.');
+    }
+
     return {
       id: user.id,
-      email: payload.email,
+      email: user.email,
       roles: (user.roles || []).map((r) => r.name),
     };
   }

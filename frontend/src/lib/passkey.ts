@@ -24,13 +24,16 @@ export async function platformAuthenticatorAvailable(): Promise<boolean> {
 /**
  * Enrol a new passkey for the currently authenticated user.
  * Prompts the OS/browser biometric or security-key ceremony.
+ * `password` is required: the server re-verifies the account password at
+ * the verify step so a hijacked session cannot enrol an attacker passkey.
  */
-export async function enrollPasskey(name?: string): Promise<Passkey> {
+export async function enrollPasskey(name?: string, password?: string): Promise<Passkey> {
   const { data: options } = await api.post('/auth/passkey/register/options');
   const attResp = await startRegistration({ optionsJSON: options });
   const { data } = await api.post('/auth/passkey/register/verify', {
     response: attResp,
     name,
+    password,
   });
   return data;
 }

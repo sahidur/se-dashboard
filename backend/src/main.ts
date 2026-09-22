@@ -21,7 +21,9 @@ async function bootstrap() {
    */
   const hasSessionJwt = (req: Request): boolean => {
     try {
-      jwt.verify(req.cookies?.se360_at ?? '', process.env.JWT_SECRET || '');
+      jwt.verify(req.cookies?.se360_at ?? '', process.env.JWT_SECRET || '', {
+        algorithms: ['HS256'],
+      });
       return true;
     } catch {
       return false;
@@ -104,12 +106,31 @@ async function bootstrap() {
 
   // CORS — only allow the configured frontend origin(s).
   // CORS_ORIGIN accepts a single URL or a comma-separated list, so local dev
-  // ports (e.g. 3000 and 3210) can be allow-listed together.
-  const corsOriginEnv = process.env.CORS_ORIGIN || 'http://localhost:3000';
+  // ports (e.g. 3000 and 3210) can be allow-listed together. In production
+  // the fallback default (http://localhost:3000) must never silently apply —
+  // an unset origin would either lock the API behind localhost or, worse,
+  // advertise a plain-HTTP origin. Fail fast instead.
+  const isProduction = process.env.APP_ENV === 'production';
+  const corsOriginEnv = process.env.CORS_ORIGIN || (isProduction ? '' : 'http://localhost:3000');
+  if (!corsOriginEnv) {
+    logger.error(
+      'CORS_ORIGIN is not set. In production the API refuses to start ' +
+        'without an explicit https:// frontend origin list.',
+    );
+    process.exit(1);
+  }
   const corsOrigins = corsOriginEnv
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean);
+  // Plain-HTTP origins in production invite HTTPS→HTTP downgrade issues
+  // (mixed content, cleartext credentialed CORS). Refuse them early.
+  if (isProduction && corsOrigins.some((o) => o.startsWith('http://'))) {
+    logger.error(
+      `CORS_ORIGIN contains non-https origin(s) in production: ${corsOrigins.join(', ')}`,
+    );
+    process.exit(1);
+  }
   app.enableCors({
     origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
     credentials: true,

@@ -276,8 +276,10 @@ DB_SSL_REJECT_UNAUTHORIZED=${DB_SSL_REJECT_UNAUTHORIZED}
 DB_CA_CERT=${DB_CA_CERT}
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
+# 15-minute access tokens; the frontend silently rotates them via /auth/refresh
+# so a stolen access token has a tiny usable window.
 JWT_SECRET=${JWT_SECRET}
-JWT_EXPIRES_IN=6h
+JWT_EXPIRES_IN=15m
 JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
 JWT_REFRESH_EXPIRES_IN=7d
 

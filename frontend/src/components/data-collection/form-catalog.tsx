@@ -115,7 +115,7 @@ export const FORM_CATEGORIES: FormCategory[] = [
       {
         key: 'fee-structure',
         endpoint: 'fee-structure',
-        label: 'Fee Structure (Primary)',
+        label: 'Fee Structure',
         description: 'Monthly fee data per grade: tuition, session, sports, transport and more',
         icon: Receipt,
       },
@@ -131,7 +131,7 @@ export const FORM_CATEGORIES: FormCategory[] = [
         key: 'revenue-budget-monthly',
         endpoint: 'revenue/budget/monthly',
         label: 'Planned Revenue Collection - Monthly',
-        description: 'Monthly tuition fee budget tracking with % collection achieved',
+        description: 'Monthly fee-wise revenue budget tracking with % collection achieved',
         icon: CalendarDays,
       },
       {
