@@ -40,7 +40,20 @@ export interface FormCategory {
   forms: FormCatalogItem[];
 }
 
-export const FORM_CATEGORIES: FormCategory[] = [
+/**
+ * Category keys retired from every menu / viewer / dashboard card.
+ *
+ * The "Revenue & Fee Structure" forms (fee structure, planned/actual revenue
+ * total + monthly) are no longer part of school data entry: revenue planning
+ * and tracking happen in the finance modules (Planned Revenue Target / AOP
+ * targets + Fee Collection), and the Programme Overview reads those instead —
+ * these forms only ever acted as a fallback. Existing submissions stay in the
+ * database and keep working as that fallback; remove a key from this list to
+ * restore the section.
+ */
+export const HIDDEN_FORM_CATEGORY_KEYS: string[] = ['revenue'];
+
+const ALL_FORM_CATEGORIES: FormCategory[] = [
   {
     key: 'infrastructure',
     label: 'Infrastructure & Classroom Status',
@@ -227,6 +240,10 @@ export const FORM_CATEGORIES: FormCategory[] = [
     ],
   },
 ];
+
+export const FORM_CATEGORIES: FormCategory[] = ALL_FORM_CATEGORIES.filter(
+  (c) => !HIDDEN_FORM_CATEGORY_KEYS.includes(c.key),
+);
 
 export function findFormByKey(formKey: string): { category: FormCategory; form: FormCatalogItem } | null {
   for (const category of FORM_CATEGORIES) {

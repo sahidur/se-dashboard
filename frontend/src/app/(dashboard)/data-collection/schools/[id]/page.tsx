@@ -13,7 +13,6 @@ import {
   Building2,
   Users,
   GraduationCap,
-  Wallet,
   TrendingUp,
   Award,
   CheckCircle2,
@@ -65,16 +64,9 @@ const CARD_CONFIG = [
     text: 'text-orange-600',
     trackKeys: ['teachersInfo', 'teachersDev'],
   },
-  {
-    key: 'revenue',
-    label: 'Revenue & Fee Structure',
-    icon: Wallet,
-    href: (id: string) => `/data-collection/schools/${id}/revenue`,
-    color: 'from-teal-500 to-teal-600',
-    bg: 'bg-teal-50',
-    text: 'text-teal-600',
-    trackKeys: ['feeStructure', 'revenueBudgetTotal', 'revenueBudgetMonthly', 'revenueActualTotal', 'revenueActualMonthly'],
-  },
+  // 'Revenue & Fee Structure' card removed — the five revenue forms are
+  // retired from school data entry (see HIDDEN_FORM_CATEGORY_KEYS in
+  // form-catalog.tsx). Dashboards read the finance modules instead.
   {
     key: 'performance',
     label: 'Pedagogical Performance',
@@ -104,7 +96,7 @@ const CARD_CONFIG = [
   },
 ];
 
-// Total = every tracked child form across all groups (17 today), NOT the
+// Total = every tracked child form across all groups (12 today), NOT the
 // number of group cards.
 const TOTAL_FORMS = CARD_CONFIG.reduce((sum, cfg) => sum + cfg.trackKeys.length, 0);
 
