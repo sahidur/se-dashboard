@@ -95,6 +95,14 @@ interface SchoolProfile {
   feeStructures: FeeRow[];
   revenueBudgetTotal: Record<string, unknown> | null;
   revenueActualTotal: Record<string, unknown> | null;
+  /** Auto-calculated from the fee-collection module (billed vs collected). Null when no fees are generated. */
+  feeCollection?: {
+    planned: number;
+    collected: number;
+    outstanding: number;
+    collectionPct: number | null;
+    deficit: number;
+  } | null;
   pedagogicalAchievements: PedagAchievementRow[];
   performance: Record<string, unknown> | null;
   teachersDevelopment?: Record<string, unknown>[];
@@ -340,15 +348,17 @@ function rowPoint(r: StatusRow): number | null {
 
 /* Group Average Grade point (section 8.3 Step 3) = the simple mean of the
    indicator grade-points in that group — NOT the mean of the raw percentages.
-   Info rows and explicitly-excluded rows do not count. */
+   Info rows and explicitly-excluded rows do not count. Indicators whose data
+   was never submitted contribute 0 points but stay in the denominator —
+   same "no data ≠ skip" rule as the Overall Score's section average. */
 function groupAveragePoint(rows: StatusRow[]): number | null {
-  const pts: number[] = [];
+  const pts: (number | null)[] = [];
   for (const r of rows) {
-    if (r.excludeFromAvg) continue;
-    const p = rowPoint(r);
-    if (p != null) pts.push(p);
+    if (r.excludeFromAvg || r.kind === 'info') continue;
+    pts.push(rowPoint(r)); // null when no data submitted — counts as 0
   }
-  return pts.length ? pts.reduce((a, b) => a + b, 0) / pts.length : null;
+  if (pts.length === 0) return null;
+  return pts.reduce<number>((a, b) => a + (b ?? 0), 0) / pts.length;
 }
 
 /* Section 8.4 — the four Status Groups that feed the Overall Score (equal 25%
@@ -374,7 +384,11 @@ function computeOverallRating(tables: StatusTableDef[]): OverallRating {
     return { title, point, grade: point == null ? null : pointToGrade(point) };
   });
   const pts = groups.map((g) => g.point).filter((p): p is number => p != null);
-  const overallPoint = pts.length ? pts.reduce((a, b) => a + b, 0) / pts.length : null;
+  /* Sections whose forms were never submitted contribute 0 points but stay
+     in the denominator — the overall is always divided by all FOUR graded
+     sections, otherwise a school that filled only one or two forms would
+     get an inflated average. Null only when nothing is gradable at all. */
+  const overallPoint = pts.length ? pts.reduce((a, b) => a + b, 0) / groups.length : null;
   return { groups, overallPoint, overallGrade: overallPoint == null ? null : pointToGrade(overallPoint) };
 }
 
@@ -634,18 +648,18 @@ const INDICATOR_INFO: Record<string, IndicatorInfo> = {
 
   // ── Revenue Collection Status ──
   'Revenue Collection Status::Actual collected revenue %': {
-    how: 'Revenue collected ÷ Actual Revenue Target × 100 (capped at 100%), summed across all 8 fee categories: Admission, Session, Assessment, Sports, Syllabus, Testimonial, Others and Transport. The Actual Revenue Target is the money actually billed to the enrolled students.',
-    source: 'Revenue (Actual) form → Target & Achievement for each fee type',
+    how: 'Revenue collected ÷ Actual Revenue Target × 100 (capped at 100%). Preferred source: auto-calculated from the Fee Collection module — payments received against the fees generated for the enrolled students (per-head allocations included). Fallback: the reported Revenue (Actual) form across its fee categories.',
+    source: 'Fee Collection module (payments vs generated fees) when fee data exists; otherwise the Revenue (Actual) form → Target & Achievement for each fee type',
     scale: GRADE_SCALE_TEXT,
   },
   'Revenue Collection Status::Outstanding dues %': {
     how: '(Actual Revenue Target − revenue collected, floored at ৳0) ÷ Actual Revenue Target × 100 — the share of billed money not yet received. Graded on the collected share (100 − dues %), so a lower dues figure scores better. It is the exact complement of the collected row, so it is shown for information and excluded from the group average to avoid double-counting.',
-    source: 'Revenue (Actual) form → Target & Achievement for each fee type',
+    source: 'Fee Collection module (billed payable − payments collected) when fee data exists; otherwise the Revenue (Actual) form → Target & Achievement for each fee type',
     scale: GRADE_SCALE_TEXT,
   },
   'Revenue Collection Status::Revenue deficit %': {
     how: '(revenue collected − Planned Revenue Target) ÷ Planned Revenue Target × 100, shown with negative marking when the school falls short of the budgeted plan and positive when it exceeds it. Graded on collected ÷ Planned Revenue Target × 100 (capped at 100%), so a smaller deficit scores better.',
-    source: 'Revenue (Budget) form → Target for each fee type, and Revenue (Actual) form → Achievement for each fee type',
+    source: 'Planned: Revenue (Budget) form target (or the auto-calculated fee plan when no budget was submitted). Collected: Fee Collection payments when fee data exists; otherwise the Revenue (Actual) form achievement',
     scale: GRADE_SCALE_TEXT,
   },
 
@@ -661,12 +675,12 @@ const INDICATOR_INFO: Record<string, IndicatorInfo> = {
     scale: GRADE_SCALE_TEXT,
   },
   'Pedagogical Performance Status::Routine-wise Corner Participation': {
-    how: 'Green when the school has at least one Corner activity record.',
+    how: 'Green when the school has at least one Corner activity record, Red when activity data exists but none are Corner records. Shows "Not reported" until the Activity Participation form is submitted.',
     source: 'Activity Participation form → Item = Corner activity',
     scale: YESNO_SCALE_TEXT,
   },
   'Pedagogical Performance Status::Routine-wise Club Participation': {
-    how: 'Green when the school has at least one club activity record (any of the five clubs).',
+    how: 'Green when the school has at least one club activity record (any of the five clubs), Red when activity data exists but no club records. Shows "Not reported" until the Activity Participation form is submitted.',
     source: 'Activity Participation form → Item = any club',
     scale: YESNO_SCALE_TEXT,
   },
@@ -681,7 +695,7 @@ const INDICATOR_INFO: Record<string, IndicatorInfo> = {
     scale: GRADE_SCALE_TEXT,
   },
   'Pedagogical Performance Status::Event Participation': {
-    how: 'Green when the school has at least one event participation record.',
+    how: 'Green when the school has at least one event participation record. Shows "Not reported" until event records are submitted.',
     source: 'Event Participation form',
     scale: YESNO_SCALE_TEXT,
   },
@@ -743,25 +757,29 @@ function buildStatusTables(p: SchoolProfile): StatusTableDef[] {
   const htLeadership = htLeadValues.length ? htLeadValues[htLeadValues.length - 1] : null;
   const htLeadershipGrade = htLeadership ? LEADERSHIP_GRADE[htLeadership] ?? null : null;
 
-  /* ── Revenue (auto, target vs achievement across all fee types) ──
-     Mirrors the Programme Overview definitions:
-       Planned Revenue Target = Σ Budget targets
-       Actual Revenue Target  = Σ Actual (enrolled-student) targets
-       Collected              = Σ Actual achievements
-       Outstanding dues       = max(Actual target − Collected, 0)
-       Revenue deficit        = Collected − Planned target (negative = short) */
+/* ── Revenue (auto, target vs achievement across all fee types) ──
+     Preferred source: fee-collection module auto-calculation (fees billed to
+     actual students vs payments actually received). Fallback: the reported
+     Programme Overview forms:
+        Planned Revenue Target = Σ Budget targets
+        Actual Revenue Target  = Σ Actual (enrolled-student) targets
+        Collected              = Σ Actual achievements
+        Outstanding dues       = max(Actual target − Collected, 0)
+        Revenue deficit        = Collected − Planned target (negative = short) */
+  const feeAuto = p.feeCollection ?? null;
   const FEES = ['admissionFee', 'sessionFee', 'assessmentFee', 'sportsFee',
     'syllabusFee', 'testimonialFee', 'othersFee', 'transportFee'];
   const sumFees = (r: Record<string, unknown> | null | undefined, suffix: 'Target' | 'Achievement') =>
     (r ? FEES.reduce((s, f) => s + num(r[`${f}${suffix}`]), 0) : 0);
-  const plannedTarget = sumFees(rbt, 'Target');
-  const actualTarget = sumFees(rat, 'Target');
-  const collected = sumFees(rat, 'Achievement');
-  const duesAmount = Math.max(actualTarget - collected, 0);
-  const deficitAmount = collected - plannedTarget;
+  const plannedTarget = feeAuto ? feeAuto.planned : sumFees(rbt, 'Target');
+  const actualTarget = feeAuto ? feeAuto.planned : sumFees(rat, 'Target');
+  const collected = feeAuto ? feeAuto.collected : sumFees(rat, 'Achievement');
+  const duesAmount = feeAuto ? feeAuto.outstanding : Math.max(actualTarget - collected, 0);
+  const deficitAmount = feeAuto ? feeAuto.deficit : collected - plannedTarget;
   const collectedPct = actualTarget > 0 ? cap100((collected / actualTarget) * 100) : null;
   const duesPct = actualTarget > 0 ? cap100((duesAmount / actualTarget) * 100) : null;
   const deficitPct = plannedTarget > 0 ? ((deficitAmount / plannedTarget) * 100) : null;
+  const revenueSourceNote = feeAuto ? 'auto' : undefined;
   // Both shortfall rows are graded on their positive counterpart (lower is
   // better), the same way the dropout rows are graded on retention.
   const duesGradePct = duesPct == null ? null : 100 - duesPct;
@@ -797,6 +815,9 @@ function buildStatusTables(p: SchoolProfile): StatusTableDef[] {
   const spTop = spScoped.reduce((s, r) => s + num(r.gradeAPlus) + num(r.gradeA), 0);
   const sscTopPct = spTotal > 0 ? cap100((spTop / spTotal) * 100) : null;
   const hasEvents = events.length > 0;
+  // The Activity Participation form was never submitted → the yes/no
+  // participation indicators have nothing to report yet.
+  const hasActivityData = acts.length > 0;
 
   /* ── Infrastructure & Classroom (Yes/No facility presence) ── */
   const boolYes = (v: boolean | null | undefined): boolean | undefined =>
@@ -858,9 +879,9 @@ function buildStatusTables(p: SchoolProfile): StatusTableDef[] {
       accent: 'bg-amber-100 text-amber-900',
       graded: true,
       rows: [
-        { indicator: 'Actual collected revenue %', status: pctStr(collectedPct), kind: 'percent', pct: collectedPct },
-        { indicator: 'Outstanding dues %', status: pctStr(duesPct), kind: 'percent', pct: duesGradePct, excludeFromAvg: true, gradeBasis: `collected ${pctStr(duesGradePct)}` },
-        { indicator: 'Revenue deficit %', status: signedPctStr(deficitPct), kind: 'percent', pct: deficitGradePct, gradeBasis: `collected vs plan ${pctStr(deficitGradePct)}` },
+        { indicator: 'Actual collected revenue %', status: pctStr(collectedPct), kind: 'percent', pct: collectedPct, note: revenueSourceNote },
+        { indicator: 'Outstanding dues %', status: pctStr(duesPct), kind: 'percent', pct: duesGradePct, excludeFromAvg: true, gradeBasis: `collected ${pctStr(duesGradePct)}`, note: revenueSourceNote },
+        { indicator: 'Revenue deficit %', status: signedPctStr(deficitPct), kind: 'percent', pct: deficitGradePct, gradeBasis: `collected vs plan ${pctStr(deficitGradePct)}`, note: revenueSourceNote },
       ],
     },
     {
@@ -870,11 +891,11 @@ function buildStatusTables(p: SchoolProfile): StatusTableDef[] {
       rows: [
         { indicator: '% of Students use the Library', status: pctStr(libPct), kind: 'percent', pct: libPct },
         { indicator: '% of Students use Lab', status: pctStr(labPct), kind: 'percent', pct: labPct },
-        { indicator: 'Routine-wise Corner Participation', status: yn(cornerActs.length > 0), kind: 'yesno', yes: cornerActs.length > 0 },
-        { indicator: 'Routine-wise Club Participation', status: yn(clubActs.length > 0), kind: 'yesno', yes: clubActs.length > 0 },
+        { indicator: 'Routine-wise Corner Participation', status: hasActivityData ? yn(cornerActs.length > 0) : 'Not reported', kind: 'yesno', yes: hasActivityData ? cornerActs.length > 0 : undefined },
+        { indicator: 'Routine-wise Club Participation', status: hasActivityData ? yn(clubActs.length > 0) : 'Not reported', kind: 'yesno', yes: hasActivityData ? clubActs.length > 0 : undefined },
         { indicator: 'Students Awarded in Scholarship', status: pctStr(scholarPct), kind: 'percent', pct: scholarPct },
         { indicator: 'Students Scoring A & A+ in SSC', status: pctStr(sscTopPct), kind: 'percent', pct: sscTopPct },
-        { indicator: 'Event Participation', status: yn(hasEvents), kind: 'yesno', yes: hasEvents },
+        { indicator: 'Event Participation', status: hasEvents ? yn(true) : 'Not reported', kind: 'yesno', yes: hasEvents ? true : undefined },
       ],
     },
   ];
@@ -959,7 +980,6 @@ function RatingModal({
   isOpen: boolean; onClose: () => void; tables: StatusTableDef[]; rating: OverallRating;
 }) {
   const overallColor: GradeName = rating.overallGrade ? LETTER_COLOR[rating.overallGrade] : 'Yellow';
-  const scoredGroups = rating.groups.map((g) => g.point).filter((p): p is number => p != null);
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Rating & Scoring System" size="xl">
       <div className="space-y-5 text-sm">
@@ -1004,8 +1024,10 @@ function RatingModal({
             const table = tables.find((t) => t.title === title);
             const g = rating.groups.find((x) => x.title === title);
             if (!table) return null;
-            const gradedRows = table.rows.filter((r) => rowPoint(r) != null);
-            const countedPoints = gradedRows.filter((r) => !r.excludeFromAvg).map((r) => rowPoint(r)!);
+            // Every graded-capable row is shown (missing data = 0 points, not
+            // skipped); the group average divides by ALL of them.
+            const shownRows = table.rows.filter((r) => r.kind !== 'info');
+            const countedRows = shownRows.filter((r) => !r.excludeFromAvg);
             return (
               <div key={title} className="overflow-hidden rounded-lg border border-gray-100">
                 <div className={`flex items-center justify-between gap-2 px-3 py-2 text-sm font-bold ${GROUP_ACCENT[title] ?? 'bg-gray-100 text-gray-800'}`}>
@@ -1018,8 +1040,8 @@ function RatingModal({
                 <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <tbody className="divide-y divide-gray-50">
-                    {gradedRows.map((r) => {
-                      const pt = rowPoint(r)!;
+                    {shownRows.map((r) => {
+                      const pt = rowPoint(r);
                       const excluded = !!r.excludeFromAvg;
                       return (
                         <tr key={r.indicator} className={excluded ? 'bg-gray-50/60' : undefined}>
@@ -1038,23 +1060,27 @@ function RatingModal({
                             )}
                           </td>
                           <td className="w-16 px-3 py-1.5 text-center">
-                            <GradePill grade={r.kind === 'yesno' ? (r.yes ? 'A' : 'C') : r.kind === 'grade' ? r.grade! : pctToGrade(r.pct!)} />
+                            {pt != null ? (
+                              <GradePill grade={r.kind === 'yesno' ? (r.yes ? 'A' : 'C') : r.kind === 'grade' ? r.grade! : pctToGrade(r.pct!)} />
+                            ) : (
+                              <span className="text-[10px] font-medium text-gray-400">no data</span>
+                            )}
                           </td>
                           <td className="w-12 px-3 py-1.5 text-center font-semibold text-gray-500">
-                            {excluded ? <span className="text-gray-300">—</span> : pt}
+                            {excluded ? <span className="text-gray-300">—</span> : pt ?? 0}
                           </td>
                         </tr>
                       );
                     })}
-                    {gradedRows.length === 0 && (
+                    {shownRows.length === 0 && (
                       <tr><td className="px-3 py-2 text-gray-400">No graded indicators reported yet.</td></tr>
                     )}
                   </tbody>
-                  {countedPoints.length > 0 && (
+                  {countedRows.length > 0 && (
                     <tfoot>
                       <tr className="border-t border-gray-100 bg-gray-50/80">
                         <td className="px-3 py-1.5 font-semibold text-gray-500" colSpan={3}>
-                          Average Grade = ({countedPoints.join(' + ')}) ÷ {countedPoints.length}
+                          Average Grade = ({countedRows.map((r) => rowPoint(r) ?? 0).join(' + ')}) ÷ {countedRows.length}
                         </td>
                         <td className="px-3 py-1.5 text-center font-bold text-gray-700">
                           {g?.point != null ? g.point.toFixed(2) : '—'}
@@ -1073,10 +1099,12 @@ function RatingModal({
         <div className={`flex items-center justify-between rounded-lg px-4 py-3 ring-1 ${GRADE_STYLES[overallColor].ring} ${GRADE_STYLES[overallColor].panel}`}>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Overall Score</p>
-            <p className="text-[11px] text-gray-500">Mean of the four status groups (equal 25% weight)</p>
-            {scoredGroups.length > 0 && (
+            <p className="text-[11px] text-gray-500">
+              Mean of all four status groups (equal 25% weight — a group with no submitted data counts as 0)
+            </p>
+            {rating.overallPoint != null && (
               <p className="mt-0.5 text-[11px] text-gray-500">
-                ({scoredGroups.map((p) => p.toFixed(2)).join(' + ')}) ÷ {scoredGroups.length}
+                ({rating.groups.map((g) => (g.point != null ? g.point.toFixed(2) : '0.00')).join(' + ')}) ÷ {rating.groups.length}
               </p>
             )}
           </div>

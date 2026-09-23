@@ -173,7 +173,8 @@ const METRICS: Record<string, MetricConfig> = {
   },
   'budget-target': {
     title: 'Planned Revenue Target',
-    description: 'Planned (budgeted) revenue target per school (sum of all fee heads) behind the total planned target.',
+    description:
+      'Planned revenue target per school — from the AOP plan (target students × fee structure, no discounts) when set; otherwise the reported budget form or the auto-calculated fee plan.',
     columns: [
       schoolCol,
       categoryCol,
@@ -249,6 +250,47 @@ const METRICS: Record<string, MetricConfig> = {
         key: 'collected', label: 'Collected', align: 'right',
         value: (s) => s.actualRevenueAchievement, sum: true, money: true,
         cell: (s) => achievementCell(s.actualRevenueAchievement, s.actualRevenueTarget),
+      },
+      {
+        key: 'dues', label: 'Outstanding Due', align: 'right',
+        value: (s) => dues(s), sum: true, money: true,
+        cell: (s) => (
+          <span className={`font-semibold ${dues(s) > 0 ? 'text-red-600' : 'text-green-600'}`}>
+            {fmtTaka(dues(s))}
+          </span>
+        ),
+      },
+    ],
+  },
+  'collection-rate': {
+    title: '% of Collection',
+    description:
+      'Share of billed revenue actually collected per school — payments received ÷ fees generated (auto-calculated from the Fee Collection module).',
+    columns: [
+      schoolCol,
+      categoryCol,
+      {
+        key: 'actualTarget', label: 'Billed (Target)', align: 'right',
+        value: (s) => s.actualRevenueTarget, sum: true, money: true,
+        cell: (s) => <span className="text-gray-600">{fmtTaka(s.actualRevenueTarget)}</span>,
+      },
+      {
+        key: 'collected', label: 'Collected', align: 'right',
+        value: (s) => s.actualRevenueAchievement, sum: true, money: true,
+        cell: (s) => achievementCell(s.actualRevenueAchievement, s.actualRevenueTarget),
+      },
+      {
+        key: 'rate', label: '% of Collection', align: 'right',
+        value: (s) => Number(pctRaw(s.actualRevenueAchievement, s.actualRevenueTarget).toFixed(1)),
+        cell: (s) => {
+          const p = pctRaw(s.actualRevenueAchievement, s.actualRevenueTarget);
+          const color = p >= 80 ? 'text-green-600' : p >= 70 ? 'text-amber-600' : 'text-red-500';
+          return (
+            <span className={`font-semibold ${color}`}>
+              {s.actualRevenueTarget > 0 ? `${p.toFixed(1)}%` : 'n/a'}
+            </span>
+          );
+        },
       },
       {
         key: 'dues', label: 'Outstanding Due', align: 'right',

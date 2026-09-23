@@ -63,6 +63,9 @@ export class DcSchool {
   @Column({ name: 'grade_coverage', length: 200, nullable: true })
   gradeCoverage: string;
 
+  @Column({ name: 'is_active', type: 'boolean', default: true })
+  isActive: boolean;
+
   @ManyToOne(() => User, { eager: true })
   @JoinColumn({ name: 'created_by_id' })
   createdBy: User;

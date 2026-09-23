@@ -36,21 +36,21 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
   };
 
   return (
-    <header className="sticky top-0 z-30 flex min-h-[64px] items-center justify-between border-b border-gray-200 bg-white py-3 pl-4 pr-4 sm:h-16 sm:py-0 sm:pl-6 sm:pr-6">
+    <header className="sticky top-0 z-30 flex min-h-[64px] items-center justify-between border-b border-gray-100 bg-white/80 backdrop-blur-md py-3 pl-4 pr-4 sm:h-16 sm:py-0 sm:pl-6 sm:pr-6">
       {/* Mobile menu toggle — left edge of the header row, vertically centered
           with the profile icon, so no blank strip is reserved beside content. */}
       <button
         onClick={() => setMobileNavOpen(true)}
-        className="-ml-2 mr-1 shrink-0 rounded-lg p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 focus-visible:bg-gray-100 lg:hidden"
+        className="-ml-2 mr-1 shrink-0 rounded-lg p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 focus-visible:bg-gray-100 lg:hidden"
         aria-label="Open menu"
       >
         <Menu size={20} />
       </button>
       {/* Titles are hidden on mobile — long school/form names wrap and crowd
           the compact header row. */}
-      <div className="hidden min-w-0 mr-3 sm:block">
+      <div className="mr-3 hidden min-w-0 sm:block">
         <h1
-          className="truncate text-lg font-bold leading-snug text-gray-900 sm:text-xl"
+          className="truncate text-lg font-bold leading-snug tracking-tight text-gray-900 sm:text-xl"
           title={title}
         >
           {title}

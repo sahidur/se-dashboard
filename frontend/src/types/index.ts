@@ -394,6 +394,7 @@ export interface DcSchool {
   totalTeachers?: number;
   totalStudents?: number;
   gradeCoverage?: string;
+  isActive?: boolean;
   createdById: string;
   createdBy?: { id: string; firstName: string; lastName: string; email: string };
   createdAt: string;

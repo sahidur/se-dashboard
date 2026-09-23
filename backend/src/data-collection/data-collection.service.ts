@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, ILike, In } from 'typeorm';
+import { Repository, ILike, In, IsNull } from 'typeorm';
 import { DcSchool } from './entities/dc-school.entity';
 import { DcBasicInfo } from './entities/dc-basic-info.entity';
 import { DcInfrastructure } from './entities/dc-infrastructure.entity';
@@ -52,6 +52,9 @@ import {
   UpdateEventParticipationDto,
   UpsertFormDraftDto,
 } from './dto';
+import { StudentFee, StudentFeeStatus } from '../fee-collection/entities/student-fee.entity';
+import { AcademicYear } from '../fee-management/entities/academic-year.entity';
+import { FinanceReportsService } from '../fee-collection/finance-reports.service';
 import { UsersService } from '../users/users.service';
 
 /** Fee keys stored on the monthly revenue tables; % collection is computed over all of them. */
@@ -87,8 +90,11 @@ export class DataCollectionService {
     @InjectRepository(DcStudentsPerformance) private studentsPerfRepo: Repository<DcStudentsPerformance>,
     @InjectRepository(DcStudentPerformance) private studentPerfRepo: Repository<DcStudentPerformance>,
     @InjectRepository(DcActivityParticipation) private activityPartRepo: Repository<DcActivityParticipation>,
-    @InjectRepository(DcFormDraft) private formDraftRepo: Repository<DcFormDraft>,
     @InjectRepository(DcEventParticipation) private eventPartRepo: Repository<DcEventParticipation>,
+    @InjectRepository(DcFormDraft) private formDraftRepo: Repository<DcFormDraft>,
+    @InjectRepository(StudentFee) private studentFeeRepo: Repository<StudentFee>,
+    @InjectRepository(AcademicYear) private academicYearRepo: Repository<AcademicYear>,
+    private financeReportsService: FinanceReportsService,
     private usersService: UsersService,
   ) {}
 
@@ -1218,6 +1224,7 @@ export class DataCollectionService {
       teacherRows, studentRecords, budgetTotals, actualTotals,
       teacherIndividuals, teachersDevRecords, activityRecords,
       pedagRecords, studentsPerfRecords, eventRecords,
+      studentPerfBssRecords, performanceRecords,
     ] = await Promise.all([
       teacherQb.getRawMany(),
       this.studentsRepo.find({ where: studentWhere }),
@@ -1254,6 +1261,22 @@ export class DataCollectionService {
       this.eventPartRepo.find({
         where: studentWhere,
         select: ['schoolId'],
+      }),
+      // ── SSC results (BRAC Secondary): BSS-1 subject-wise rows (grade=SSC)
+      // for the dynamic SSC pass / A+ rates in the Programme Overview ──
+      this.studentPerfRepo.find({
+        where: {
+          schoolId: In(schoolIds),
+          ...(year != null ? { academicYear: year } : {}),
+        },
+      }),
+      // Board Exam Pass Rate (%) — direct Performance-form field, fallback
+      // source for the SSC pass rate when no BSS-1 SSC data was submitted
+      this.performanceRepo.find({
+        where: schoolIds.map((id) =>
+          year != null ? { schoolId: id, academicYear: year } : { schoolId: id },
+        ),
+        select: ['schoolId', 'boardExamPassRate'],
       }),
     ]);
 
@@ -1326,12 +1349,79 @@ export class DataCollectionService {
     for (const e of eventRecords) eventHas[e.schoolId] = true;
 
     // Build per-school rows
+    // ── Auto-calculated revenue from the fee-collection module (billed vs
+    // collected per actual student). Schools without generated fees fall
+    // back to the reported dc_revenue forms. ──
+    const feeRevenue = await this.buildFeeRevenue(schoolIds, year);
+
+    // ── SSC results per school (BRAC Secondary) — dynamic source for the
+    // "Pass rate in SSC exam" and "% of students obtained A+ in SSC exam"
+    // metrics of the Programme Overview category breakdown. Collected from
+    // the BSS-1 form ("Grade 6–10 & SSC — Subject-wise Results", rows hold
+    // A+…F counts per subject). When both evaluation periods were filled,
+    // the Annual one wins (single exam year). The Performance form's
+    // "Board Exam Pass Rate (%)" is the fallback for the pass rate when a
+    // school has no BSS-1 SSC data. ──
+    const boardExamRateBySchool = new Map<string, number>();
+    for (const p of performanceRecords) {
+      const rate = Number(p.boardExamPassRate);
+      if (rate > 0) boardExamRateBySchool.set(p.schoolId, rate);
+    }
+    const sscBySchool = new Map<string, { pass: number; aPlus: number; total: number }>();
+    {
+      const bySchool = new Map<string, DcStudentPerformance[]>();
+      for (const rec of studentPerfBssRecords) {
+        if (rec.formKey !== 'bss-1' || rec.grade !== 'SSC') continue;
+        const list = bySchool.get(rec.schoolId) ?? [];
+        list.push(rec);
+        bySchool.set(rec.schoolId, list);
+      }
+      for (const [schoolId, recs] of bySchool) {
+        // Prefer the Annual assessment when both periods were submitted
+        const chosen = recs.some((r) => r.evaluationPeriod === 'Annual')
+          ? recs.filter((r) => r.evaluationPeriod === 'Annual')
+          : recs;
+        let aPlus = 0;
+        let fail = 0;
+        let total = 0;
+        for (const rec of chosen) {
+          for (const row of rec.rows ?? []) {
+            let rowTotal = 0;
+            let rowAPlus = 0;
+            let rowFail = 0;
+            for (const [label, count] of Object.entries(row.values ?? {})) {
+              const n = Number(count) || 0;
+              rowTotal += n;
+              if (label === 'A+') rowAPlus = n;
+              else if (label === 'F') rowFail = n;
+            }
+            aPlus += rowAPlus;
+            fail += rowFail;
+            total += rowTotal;
+          }
+        }
+        if (total > 0) sscBySchool.set(schoolId, { pass: total - fail, aPlus, total });
+      }
+    }
+    const sscRate = (s: { pass: number; aPlus: number; total: number } | undefined, metric: 'pass' | 'aPlus') =>
+      s && s.total > 0 ? ((metric === 'pass' ? s.pass : s.aPlus) / s.total) * 100 : null;
+
+    // AOP plan figures per school — the pure plan baseline:
+    // AOP target students × category fee structure (no discounts, no link to
+    // the enrolled student list). Wins over the reported budget form and the
+    // generated fee plan whenever AOP targets exist for the school, and also
+    // supplies the yearly student target (Σ AOP target students per class).
+    const aopSummary = await this.financeReportsService.aopPlannedSummary(schoolIds, year);
+
     const schoolRows = schools.map((school) => {
       const t = teacherMap[school.id] ?? { male: 0, female: 0 };
       const s = studentMap[school.id] ?? { boys: 0, girls: 0, total: 0, pwd: 0, ethnic: 0 };
       const b = budgetMap[school.id];
       const a = actualMap[school.id];
-
+      const feeRev = feeRevenue.get(school.id) ?? null;
+      const aop = aopSummary.get(school.id) ?? null;
+      const aopPlanned = aop?.planned ?? 0;
+      const aopStudents = aop?.targetStudents ?? 0;
       const sumBudgetTarget = b
         ? [b.admissionFeeTarget, b.sessionFeeTarget, b.assessmentFeeTarget, b.sportsFeeTarget, b.syllabusFeeTarget, b.testimonialFeeTarget, b.othersFeeTarget, b.transportFeeTarget]
             .reduce((acc, v) => acc + parseFloat(String(v ?? 0)), 0)
@@ -1349,10 +1439,30 @@ export class DataCollectionService {
             .reduce((acc, v) => acc + parseFloat(String(v ?? 0)), 0)
         : 0;
 
+      // Auto-calculated figures win when fee data exists; the reported forms
+      // are the fallback. The planned baseline comes from the AOP targets
+      // (target students × fee structure, no discounts) whenever they exist,
+      // then falls back to the reported budget form and finally the
+      // generated fee plan.
+      const budgetRevenueTarget =
+        aopPlanned > 0
+          ? aopPlanned
+          : sumBudgetTarget > 0
+            ? sumBudgetTarget
+            : (feeRev?.planned ?? 0);
+      const actualRevenueTarget = feeRev ? feeRev.planned : sumActualTarget;
+      const actualRevenueAchievement = feeRev ? feeRev.collected : sumActualAchievement;
+
       // Overall score out of 3.00 — same rules as the school-information page
       const overallScore = this.computeSchoolOverallScore({
         studentTotal: s.total,
-        studentTarget: b?.totalStudentsTarget != null ? Number(b.totalStudentsTarget) : null,
+        // enrolment is graded against the plan's student count — AOP first
+        studentTarget:
+          aopStudents > 0
+            ? aopStudents
+            : b?.totalStudentsTarget != null
+              ? Number(b.totalStudentsTarget)
+              : null,
         attendance: this.avgOrNull(attendVals[school.id]),
         dropout: this.avgOrNull(dropoutVals[school.id]),
         teacherCount: teacherStats[school.id]?.total ?? 0,
@@ -1360,9 +1470,9 @@ export class DataCollectionService {
         subjectTrained: teacherStats[school.id]?.subject ?? null,
         aGradeTeachers: teacherStats[school.id]?.aGrade ?? null,
         teacherDropout: this.avgOrNull(tDropVals[school.id]),
-        plannedTarget: sumBudgetTarget,
-        actualTarget: sumActualTarget,
-        collected: sumActualAchievement,
+        plannedTarget: budgetRevenueTarget,
+        actualTarget: actualRevenueTarget,
+        collected: actualRevenueAchievement,
         libraryPct: this.avgOrNull(libVals[school.id]),
         labPct: this.avgOrNull(labVals[school.id]),
         hasCorner: !!cornerHas[school.id],
@@ -1379,6 +1489,17 @@ export class DataCollectionService {
         hasEvents: !!eventHas[school.id],
       });
 
+      // The yearly student target is the plan's student count — AOP targets win,
+      // then the reported budget/actual-student forms.
+      const yearlyStudentTarget =
+        aopStudents > 0 ? aopStudents : (b?.totalStudentsTarget ?? a?.totalStudentsTarget ?? 0);
+
+      // Dynamic SSC metrics (BRAC Secondary): BSS-1 subject-wise results
+      // first, Board Exam Pass Rate field as the pass-rate fallback.
+      const schoolSsc = sscBySchool.get(school.id);
+      const sscPassRate = sscRate(schoolSsc, 'pass') ?? boardExamRateBySchool.get(school.id) ?? null;
+      const sscAPlusRate = sscRate(schoolSsc, 'aPlus');
+
       return {
         id: school.id,
         name: school.name,
@@ -1391,11 +1512,19 @@ export class DataCollectionService {
         governmentApproval: school.governmentApproval ?? null,
         teachers: { male: t.male, female: t.female, total: t.male + t.female },
         students: s,
-        yearlyStudentTarget: b?.totalStudentsTarget ?? a?.totalStudentsTarget ?? 0,
-        budgetRevenueTarget: sumBudgetTarget,
+        yearlyStudentTarget,
+        budgetRevenueTarget,
+        /** AOP plan figure (target students × fee structure) that won over the fallbacks, 0 when absent */
+        aopPlannedRevenue: aopPlanned,
         budgetRevenueAchievement: sumBudgetAchievement,
-        actualRevenueTarget: sumActualTarget,
-        actualRevenueAchievement: sumActualAchievement,
+        actualRevenueTarget,
+        actualRevenueAchievement,
+        /** Auto-calculated from fee collection when the school has generated fees. */
+        feeCollection: feeRev,
+        revenueSource: feeRev ? 'fee-collection' : 'reported',
+        /** SSC exam results (BRAC Secondary) — null when nothing was submitted */
+        sscPassRate,
+        sscAPlusRate,
         overallScore,
         overallGrade:
           overallScore == null ? null : overallScore >= 2.5 ? 'A' : overallScore >= 1.5 ? 'B' : 'C',
@@ -1434,6 +1563,7 @@ export class DataCollectionService {
         totalStudentsBoys: 0, totalStudentsGirls: 0, totalStudents: 0, totalPWD: 0, totalEthnic: 0,
         yearlyStudentTarget: 0, budgetRevenueTarget: 0, budgetRevenueAchievement: 0,
         actualRevenueTarget: 0, actualRevenueAchievement: 0,
+        sscPassRate: null as number | null, sscAPlusRate: null as number | null,
       },
     );
 
@@ -1461,6 +1591,38 @@ export class DataCollectionService {
       categories[cat].actualRevenueAchievement += r.actualRevenueAchievement;
     }
 
+    // ── SSC metrics for the BRAC Secondary category table ──
+    // Subject-weighted aggregation of the BSS-1 SSC results across schools;
+    // when no school submitted BSS-1 SSC data, the pass rate falls back to
+    // the mean of the collected Board Exam Pass Rate fields. The A+ rate has
+    // no fallback — it can only come from the subject-wise form.
+    const sscCatAgg = { pass: 0, aPlus: 0, total: 0 };
+    const boardRates: number[] = [];
+    for (const r of schoolRows) {
+      if (r.category !== 'brac_secondary') continue;
+      const s = sscBySchool.get(r.id);
+      if (s) {
+        sscCatAgg.pass += s.pass;
+        sscCatAgg.aPlus += s.aPlus;
+        sscCatAgg.total += s.total;
+      }
+      const boardRate = boardExamRateBySchool.get(r.id);
+      if (boardRate != null) boardRates.push(boardRate);
+    }
+    const sscPassRate =
+      sscCatAgg.total > 0
+        ? (sscCatAgg.pass / sscCatAgg.total) * 100
+        : boardRates.length > 0
+          ? boardRates.reduce((a, b) => a + b, 0) / boardRates.length
+          : null;
+    const sscAPlusRate = sscCatAgg.total > 0 ? (sscCatAgg.aPlus / sscCatAgg.total) * 100 : null;
+    totals.sscPassRate = sscPassRate;
+    totals.sscAPlusRate = sscAPlusRate;
+    if (categories['brac_secondary']) {
+      categories['brac_secondary'].sscPassRate = sscPassRate;
+      categories['brac_secondary'].sscAPlusRate = sscAPlusRate;
+    }
+
     return { totals, categories, schools: schoolRows, academicYear: year, availableYears };
   }
 
@@ -1471,6 +1633,54 @@ export class DataCollectionService {
   }
 
   /**
+   * Auto-calculated revenue figures per school from the fee-collection module
+   * (edu_student_fees snapshots — one row per student per month):
+   *   Planned  = Σ payable amounts (fees generated for the actual students)
+   *   Collected = Σ paid amounts (real payments, head allocations included)
+   *   Outstanding dues / % of collection / deficit are derived from those two.
+   * Schools without generated fees get no entry → the reported dc_revenue
+   * forms remain the fallback data source for them.
+   */
+  private async buildFeeRevenue(
+    schoolIds: string[],
+    academicYear: number | null,
+  ): Promise<Map<string, { planned: number; collected: number; outstanding: number; collectionPct: number | null; deficit: number }>> {
+    const result = new Map<string, { planned: number; collected: number; outstanding: number; collectionPct: number | null; deficit: number }>();
+    if (academicYear == null || schoolIds.length === 0) return result;
+
+    const ay = await this.academicYearRepo.findOne({ where: { name: String(academicYear) } });
+    if (!ay) return result;
+
+    const fees = await this.studentFeeRepo.find({
+      where: { schoolId: In(schoolIds), academicYearId: ay.id, deletedAt: IsNull() },
+      select: ['schoolId', 'payableAmount', 'paidAmount', 'status'],
+    });
+
+    const bySchool = new Map<string, { planned: number; collected: number }>();
+    for (const f of fees) {
+      if (f.status === StudentFeeStatus.CANCELLED) continue;
+      const row = bySchool.get(f.schoolId) ?? { planned: 0, collected: 0 };
+      row.planned += parseFloat(f.payableAmount);
+      row.collected += parseFloat(f.paidAmount);
+      bySchool.set(f.schoolId, row);
+    }
+
+    for (const [schoolId, row] of bySchool) {
+      const planned = Math.round(row.planned * 100) / 100;
+      const collected = Math.round(row.collected * 100) / 100;
+      const outstanding = Math.max(planned - collected, 0);
+      result.set(schoolId, {
+        planned,
+        collected,
+        outstanding,
+        collectionPct: planned > 0 ? Math.round(Math.min(100, (collected / planned) * 100) * 100) / 100 : null,
+        deficit: Math.round((collected - planned) * 100) / 100,
+      });
+    }
+    return result;
+  }
+
+  /**
    * Overall school score out of 3.00 — server-side mirror of the Status Groups
    * computed in the school-information page (section 8.3/8.4 of the rating doc):
    *   A / Green = 3 • B / Yellow = 2 • C / Red = 1  (percent: ≥80 / 70–79 / <70)
@@ -1478,9 +1688,13 @@ export class DataCollectionService {
    * Pedagogical Performance) each contribute their indicator-point average;
    * the overall score is the mean of those group averages. Infrastructure &
    * Head Teachers' status are informational only and excluded, matching the
-   * rating document. Complementary rows (retention, dues) are excluded to
-   * avoid double-counting. Returns null when a school has no gradable data.
-   */
+* rating document. Complementary rows (retention, dues) are excluded to
+    * avoid double-counting. Missing data never inflates a grade: indicators
+    * without submitted data contribute 0 points but stay in their group's
+    * denominator, and groups without any submitted form contribute 0 while
+    * still counting in the overall score (always ÷ 4). Returns null only
+    * when no group has gradable data at all.
+    */
   private computeSchoolOverallScore(i: {
     studentTotal: number;
     studentTarget: number | null;
@@ -1505,9 +1719,14 @@ export class DataCollectionService {
     const cap100 = (v: number | null) => (v == null ? null : Math.min(100, Math.max(0, v)));
     const pctPoint = (p: number | null): number | null => (p == null ? null : p >= 80 ? 3 : p >= 70 ? 2 : 1);
     const groupAvg = (pts: (number | null)[]): number | null => {
-      const valid = pts.filter((p): p is number => p != null);
-      return valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
+      // Missing indicators contribute 0 points but stay in the denominator —
+      // same "no data ≠ skip" rule as the section-level average, so a
+      // partially-filled form cannot inflate its group grade.
+      if (pts.length === 0) return null;
+      return pts.reduce<number>((a, b) => a + (b ?? 0), 0) / pts.length;
     };
+    // Students' · Teachers' · Revenue Collection · Pedagogical Performance
+    const GROUP_COUNT = 4;
 
     // ── Students' Status ──
     const enrollPct = i.studentTarget != null && i.studentTarget > 0
@@ -1555,7 +1774,12 @@ export class DataCollectionService {
     const groups = [studentsAvg, teachersAvg, revenueAvg, pedagAvg].filter(
       (g): g is number => g != null,
     );
-    return groups.length ? groups.reduce((a, b) => a + b, 0) / groups.length : null;
+    // Equal 25% weight per graded section — ALWAYS divide by the full four
+    // sections. A section with no submitted data contributes 0 points but
+    // stays in the denominator, otherwise a school that filled only one or
+    // two forms would score an inflated average (e.g. one perfect section
+    // would grade 3.00/3.00 = A). Null only when nothing is gradable at all.
+    return groups.length ? groups.reduce((a, b) => a + b, 0) / GROUP_COUNT : null;
   }
 
   private emptyOverview(
@@ -1569,6 +1793,7 @@ export class DataCollectionService {
         totalStudentsBoys: 0, totalStudentsGirls: 0, totalStudents: 0, totalPWD: 0, totalEthnic: 0,
         yearlyStudentTarget: 0, budgetRevenueTarget: 0, budgetRevenueAchievement: 0,
         actualRevenueTarget: 0, actualRevenueAchievement: 0,
+        sscPassRate: null, sscAPlusRate: null,
       },
       categories: {},
       schools: [],
@@ -1670,6 +1895,38 @@ export class DataCollectionService {
       alumni.length > 0,
     ].filter(Boolean).length;
 
+    // ── Auto-calculated revenue from the fee-collection module (same year) ──
+    // Billed (payable) vs collected (paid) per generated student-fee snapshots.
+    let feeCollection: {
+      planned: number;
+      collected: number;
+      outstanding: number;
+      collectionPct: number | null;
+      deficit: number;
+    } | null = null;
+    if (year != null) {
+      const ay = await this.academicYearRepo.findOne({ where: { name: String(year) } });
+      if (ay) {
+        const feeRows = await this.studentFeeRepo.find({
+          where: { schoolId, academicYearId: ay.id, deletedAt: IsNull() },
+          select: ['payableAmount', 'paidAmount', 'status'],
+        });
+        const active = feeRows.filter((f) => f.status !== StudentFeeStatus.CANCELLED);
+        if (active.length > 0) {
+          const planned = active.reduce((s, f) => s + parseFloat(f.payableAmount), 0);
+          const collected = active.reduce((s, f) => s + parseFloat(f.paidAmount), 0);
+          feeCollection = {
+            planned: Math.round(planned * 100) / 100,
+            collected: Math.round(collected * 100) / 100,
+            outstanding: Math.max(planned - collected, 0),
+            collectionPct:
+              planned > 0 ? Math.round(Math.min(100, (collected / planned) * 100) * 100) / 100 : null,
+            deficit: Math.round((collected - planned) * 100) / 100,
+          };
+        }
+      }
+    }
+
     return {
       school,
       infrastructure,
@@ -1681,6 +1938,7 @@ export class DataCollectionService {
       feeStructures,
       revenueBudgetTotal,
       revenueActualTotal,
+      feeCollection,
       pedagogicalAchievements,
       performance,
       cocurricular,

@@ -25,7 +25,10 @@ import { DcStudentPerformance } from './entities/dc-student-performance.entity';
 import { DcActivityParticipation } from './entities/dc-activity-participation.entity';
 import { DcEventParticipation } from './entities/dc-event-participation.entity';
 import { DcFormDraft } from './entities/dc-form-draft.entity';
+import { StudentFee } from '../fee-collection/entities/student-fee.entity';
+import { AcademicYear } from '../fee-management/entities/academic-year.entity';
 import { UsersModule } from '../users/users.module';
+import { FeeCollectionModule } from '../fee-collection/fee-collection.module';
 
 @Module({
   imports: [
@@ -53,8 +56,11 @@ import { UsersModule } from '../users/users.module';
       DcActivityParticipation,
       DcEventParticipation,
       DcFormDraft,
+      StudentFee,
+      AcademicYear,
     ]),
     UsersModule,
+    FeeCollectionModule,
   ],
   controllers: [DataCollectionController],
   providers: [DataCollectionService],

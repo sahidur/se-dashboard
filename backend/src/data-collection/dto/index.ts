@@ -90,6 +90,10 @@ export class CreateDcSchoolDto {
   @IsOptional()
   @IsString()
   gradeCoverage?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }
 
 export class UpdateDcSchoolDto extends PartialType(CreateDcSchoolDto) {}

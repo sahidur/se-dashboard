@@ -15,6 +15,9 @@ import { UserDesignationsModule } from './user-designations/user-designations.mo
 import { RecycleBinModule } from './recycle-bin/recycle-bin.module';
 import { DataCollectionModule } from './data-collection/data-collection.module';
 import { SchoolMonitoringModule } from './school-monitoring/school-monitoring.module';
+import { StudentsModule } from './students/students.module';
+import { FeeManagementModule } from './fee-management/fee-management.module';
+import { FeeCollectionModule } from './fee-collection/fee-collection.module';
 import { AuditModule } from './common/audit/audit.module';
 import { HealthModule } from './common/health/health.module';
 
@@ -97,6 +100,9 @@ import { HealthModule } from './common/health/health.module';
     RecycleBinModule,
     DataCollectionModule,
     SchoolMonitoringModule,
+    StudentsModule,
+    FeeManagementModule,
+    FeeCollectionModule,
     AuditModule,
     HealthModule,
   ],

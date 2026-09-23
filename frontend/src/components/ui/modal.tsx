@@ -36,12 +36,12 @@ export function Modal({ isOpen, onClose, title, children, className, size = 'md'
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
       <div
-        className="fixed inset-0 bg-black/50 transition-opacity"
+        className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm animate-fadeIn"
         onClick={onClose}
       />
       <div
         className={cn(
-          'relative z-50 w-full rounded-xl bg-white p-5 shadow-xl my-auto max-h-[90vh] overflow-y-auto sm:p-6',
+          'relative z-50 w-full rounded-2xl bg-white p-5 shadow-2xl shadow-gray-900/20 my-auto max-h-[90vh] overflow-y-auto animate-popIn sm:p-6',
           sizeClasses[size],
           className,
         )}

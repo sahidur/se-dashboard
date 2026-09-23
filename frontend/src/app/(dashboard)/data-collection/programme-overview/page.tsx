@@ -30,9 +30,14 @@ interface CategoryTotals {
   totalEthnic: number;
   yearlyStudentTarget: number;
   budgetRevenueTarget: number;
+  /** AOP plan figure (target students × fee structure) when it won over the fallbacks, else 0. */
+  aopPlannedRevenue?: number;
   budgetRevenueAchievement: number;
   actualRevenueTarget: number;
   actualRevenueAchievement: number;
+  /** SSC exam results (BRAC Secondary) — null when nothing was submitted. */
+  sscPassRate?: number | null;
+  sscAPlusRate?: number | null;
 }
 
 interface OverviewData {
@@ -43,6 +48,14 @@ interface OverviewData {
   academicYear: number | null;
   /** Every academic year that has submitted data, newest first. */
   availableYears: number[];
+}
+
+interface FeeCollectionStats {
+  planned: number;
+  collected: number;
+  outstanding: number;
+  collectionPct: number | null;
+  deficit: number;
 }
 
 interface SchoolRow {
@@ -59,9 +72,14 @@ interface SchoolRow {
   students: { boys: number; girls: number; total: number; pwd: number; ethnic: number };
   yearlyStudentTarget: number;
   budgetRevenueTarget: number;
+  aopPlannedRevenue?: number;
   budgetRevenueAchievement: number;
   actualRevenueTarget: number;
   actualRevenueAchievement: number;
+  /** Auto-calculated from the fee-collection module when the school has generated fees. */
+  feeCollection?: FeeCollectionStats | null;
+  /** 'fee-collection' = auto-calculated from payments; 'reported' = manual revenue forms. */
+  revenueSource?: 'fee-collection' | 'reported';
   /** Overall score out of 3.00 (same rating as the school-information page). */
   overallScore: number | null;
   overallGrade: 'A' | 'B' | 'C' | null;
@@ -95,9 +113,6 @@ const CATEGORY_LABELS: Record<string, string> = {
   brac_secondary: 'BRAC Secondary',
   brac_academy: 'BRAC Academy',
 };
-
-/* Placeholder SSC results — no SSC exam data is collected by any form yet (dc_students_performance only covers Play & Learn…G5). Replace once a real source exists. */
-const DEMO_SSC = { passRate: 96.4, aPlusRate: 38.2 };
 
 const fmtTaka = (n: number) => `৳${Math.round(n || 0).toLocaleString('en-IN')}`;
 
@@ -313,6 +328,7 @@ function CategorySummaryTable({ label, header, totals, showSsc }: { label: strin
     totalStudentsBoys: 0, totalStudentsGirls: 0, totalStudents: 0, totalPWD: 0, totalEthnic: 0,
     yearlyStudentTarget: 0, budgetRevenueTarget: 0, budgetRevenueAchievement: 0,
     actualRevenueTarget: 0, actualRevenueAchievement: 0,
+    sscPassRate: null as number | null, sscAPlusRate: null as number | null,
   };
   const n = (v: number) => v.toLocaleString();
   const rate = (a: number, b: number) => (b > 0 ? `${((a / b) * 100).toFixed(1)}%` : 'n/a');
@@ -329,41 +345,41 @@ function CategorySummaryTable({ label, header, totals, showSsc }: { label: strin
   const EXPLAINERS: Record<string, Explainer> = {
     planned: {
       title: 'Planned Revenue Target',
-      meaning: 'The revenue the schools budgeted for the year, based on the planned (budgeted) number of students — the baseline the programme is measured against.',
-      formula: 'Σ of the 8 yearly budget fee targets, summed across every school in this category',
+      meaning: 'The revenue the programme planned to collect for the year — AOP target students × the fee structure of each school, with no discounts and no relation to the students actually enrolled. It is the pure plan the other figures are measured against.',
+      formula: 'Σ over every school in this category of (AOP target students per class × class fee structure, summed over all fee heads)',
       steps: [
         { label: `Schools in "${label}"`, value: n(t.totalSchools) },
-        { label: 'Planned student target', value: n(t.yearlyStudentTarget) },
-        { label: 'Σ budgeted fee targets', value: fmtTaka(t.budgetRevenueTarget) },
+        { label: 'AOP target students', value: n(t.yearlyStudentTarget) },
+        { label: 'Planned Revenue Target', value: fmtTaka(t.budgetRevenueTarget) },
       ],
       result: fmtTaka(t.budgetRevenueTarget),
-      source: `"Revenue as per Budget — Yearly Total" form (dc_revenue_budget_total). Adds the target column of all 8 fee types (${FEE_TYPES}) for each school, then sums the schools in this category.`,
-      notes: ['A school with no budget form submitted contributes ৳0, so it drags the category total down rather than being excluded.'],
+      source: 'The "Planned Revenue Target" report (Finance Reports): for every school the AOP target student count per class is multiplied by that class\u2019s fee structure (all fee heads, schedule-aware) — no discounts, independent of the enrolled student list. Schools without AOP targets fall back to the "Revenue as per Budget — Yearly Total" form (dc_revenue_budget_total), then to the auto-calculated fee plan (total fees generated in the Fee Collection module).',
+      notes: ['A school with no AOP targets, no budget form and no generated fees contributes ৳0, so it drags the category total down rather than being excluded.'],
     },
     actualTarget: {
       title: 'Actual Revenue Target',
-      meaning: 'The revenue that is actually receivable this year — the same fee heads recalculated against the students really enrolled, i.e. the amount genuinely billed to students.',
-      formula: 'Σ of the 8 yearly actual-student fee targets, summed across every school in this category',
+      meaning: 'The revenue that is actually receivable this year — the fee amount genuinely billed to the students really enrolled.',
+      formula: 'Σ of the fees generated per student per month (payable), summed across every school in this category',
       steps: [
-        { label: 'Σ actual fee targets (receivable)', value: fmtTaka(t.actualRevenueTarget) },
+        { label: 'Σ fees billed to enrolled students', value: fmtTaka(t.actualRevenueTarget) },
         { label: 'Planned Revenue Target', value: fmtTaka(t.budgetRevenueTarget), op: 'vs' },
         { label: 'Gap vs plan', value: signedTaka(targetGap), op: '=' },
       ],
       result: fmtTaka(t.actualRevenueTarget),
-      source: `"Revenue as per Actual Student — Yearly Total" form (dc_revenue_actual_total). Adds the target column of all 8 fee types (${FEE_TYPES}) for each school, then sums the schools in this category.`,
+      source: 'Auto-calculated from the Fee Collection module: the payable amount of every monthly student-fee record generated for the year. Schools whose fees are not yet generated fall back to the "Revenue as per Actual Student — Yearly Total" form (dc_revenue_actual_total).',
       notes: ['A gap against the plan here reflects enrolment (fewer/more students than budgeted), not a collection problem.'],
     },
     collected: {
       title: 'Revenue achievement as per the actual student',
       meaning: 'The money actually collected from students during the year — the cash side of the Actual Revenue Target.',
-      formula: 'Σ of the 8 yearly actual-student fee achievements, summed across every school in this category',
+      formula: 'Σ of payments received against the billed student fees, summed across every school in this category',
       steps: [
-        { label: 'Σ actual fee achievements (collected)', value: fmtTaka(collected) },
+        { label: 'Σ collected (payments received)', value: fmtTaka(collected) },
         { label: 'Actual Revenue Target (receivable)', value: fmtTaka(t.actualRevenueTarget), op: '÷' },
         { label: 'Collection rate', value: rate(collected, t.actualRevenueTarget), op: '=' },
       ],
       result: fmtTaka(collected),
-      source: `"Revenue as per Actual Student — Yearly Total" form (dc_revenue_actual_total), achievement column of all 8 fee types (${FEE_TYPES}).`,
+      source: 'Auto-calculated from the Fee Collection module: every payment posted against a monthly student fee (per-head allocations included). Schools without fee payments fall back to the achievement column of the "Revenue as per Actual Student" form.',
     },
     dues: {
       title: 'Outstanding dues',
@@ -377,7 +393,7 @@ function CategorySummaryTable({ label, header, totals, showSsc }: { label: strin
       ],
       result: fmtTaka(outstandingDues),
       resultTone: outstandingDues > 0 ? 'danger' : 'success',
-      source: 'Both values come from the same "Revenue as per Actual Student — Yearly Total" form, so target and achievement always cover the same 8 fee heads and the same schools.',
+      source: 'Auto-calculated from the Fee Collection module (billed payable − payments collected, per fee head). Schools without fee data fall back to the reported "Revenue as per Actual Student" form.',
       notes: [
         'Measured against the ACTUAL target, not the planned one — dues can only exist for money that was really billed.',
         rawDues < 0
@@ -399,37 +415,50 @@ function CategorySummaryTable({ label, header, totals, showSsc }: { label: strin
       ],
       result: signedTaka(revenueDeficit),
       resultTone: revenueDeficit < 0 ? 'danger' : 'success',
-      source: 'Planned figure from the "Revenue as per Budget" yearly total; collected figure from the "Revenue as per Actual Student" yearly total.',
+      source: 'Planned figure from the "Revenue as per Budget" yearly total (or the auto-calculated fee plan when no budget was submitted); collected figure auto-calculated from Fee Collection payments (fallback: reported actual-student form).',
       notes: [
         'The deficit is the sum of the two "of which" lines: an enrolment/target gap (fewer or more students than budgeted) plus whatever was billed but not collected. That split tells you whether the shortfall is an admissions problem or a collection problem.',
         'Deliberately measured against the PLANNED target, so it stays comparable year-on-year even when enrolment moves.',
       ],
     },
+    collectionRate: {
+      title: '% of Collection',
+      meaning: 'The share of the billed revenue actually collected so far — the single most direct collection-performance figure.',
+      formula: '% of Collection = Revenue collected ÷ Actual Revenue Target × 100 (capped at 100%)',
+      steps: [
+        { label: 'Revenue collected', value: fmtTaka(collected) },
+        { label: 'Actual Revenue Target (billed)', value: fmtTaka(t.actualRevenueTarget), op: '÷' },
+        { label: '% of Collection', value: rate(collected, t.actualRevenueTarget), op: '=' },
+      ],
+      result: rate(collected, t.actualRevenueTarget),
+      source: 'Auto-calculated from the Fee Collection module: payments received ÷ fees generated for the year.',
+      notes: ['A/B/C on the rating system: ≥80% = Green (A), 70–79% = Yellow (B), below 70% = Red (C).'],
+    },
     sscPass: {
       title: 'Pass rate in SSC exam',
-      meaning: 'Share of BRAC Secondary students who appeared in the SSC exam and passed it.',
+      meaning: 'Share of BRAC Secondary students who appeared in the SSC exam and passed it, aggregated across every school in this category.',
       formula: 'Pass rate = (Students passed ÷ Students appeared) × 100',
       steps: [
-        { label: 'Students passed', value: 'not collected' },
-        { label: 'Students appeared', value: 'not collected', op: '÷' },
-        { label: 'Demo placeholder', value: `${DEMO_SSC.passRate.toFixed(1)}%`, op: '=' },
+        { label: 'Pass rate in SSC exam', value: t.sscPassRate != null ? `${t.sscPassRate.toFixed(1)}%` : 'No data', op: '=' },
+        { label: 'Source used', value: t.sscPassRate != null ? (t.sscAPlusRate != null ? 'Subject-wise results' : 'Board Exam Pass Rate field') : '—' },
       ],
-      result: `${DEMO_SSC.passRate.toFixed(1)}% (demo)`,
-      source: 'No source yet. The closest form, "Students\' Performance" (dc_students_performance), only covers Play & Learn to Grade 5 with Half-yearly/Annual exams — it has no SSC exam record, and the Programme Overview endpoint does not read it at all.',
-      notes: ['This is static demo data, identical for every filter. Wire it to a real SSC field once one is collected.'],
+      result: t.sscPassRate != null ? `${t.sscPassRate.toFixed(1)}%` : 'No data',
+      source: 'Primary source: the "Grade 6–10 & SSC — Subject-wise Results" form (BSS-1, grade = SSC) — pass results = total subject results − F results, ÷ total subject results, summed across schools and subjects. When no school submitted BSS-1 SSC data, it falls back to the mean of the "Board Exam Pass Rate (%)" field of the Performance form (dc_performance).',
+      notes: t.sscPassRate == null
+        ? ['No SSC data has been submitted for this year yet — fill the "Grade 6–10 & SSC — Subject-wise Results" form (or the Performance form\u2019s Board Exam Pass Rate) to populate this metric.']
+        : undefined,
     },
     sscAPlus: {
       title: 'Percentage of students obtained A+ in SSC exam',
-      meaning: 'Share of BRAC Secondary SSC candidates who achieved a GPA-5 / A+ grade.',
-      formula: 'A+ rate = (Students with A+ ÷ Students appeared) × 100',
+      meaning: 'Share of A+ grades among all graded subject results of the BRAC Secondary SSC exam, aggregated across every school in this category.',
+      formula: 'A+ rate = (Σ A+ grades ÷ Σ total graded subject results) × 100',
       steps: [
-        { label: 'Students with A+', value: 'not collected' },
-        { label: 'Students appeared', value: 'not collected', op: '÷' },
-        { label: 'Demo placeholder', value: `${DEMO_SSC.aPlusRate.toFixed(1)}%`, op: '=' },
+        { label: 'Σ A+ grades (all subjects, all schools)', value: 'from the form' },
+        { label: 'Σ total graded results', value: 'from the form', op: '÷' },
+        { label: 'A+ rate', value: t.sscAPlusRate != null ? `${t.sscAPlusRate.toFixed(1)}%` : 'No data', op: '=' },
       ],
-      result: `${DEMO_SSC.aPlusRate.toFixed(1)}% (demo)`,
-      source: 'No source yet. dc_students_performance stores A+/A/A−/B/C/D/F counts, but only for Play & Learn to Grade 5 Half-yearly/Annual exams — never for SSC.',
-      notes: ['This is static demo data, identical for every filter. Wire it to a real SSC field once one is collected.'],
+      result: t.sscAPlusRate != null ? `${t.sscAPlusRate.toFixed(1)}%` : 'No data',
+      source: 'The "Grade 6–10 & SSC — Subject-wise Results" form (BSS-1, grade = SSC): per-subject A+…F grade counts are summed across all subjects and schools of this category, then A+ ÷ total graded results. This metric has no other data source — schools must submit the BSS-1 form for it to appear.',
     },
   };
 
@@ -474,16 +503,28 @@ function CategorySummaryTable({ label, header, totals, showSsc }: { label: strin
           tone={revenueDeficit < 0 ? 'danger' : 'success'}
           onInfo={() => setExplainer(EXPLAINERS.deficit)}
         />
+        <MetricRow
+          label="% of Collection"
+          value={rate(collected, t.actualRevenueTarget)}
+          tone={
+            t.actualRevenueTarget <= 0
+              ? undefined
+              : (collected / t.actualRevenueTarget) * 100 >= 80
+                ? 'success'
+                : 'danger'
+          }
+          onInfo={() => setExplainer(EXPLAINERS.collectionRate)}
+        />
         {showSsc && (
           <>
             <MetricRow
               label="Pass rate in SSC exam"
-              value={`${DEMO_SSC.passRate.toFixed(1)}%`}
+              value={t.sscPassRate != null ? `${t.sscPassRate.toFixed(1)}%` : 'No data'}
               onInfo={() => setExplainer(EXPLAINERS.sscPass)}
             />
             <MetricRow
               label="Percentage of students obtained A+ in SSC exam"
-              value={`${DEMO_SSC.aPlusRate.toFixed(1)}%`}
+              value={t.sscAPlusRate != null ? `${t.sscAPlusRate.toFixed(1)}%` : 'No data'}
               onInfo={() => setExplainer(EXPLAINERS.sscAPlus)}
             />
           </>
@@ -917,8 +958,8 @@ export default function ProgrammeOverviewPage() {
             accent="green"
             href={detailHref('actual-achievement')}
           />
-          {/* Last cell split into two half-width cards (Outstanding Due + Revenue Deficit)
-              so the grid keeps the same 8-slot footprint as before. */}
+          {/* Last cell split into two compact cards (Outstanding Due + Revenue Deficit)
+              so the grid keeps a tight, scannable footer row. */}
           <div className="grid h-full min-w-0 grid-cols-2 gap-3">
             <KpiCard
               title="Total Outstanding Due"

@@ -1,5 +1,5 @@
-import axios, { AxiosError } from 'axios';
-import { useAuthStore, logoutAndRedirect } from '@/store/auth-store';
+import axios, { AxiosError, isAxiosError } from 'axios';
+import { useAuthStore, logoutAndRedirect, hasSessionCookie } from '@/store/auth-store';
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api',
@@ -45,9 +45,24 @@ function refreshSession(): Promise<void> {
       // call and the server rotates both cookies in its response. Never send
       // a token in the request body — request bodies are more likely to end
       // up in logs/proxies than cookies scoped to /api/auth.
-      await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
+      const { data } = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
         withCredentials: true,
       });
+      // Rotate the in-memory access token with the fresh one from the
+      // response. Without this, the request interceptor keeps re-attaching
+      // the token issued at login — long expired — and the backend's
+      // extractor prefers the Bearer header over the fresh `se360_at`
+      // cookie, so every retried request would 401 again.
+      if (typeof data?.accessToken === 'string') {
+        useAuthStore.getState().setTokens(
+          data.accessToken,
+          typeof data?.refreshToken === 'string' ? data.refreshToken : '',
+        );
+      } else {
+        // Cookie-only response: drop the stale in-memory token entirely so
+        // the fresh cookie authenticates the retry instead of the dead header.
+        useAuthStore.setState({ accessToken: null });
+      }
     })().finally(() => {
       refreshPromise = null;
     });
@@ -67,7 +82,18 @@ api.interceptors.response.use(
       try {
         await refreshSession();
         return api(originalRequest);
-      } catch {
+      } catch (refreshError) {
+        // Only a definitive rejection from the refresh endpoint (401 = the
+        // refresh token is invalid/expired/revoked, 400 = no refresh token
+        // at all) proves the session is dead. A network blip must NOT log
+        // the user out mid-work — let the request fail and let the next one
+        // retry the refresh.
+        const refreshStatus = isAxiosError(refreshError)
+          ? refreshError.response?.status
+          : undefined;
+        if (refreshStatus !== 401 && refreshStatus !== 400) {
+          return Promise.reject(error);
+        }
         // Refresh token is invalid/expired — fall through to forced logout below.
       }
 
@@ -97,6 +123,25 @@ api.interceptors.response.use(
 );
 
 export default api;
+
+// Proactive session refresh: while the user keeps the tab open and visible,
+// silently refresh the httpOnly cookies every 10 minutes — well inside the
+// 15-minute access-token TTL — so background work or a long-running request
+// never lands on an expired token. The backend rotates the refresh token on
+// every call and stores it in the shared cookie jar, so multiple tabs are
+// safe (each reads the newest cookie, plus the backend's 60s rotation grace
+// window). Failures are deliberately silent here: the reactive interceptor
+// above handles genuine 401s and is the only place that decides to log out.
+const PROACTIVE_REFRESH_MS = 10 * 60 * 1000;
+
+if (typeof window !== 'undefined') {
+  window.setInterval(() => {
+    if (document.visibilityState !== 'visible') return;
+    if (window.location.pathname.startsWith('/auth')) return;
+    if (!hasSessionCookie()) return;
+    void refreshSession().catch(() => {});
+  }, PROACTIVE_REFRESH_MS);
+}
 
 export function getErrorMessage(error: unknown, fallback = 'Operation failed'): string {
   if (error instanceof AxiosError) {
