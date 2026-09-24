@@ -1356,12 +1356,19 @@ export class DataCollectionService {
 
     // ── SSC results per school (BRAC Secondary) — dynamic source for the
     // "Pass rate in SSC exam" and "% of students obtained A+ in SSC exam"
-    // metrics of the Programme Overview category breakdown. Collected from
-    // the BSS-1 form ("Grade 6–10 & SSC — Subject-wise Results", rows hold
-    // A+…F counts per subject). When both evaluation periods were filled,
-    // the Annual one wins (single exam year). The Performance form's
-    // "Board Exam Pass Rate (%)" is the fallback for the pass rate when a
-    // school has no BSS-1 SSC data. ──
+    // metrics of the Programme Overview category breakdown. Primary source
+    // for the pass rate: the Pedagogical Achievements form (students awarded
+    // ÷ students participated in the SSC level). Fallbacks: the BSS-1 form
+    // ("Grade 6–10 & SSC — Subject-wise Results", rows hold A+…F counts per
+    // subject) and then the Performance form's "Board Exam Pass Rate (%)".
+    // When both evaluation periods were filled, the Annual one wins (single
+    // exam year). ──
+    const pedagSscBySchool = new Map<string, { participated: number; awarded: number }>();
+    for (const [schoolId, p] of Object.entries(pedagMap)) {
+      const participated = Number(p.sscParticipated) || 0;
+      const awarded = Number(p.sscScholarship) || 0;
+      if (participated > 0) pedagSscBySchool.set(schoolId, { participated, awarded });
+    }
     const boardExamRateBySchool = new Map<string, number>();
     for (const p of performanceRecords) {
       const rate = Number(p.boardExamPassRate);
@@ -1494,10 +1501,15 @@ export class DataCollectionService {
       const yearlyStudentTarget =
         aopStudents > 0 ? aopStudents : (b?.totalStudentsTarget ?? a?.totalStudentsTarget ?? 0);
 
-      // Dynamic SSC metrics (BRAC Secondary): BSS-1 subject-wise results
-      // first, Board Exam Pass Rate field as the pass-rate fallback.
+      // Dynamic SSC metrics (BRAC Secondary): Pedagogical Achievements
+      // (awarded ÷ participated) first, then BSS-1 subject-wise results and
+      // the Board Exam Pass Rate field as fallbacks.
       const schoolSsc = sscBySchool.get(school.id);
-      const sscPassRate = sscRate(schoolSsc, 'pass') ?? boardExamRateBySchool.get(school.id) ?? null;
+      const pedagSsc = pedagSscBySchool.get(school.id);
+      const sscPassRate =
+        pedagSsc != null
+          ? (pedagSsc.awarded / pedagSsc.participated) * 100
+          : sscRate(schoolSsc, 'pass') ?? boardExamRateBySchool.get(school.id) ?? null;
       const sscAPlusRate = sscRate(schoolSsc, 'aPlus');
 
       return {
@@ -1592,14 +1604,21 @@ export class DataCollectionService {
     }
 
     // ── SSC metrics for the BRAC Secondary category table ──
-    // Subject-weighted aggregation of the BSS-1 SSC results across schools;
-    // when no school submitted BSS-1 SSC data, the pass rate falls back to
-    // the mean of the collected Board Exam Pass Rate fields. The A+ rate has
-    // no fallback — it can only come from the subject-wise form.
+    // The pass rate is primarily the Pedagogical Achievements form (Σ students
+    // awarded ÷ Σ students participated in SSC across schools of the category),
+    // then the subject-weighted BSS-1 SSC results; when neither was submitted,
+    // it falls back to the mean of the Board Exam Pass Rate fields. The A+
+    // rate only comes from the subject-wise form.
     const sscCatAgg = { pass: 0, aPlus: 0, total: 0 };
+    const pedagCatAgg = { awarded: 0, participated: 0 };
     const boardRates: number[] = [];
     for (const r of schoolRows) {
       if (r.category !== 'brac_secondary') continue;
+      const ped = pedagSscBySchool.get(r.id);
+      if (ped) {
+        pedagCatAgg.awarded += ped.awarded;
+        pedagCatAgg.participated += ped.participated;
+      }
       const s = sscBySchool.get(r.id);
       if (s) {
         sscCatAgg.pass += s.pass;
@@ -1610,11 +1629,13 @@ export class DataCollectionService {
       if (boardRate != null) boardRates.push(boardRate);
     }
     const sscPassRate =
-      sscCatAgg.total > 0
-        ? (sscCatAgg.pass / sscCatAgg.total) * 100
-        : boardRates.length > 0
-          ? boardRates.reduce((a, b) => a + b, 0) / boardRates.length
-          : null;
+      pedagCatAgg.participated > 0
+        ? (pedagCatAgg.awarded / pedagCatAgg.participated) * 100
+        : sscCatAgg.total > 0
+          ? (sscCatAgg.pass / sscCatAgg.total) * 100
+          : boardRates.length > 0
+            ? boardRates.reduce((a, b) => a + b, 0) / boardRates.length
+            : null;
     const sscAPlusRate = sscCatAgg.total > 0 ? (sscCatAgg.aPlus / sscCatAgg.total) * 100 : null;
     totals.sscPassRate = sscPassRate;
     totals.sscAPlusRate = sscAPlusRate;

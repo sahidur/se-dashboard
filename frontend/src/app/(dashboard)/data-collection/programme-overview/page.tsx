@@ -436,16 +436,17 @@ function CategorySummaryTable({ label, header, totals, showSsc }: { label: strin
     },
     sscPass: {
       title: 'Pass rate in SSC exam',
-      meaning: 'Share of BRAC Secondary students who appeared in the SSC exam and passed it, aggregated across every school in this category.',
-      formula: 'Pass rate = (Students passed ÷ Students appeared) × 100',
+      meaning: 'Share of BRAC Secondary students who participated in the SSC exam and were awarded, aggregated across every school in this category.',
+      formula: 'Pass rate = (Students awarded ÷ Students participated) × 100',
       steps: [
+        { label: 'Σ Students awarded (SSC, all schools)', value: 'from the form' },
+        { label: 'Σ Students participated (SSC, all schools)', value: 'from the form', op: '÷' },
         { label: 'Pass rate in SSC exam', value: t.sscPassRate != null ? `${t.sscPassRate.toFixed(1)}%` : 'No data', op: '=' },
-        { label: 'Source used', value: t.sscPassRate != null ? (t.sscAPlusRate != null ? 'Subject-wise results' : 'Board Exam Pass Rate field') : '—' },
       ],
       result: t.sscPassRate != null ? `${t.sscPassRate.toFixed(1)}%` : 'No data',
-      source: 'Primary source: the "Grade 6–10 & SSC — Subject-wise Results" form (BSS-1, grade = SSC) — pass results = total subject results − F results, ÷ total subject results, summed across schools and subjects. When no school submitted BSS-1 SSC data, it falls back to the mean of the "Board Exam Pass Rate (%)" field of the Performance form (dc_performance).',
+      source: 'Primary source: the "Pedagogical Achievements" form — Number of Students Awarded ÷ Number of Students Participated at the SSC level, summed across every school of this category. When no school submitted it, it falls back to the "Grade 6–10 & SSC — Subject-wise Results" form (BSS-1, grade = SSC), and finally to the mean of the "Board Exam Pass Rate (%)" field of the Performance form (dc_performance).',
       notes: t.sscPassRate == null
-        ? ['No SSC data has been submitted for this year yet — fill the "Grade 6–10 & SSC — Subject-wise Results" form (or the Performance form\u2019s Board Exam Pass Rate) to populate this metric.']
+        ? ['No SSC data has been submitted for this year yet — fill the "Pedagogical Achievements" form (SSC participated/awarded) to populate this metric.']
         : undefined,
     },
     sscAPlus: {
