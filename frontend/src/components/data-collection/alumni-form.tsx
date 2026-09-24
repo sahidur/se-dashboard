@@ -19,7 +19,8 @@ import { ExportButtons, exportPayloadFromColumns } from '@/components/data-colle
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import api, { getErrorMessage } from '@/lib/api';
-import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
+import { isValidAcademicYear } from '@/lib/utils';
+import { useAcademicYearOptions } from '@/hooks/use-academic-year-options';
 import type { DcSchool, DcAlumni } from '@/types';
 
 /* ─── Constants ──────────────────────────────────────────── */
@@ -39,7 +40,6 @@ const OCCUPATION_OPTIONS = [
   'Others',
 ];
 
-const YEAR_OPTIONS = buildYearOptions();
 
 interface AlumniFormState {
   academicYear: string;
@@ -70,6 +70,7 @@ interface Props { schoolId: string }
 /* ─── Component ─────────────────────────────────────────── */
 
 export function AlumniForm({ schoolId }: Props) {
+  const YEAR_OPTIONS = useAcademicYearOptions();
   const router = useRouter();
   const canEditSubmitted = useAuthStore((s) => s.hasPermission('data-collection-edit', 'update'));
   const canDeleteSubmitted = useAuthStore((s) => s.hasPermission('data-collection', 'delete', 'alumni'));

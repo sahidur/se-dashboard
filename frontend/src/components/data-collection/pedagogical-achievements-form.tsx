@@ -16,7 +16,8 @@ import { FormTabs } from '@/components/data-collection/form-tabs';
 import { ExportButtons, exportPayloadFromColumns } from '@/components/data-collection/export-buttons';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
-import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
+import { isValidAcademicYear } from '@/lib/utils';
+import { useAcademicYearOptions } from '@/hooks/use-academic-year-options';
 import api, { getErrorMessage } from '@/lib/api';
 import type { DcSchool } from '@/types';
 
@@ -69,7 +70,6 @@ const BLANK: FormState = {
 };
 
 /* ─── Year options: current year first, then upcoming, then past ── */
-const ALL_YEARS = buildYearOptions();
 
 /* ─── Scholarship segments ───────────────────────────────── */
 const SEGMENTS = [
@@ -86,6 +86,7 @@ interface Props { schoolId: string }
 /* ─── Component ─────────────────────────────────────────── */
 
 export function PedagogicalAchievementsForm({ schoolId }: Props) {
+  const ALL_YEARS = useAcademicYearOptions();
   const canEditSubmitted = useAuthStore((s) => s.hasPermission('data-collection-edit', 'update'));
   const canDeleteSubmitted = useAuthStore((s) => s.hasPermission('data-collection', 'delete', 'pedagogical-achievements'));
   const [school, setSchool] = useState<DcSchool | null>(null);

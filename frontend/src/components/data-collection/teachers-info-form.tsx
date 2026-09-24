@@ -18,12 +18,12 @@ import { ExportButtons, exportPayloadFromColumns } from '@/components/data-colle
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import api, { getErrorMessage } from '@/lib/api';
-import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
+import { isValidAcademicYear } from '@/lib/utils';
+import { useAcademicYearOptions } from '@/hooks/use-academic-year-options';
 import type { DcSchool, DcTeacherIndividual } from '@/types';
 
 /* ─── Constants ────────────────────────────────────────── */
 
-const YEARS = buildYearOptions();
 const DESIGNATIONS = ['Head Teacher', 'Assistant Teacher', 'Junior Teacher'];
 const GENDERS = ['Male', 'Female'];
 const QUALIFICATIONS = ['HSC', 'Hons', 'Masters'];
@@ -135,6 +135,7 @@ function MultiSelect({ options, selected, onChange, otherValue, onOtherChange, l
 
 /* ─── Main Component ────────────────────────────────────── */
 export function TeachersInfoForm({ schoolId }: Props) {
+  const YEARS = useAcademicYearOptions();
   const router = useRouter();
   const canDeleteSubmitted = useAuthStore((s) => s.hasPermission('data-collection', 'delete', 'teachers-individual'));
   const canEditSubmitted = useAuthStore((s) => s.hasPermission('data-collection-edit', 'update'));

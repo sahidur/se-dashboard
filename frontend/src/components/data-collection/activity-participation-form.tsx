@@ -19,7 +19,8 @@ import { useFormDraft } from '@/hooks/use-form-draft';
 import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
 import { useAuthStore } from '@/store/auth-store';
 import api, { getErrorMessage } from '@/lib/api';
-import { buildYearOptions, resolveAssetUrl, isValidAcademicYear } from '@/lib/utils';
+import { resolveAssetUrl, isValidAcademicYear } from '@/lib/utils';
+import { useAcademicYearOptions } from '@/hooks/use-academic-year-options';
 import type { DcSchool, DcActivityParticipation } from '@/types';
 
 /* ─── Constants ──────────────────────────────────────────── */
@@ -42,7 +43,6 @@ const ITEMS = [
   'Use of library',
 ];
 
-const YEARS = buildYearOptions();
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -74,6 +74,7 @@ interface Props { schoolId: string }
 /* ─── Component ─────────────────────────────────────────── */
 
 export function ActivityParticipationForm({ schoolId }: Props) {
+  const YEARS = useAcademicYearOptions();
   const canEditSubmitted = useAuthStore((s) => s.hasPermission('data-collection-edit', 'update'));
   const canDeleteSubmitted = useAuthStore((s) => s.hasPermission('data-collection', 'delete', 'activity-participation'));
   const [school, setSchool] = useState<DcSchool | null>(null);

@@ -67,6 +67,16 @@ export function buildYearOptions(options?: {
   return years;
 }
 
+/** Sort arbitrary years in the same order as buildYearOptions: current first, then upcoming, then past. */
+export function orderYearOptions(years: number[]): number[] {
+  const current = new Date().getFullYear();
+  const present = [...new Set(years)];
+  const cur = present.includes(current) ? [current] : [];
+  const future = present.filter((y) => y > current).sort((a, b) => a - b);
+  const past = present.filter((y) => y < current).sort((a, b) => b - a);
+  return [...cur, ...future, ...past];
+}
+
 /** Validate that a year string is a valid 4-digit year within the allowed range. */
 export function isValidAcademicYear(year: string): boolean {
   const n = Number(year);

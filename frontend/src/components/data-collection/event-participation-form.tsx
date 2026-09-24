@@ -16,12 +16,12 @@ import { ExportButtons, exportPayloadFromColumns } from '@/components/data-colle
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import api, { getErrorMessage } from '@/lib/api';
-import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
+import { isValidAcademicYear } from '@/lib/utils';
+import { useAcademicYearOptions } from '@/hooks/use-academic-year-options';
 import type { DcSchool, DcEventParticipation } from '@/types';
 
 /* ─── Constants ──────────────────────────────────────────── */
 
-const YEARS = buildYearOptions();
 
 const EVENT_NAMES = [
   'Sports Competition', 'Cultural Competition', 'Science Fair',
@@ -48,6 +48,7 @@ interface Props { schoolId: string }
 /* ─── Component ─────────────────────────────────────────── */
 
 export function EventParticipationForm({ schoolId }: Props) {
+  const YEARS = useAcademicYearOptions();
   const canEditSubmitted = useAuthStore((s) => s.hasPermission('data-collection-edit', 'update'));
   const canDeleteSubmitted = useAuthStore((s) => s.hasPermission('data-collection', 'delete', 'event-participation'));
   const [school, setSchool] = useState<DcSchool | null>(null);

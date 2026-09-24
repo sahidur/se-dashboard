@@ -19,13 +19,13 @@ import { useFormDraft } from '@/hooks/use-form-draft';
 import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
 import { ALL_FEE_KEYS, getFeeFieldsForCategory, SCHOOL_CATEGORY_LABELS } from '@/components/data-collection/school-category-fields';
 import api, { getErrorMessage } from '@/lib/api';
-import { buildYearOptions, isValidAcademicYear, gradeEquals } from '@/lib/utils';
+import { isValidAcademicYear, gradeEquals } from '@/lib/utils';
+import { useAcademicYearOptions } from '@/hooks/use-academic-year-options';
 import { useAuthStore } from '@/store/auth-store';
 import type { DcSchool, DcFeeStructure, DcFeeStructureLog } from '@/types';
 
 /* ─── Constants ─────────────────────────────────── */
 
-const YEARS = buildYearOptions();
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -90,6 +90,7 @@ const gradeRank = (g: string) => {
 /* ─── Component ─────────────────────────────────────────── */
 
 export function FeeStructureForm({ schoolId }: Props) {
+  const YEARS = useAcademicYearOptions();
   const router = useRouter();
   const { hasPermission } = useAuthStore();
   const [school, setSchool] = useState<DcSchool | null>(null);

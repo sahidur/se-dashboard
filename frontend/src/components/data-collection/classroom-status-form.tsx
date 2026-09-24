@@ -17,7 +17,8 @@ import { ExportButtons } from '@/components/data-collection/export-buttons';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import api, { getErrorMessage } from '@/lib/api';
-import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
+import { isValidAcademicYear } from '@/lib/utils';
+import { useAcademicYearOptions } from '@/hooks/use-academic-year-options';
 import type { DcSchool } from '@/types';
 
 const SCHOOL_CATEGORY_LABELS: Record<string, string> = {
@@ -30,7 +31,6 @@ const SCHOOL_TYPE_LABELS: Record<string, string> = {
   haor: 'Haor',
 };
 
-const YEARS = buildYearOptions();
 
 interface FormState {
   academicYear: string;
@@ -170,6 +170,7 @@ type ClassroomFieldErrors = Partial<
 >;
 
 export function ClassroomStatusForm({ schoolId }: Props) {
+  const YEARS = useAcademicYearOptions();
   const router = useRouter();
   const [school, setSchool] = useState<DcSchool | null>(null);
   const [form, setForm] = useState<FormState>(defaultState);

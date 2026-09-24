@@ -17,12 +17,12 @@ import { useFormDraft } from '@/hooks/use-form-draft';
 import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
 import { useAuthStore } from '@/store/auth-store';
 import api, { getErrorMessage } from '@/lib/api';
-import { buildYearOptions, isValidAcademicYear, gradeSortIndex } from '@/lib/utils';
+import { isValidAcademicYear, gradeSortIndex } from '@/lib/utils';
+import { useAcademicYearOptions } from '@/hooks/use-academic-year-options';
 import type { DcSchool, DcStudentsPerformance } from '@/types';
 
 /* ─── Constants ──────────────────────────────────────────── */
 
-const YEARS = buildYearOptions();
 // Full grade range: secondary schools report results up to Grade 10.
 const GRADES = ['Play & Learn', 'Nursery', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10'];
 const EXAM_NAMES = ['Half-yearly', 'Annual'];
@@ -96,6 +96,7 @@ interface Props { schoolId: string }
 /* ─── Component ─────────────────────────────────────────── */
 
 export function StudentsPerformanceForm({ schoolId }: Props) {
+  const YEARS = useAcademicYearOptions();
   const canEditSubmitted = useAuthStore((s) => s.hasPermission('data-collection-edit', 'update'));
   const canDeleteSubmitted = useAuthStore((s) => s.hasPermission('data-collection', 'delete', 'students-performance'));
   const [school, setSchool] = useState<DcSchool | null>(null);

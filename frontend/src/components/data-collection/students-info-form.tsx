@@ -18,12 +18,12 @@ import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
 import api, { getErrorMessage } from '@/lib/api';
-import { buildYearOptions, isValidAcademicYear, gradeEquals, displayGradeLabel } from '@/lib/utils';
+import { isValidAcademicYear, gradeEquals, displayGradeLabel } from '@/lib/utils';
+import { useAcademicYearOptions } from '@/hooks/use-academic-year-options';
 import type { DcSchool, DcStudentsInfo } from '@/types';
 
 /* ─── Constants ────────────────────────────────── */
 
-const YEARS = buildYearOptions();
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -93,6 +93,7 @@ interface Props { schoolId: string }
 /* ─── Component ─────────────────────────────────────────── */
 
 export function StudentsInfoForm({ schoolId }: Props) {
+  const YEARS = useAcademicYearOptions();
   const router = useRouter();
 
   const [school, setSchool]           = useState<DcSchool | null>(null);

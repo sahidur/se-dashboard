@@ -9,10 +9,9 @@ import { Badge } from '@/components/ui/badge';
 import { SchoolSelector } from '@/components/data-collection/school-selector';
 import { TrendingUp, Save, CheckCircle2 } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
-import { buildYearOptions } from '@/lib/utils';
+import { useAcademicYearOptions } from '@/hooks/use-academic-year-options';
 import type { DcPerformance } from '@/types';
 
-const YEAR_OPTIONS = buildYearOptions();
 
 const EMPTY_FORM = {
   avgPassRate: 0, avgGpa: 0, boardExamPassRate: 0, boardExamAvgGpa: 0,
@@ -22,6 +21,7 @@ const EMPTY_FORM = {
 };
 
 export default function PerformancePage() {
+  const YEAR_OPTIONS = useAcademicYearOptions();
   const searchParams = useSearchParams();
   const [schoolId, setSchoolId] = useState(searchParams.get('school') || '');
   const [academicYear, setAcademicYear] = useState(String(new Date().getFullYear()));

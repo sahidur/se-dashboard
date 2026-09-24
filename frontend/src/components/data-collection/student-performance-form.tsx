@@ -26,10 +26,10 @@ import {
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import api, { getErrorMessage } from '@/lib/api';
-import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
+import { isValidAcademicYear } from '@/lib/utils';
+import { useAcademicYearOptions } from '@/hooks/use-academic-year-options';
 import type { DcSchool, DcStudentPerformance } from '@/types';
 
-const YEARS = buildYearOptions();
 
 const SCHOOL_CATEGORY_LABELS: Record<string, string> = {
   brac_academy: 'BRAC Academy',
@@ -55,6 +55,7 @@ interface Props {
 }
 
 export function StudentPerformanceForm({ schoolId, formKey }: Props) {
+  const YEARS = useAcademicYearOptions();
   const def = getStudentPerformanceForm(formKey)!;
   const section = getSection(def.sectionKey)!;
   const rowDefs = useMemo(() => getStudentPerformanceRows(formKey), [formKey]);

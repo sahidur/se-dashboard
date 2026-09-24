@@ -17,13 +17,13 @@ import { ExportButtons } from '@/components/data-collection/export-buttons';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import api, { getErrorMessage } from '@/lib/api';
-import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
+import { isValidAcademicYear } from '@/lib/utils';
+import { useAcademicYearOptions } from '@/hooks/use-academic-year-options';
 import { getFeeFieldsForCategory, SCHOOL_CATEGORY_LABELS, type FeeKey } from '@/components/data-collection/school-category-fields';
 import type { DcSchool, DcRevenueTotalRecord } from '@/types';
 
 /* ─── Constants ─────────────────────────────────── */
 
-const YEARS = buildYearOptions();
 
 /* Fee areas stored on the yearly revenue tables; visibility per school
    category is resolved at runtime via getFeeFieldsForCategory. */
@@ -80,6 +80,7 @@ interface Props { schoolId: string; mode: 'budget' | 'actual' }
 /* ─── Component ─────────────────────────────────────────── */
 
 export function RevenueTotalForm({ schoolId, mode }: Props) {
+  const YEARS = useAcademicYearOptions();
   const router = useRouter();
   const [school, setSchool] = useState<DcSchool | null>(null);
   const [academicYear, setAcademicYear] = useState('');

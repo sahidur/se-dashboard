@@ -17,12 +17,12 @@ import { useFormDraft } from '@/hooks/use-form-draft';
 import { getGradeDisplayName } from '@/components/data-collection/student-performance-catalog';
 import { useAuthStore } from '@/store/auth-store';
 import api, { getErrorMessage } from '@/lib/api';
-import { buildYearOptions, isValidAcademicYear, gradeEquals } from '@/lib/utils';
+import { isValidAcademicYear, gradeEquals } from '@/lib/utils';
+import { useAcademicYearOptions } from '@/hooks/use-academic-year-options';
 import type { DcSchool } from '@/types';
 
 /* ─── Constants ──────────────────────────────────────────── */
 
-const YEARS = buildYearOptions();
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -94,6 +94,7 @@ interface Props { schoolId: string }
 /* ─── Component ─────────────────────────────────────────── */
 
 export function CocurricularForm({ schoolId }: Props) {
+  const YEARS = useAcademicYearOptions();
   const canEditSubmitted = useAuthStore((s) => s.hasPermission('data-collection-edit', 'update'));
   const canDeleteSubmitted = useAuthStore((s) => s.hasPermission('data-collection', 'delete', 'cocurricular'));
   const [school, setSchool] = useState<DcSchool | null>(null);

@@ -18,12 +18,12 @@ import { ExportButtons } from '@/components/data-collection/export-buttons';
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import api, { getErrorMessage } from '@/lib/api';
-import { buildYearOptions, isValidAcademicYear } from '@/lib/utils';
+import { isValidAcademicYear } from '@/lib/utils';
+import { useAcademicYearOptions } from '@/hooks/use-academic-year-options';
 import type { DcSchool, DcTeachersDevelopment, HeadTeacherLeadership } from '@/types';
 
 /* ─── Constants ────────────────────────────────── */
 
-const YEARS = buildYearOptions();
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -98,6 +98,7 @@ interface Props { schoolId: string }
 
 /* ─── Main Component ────────────────────────────────────── */
 export function TeachersDevForm({ schoolId }: Props) {
+  const YEARS = useAcademicYearOptions();
   const router = useRouter();
   const [school, setSchool] = useState<DcSchool | null>(null);
   const [academicYear, setAcademicYear] = useState('');

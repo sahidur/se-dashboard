@@ -9,10 +9,9 @@ import { Badge } from '@/components/ui/badge';
 import { SchoolSelector } from '@/components/data-collection/school-selector';
 import { Wallet, Save, CheckCircle2 } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
-import { buildYearOptions } from '@/lib/utils';
+import { useAcademicYearOptions } from '@/hooks/use-academic-year-options';
 import type { DcRevenue } from '@/types';
 
-const YEAR_OPTIONS = buildYearOptions();
 
 const EMPTY_FORM = {
   monthlyTuitionFee: 0, admissionFee: 0, examFee: 0,
@@ -22,6 +21,7 @@ const EMPTY_FORM = {
 };
 
 export default function RevenuePage() {
+  const YEAR_OPTIONS = useAcademicYearOptions();
   const searchParams = useSearchParams();
   const [schoolId, setSchoolId] = useState(searchParams.get('school') || '');
   const [academicYear, setAcademicYear] = useState(String(new Date().getFullYear()));
