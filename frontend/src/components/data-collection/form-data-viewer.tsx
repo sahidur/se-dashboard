@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
-  CalendarRange, CheckCircle2, Download, FileSpreadsheet,
+  CheckCircle2, Download, FileSpreadsheet,
   LayoutGrid, ListChecks, Rows3, RotateCcw, Search, XCircle,
 } from 'lucide-react';
 import api from '@/lib/api';
@@ -308,24 +308,6 @@ export function FormDataViewer({ schoolId, category, form, fileBase }: Props) {
   const activeFilters = Object.values(filters).filter(Boolean).length + (search.trim() ? 1 : 0);
   const resetFilters = () => { setFilters({}); setSearch(''); };
 
-  /* ── Summary chips ── */
-
-  const summary = useMemo(() => {
-    const out: { label: string; value: string }[] = [
-      { label: rows.length === 1 ? 'Record' : 'Records', value: String(rows.length) },
-    ];
-    ['academicYear', 'year', 'month', 'grade'].forEach((key) => {
-      if (!columns.includes(key)) return;
-      const distinct = new Set(rows.map((r) => String(r[key] ?? '')).filter(Boolean));
-      if (!distinct.size) return;
-      out.push({
-        label: distinct.size === 1 ? humanizeKey(key) : `${humanizeKey(key)}s`,
-        value: distinct.size === 1 ? [...distinct][0] : `${distinct.size}`,
-      });
-    });
-    return out;
-  }, [rows, columns]);
-
   /* ── Export ── */
 
   const exportColumns = columns;
@@ -352,7 +334,7 @@ export function FormDataViewer({ schoolId, category, form, fileBase }: Props) {
   /* ── Render ── */
 
   const selectClass =
-    'w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-300 sm:w-auto';
+    'h-9 max-w-[11rem] rounded-lg border border-gray-200 bg-white px-2.5 text-sm text-gray-700 shadow-sm transition-colors hover:border-gray-300 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-300';
 
   if (loading) {
     return (
@@ -396,101 +378,86 @@ export function FormDataViewer({ schoolId, category, form, fileBase }: Props) {
   const asCards = view === 'auto' ? autoCards : view === 'cards';
 
   return (
-    <div className="space-y-5">
-      {/* ── Summary ── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {summary.map((s) => (
-          <Card key={s.label} className={`border-0 shadow-sm ring-1 ${category.ring}`}>
-            <CardContent className="p-3.5 sm:p-4">
-              <p className="text-[11px] font-medium uppercase tracking-wider text-gray-500">{s.label}</p>
-              <p className={`mt-1 text-2xl font-bold tabular-nums ${category.text}`}>{s.value}</p>
-            </CardContent>
-          </Card>
-        ))}
+    <div className="space-y-4">
+      {/* ── Toolbar: search + filters | count, view, export ── */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-1 flex-wrap items-center gap-2">
+          <div className="relative w-full sm:w-60 lg:w-52 xl:w-64">
+            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setVisible(12); }}
+              placeholder="Search records…"
+              className="h-9 w-full rounded-lg border border-gray-200 bg-white pl-8 pr-3 text-sm shadow-sm placeholder:text-gray-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-300"
+            />
+          </div>
+
+          {filterOptions.map(({ key, values }) => (
+            <select
+              key={key}
+              value={filters[key] ?? ''}
+              onChange={(e) => { setFilters((f) => ({ ...f, [key]: e.target.value })); setVisible(12); }}
+              aria-label={humanizeKey(key)}
+              className={`${selectClass} ${filters[key] ? 'border-indigo-300 bg-indigo-50/60 font-medium text-indigo-700' : ''}`}
+            >
+              <option value="">All {humanizeKey(key).toLowerCase()}s</option>
+              {values.map((v) => (
+                <option key={v} value={v}>{key === 'grade' ? displayGradeLabel(v) : v}</option>
+              ))}
+            </select>
+          ))}
+
+          {activeFilters > 0 && (
+            <button
+              type="button"
+              onClick={resetFilters}
+              title="Reset filters"
+              aria-label="Reset filters"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-sm transition-colors hover:border-rose-200 hover:text-rose-500"
+            >
+              <RotateCcw size={14} />
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600">
+            <ListChecks size={13} className="text-gray-400" />
+            <span className="font-semibold tabular-nums text-gray-800">{filtered.length}</span>
+            <span className="text-gray-400">/</span>
+            <span className="tabular-nums">{rows.length}</span>
+          </span>
+
+          <div className="flex rounded-lg border border-gray-200 bg-white p-0.5 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setView('cards')}
+              className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                asCards ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <LayoutGrid size={13} /> Cards
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('table')}
+              className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                !asCards ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Rows3 size={13} /> Table
+            </button>
+          </div>
+
+          <Button variant="outline" size="sm" onClick={exportCsv} disabled={!filtered.length} className="gap-1.5">
+            <Download size={14} /> CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={exportExcel} disabled={!filtered.length} className="gap-1.5">
+            <FileSpreadsheet size={14} /> Excel
+          </Button>
+        </div>
       </div>
-
-      {/* ── Filters + export ── */}
-      <Card className="border-0 shadow-sm">
-        <CardContent className="space-y-3 p-4 sm:p-5">
-          <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
-            {filterOptions.map(({ key, values }) => (
-              <div key={key}>
-                <label className="mb-1 block text-xs font-medium text-gray-500">{humanizeKey(key)}</label>
-                <div className="relative">
-                  {(key === 'academicYear' || key === 'year') && (
-                    <CalendarRange size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  )}
-                  <select
-                    value={filters[key] ?? ''}
-                    onChange={(e) => { setFilters((f) => ({ ...f, [key]: e.target.value })); setVisible(12); }}
-                    className={`${selectClass} ${key === 'academicYear' || key === 'year' ? 'pl-8' : ''}`}
-                  >
-                    <option value="">All {humanizeKey(key).toLowerCase()}s</option>
-                    {values.map((v) => (
-                      <option key={v} value={v}>{key === 'grade' ? displayGradeLabel(v) : v}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            ))}
-
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">Search</label>
-              <div className="relative">
-                <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => { setSearch(e.target.value); setVisible(12); }}
-                  placeholder="Search records…"
-                  className="w-full rounded-lg border border-gray-200 py-2 pl-8 pr-3 text-sm shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-300 sm:w-56"
-                />
-              </div>
-            </div>
-
-            {activeFilters > 0 && (
-              <Button variant="outline" size="sm" onClick={resetFilters} className="gap-1.5">
-                <RotateCcw size={14} /> Reset
-              </Button>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-2 border-t border-gray-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-gray-500">
-              Showing <span className="font-semibold text-gray-700">{filtered.length}</span> of {rows.length}
-              {rows.length === 1 ? ' record' : ' records'}
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex rounded-lg border border-gray-200 p-0.5">
-                <button
-                  type="button"
-                  onClick={() => setView('cards')}
-                  className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                    asCards ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  <LayoutGrid size={13} /> Cards
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setView('table')}
-                  className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                    !asCards ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  <Rows3 size={13} /> Table
-                </button>
-              </div>
-              <Button variant="outline" size="sm" onClick={exportCsv} disabled={!filtered.length} className="gap-1.5">
-                <Download size={14} /> CSV
-              </Button>
-              <Button variant="outline" size="sm" onClick={exportExcel} disabled={!filtered.length} className="gap-1.5">
-                <FileSpreadsheet size={14} /> Excel
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* ── Records ── */}
       {filtered.length === 0 ? (

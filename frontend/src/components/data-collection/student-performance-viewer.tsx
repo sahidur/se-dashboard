@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
-  CalendarRange, Download, FileSpreadsheet, ListChecks, RotateCcw, Search, Users,
+  Download, FileSpreadsheet, ListChecks, RotateCcw, Search, Users,
 } from 'lucide-react';
 import api from '@/lib/api';
 import { buildCsv, buildExcelHtml, downloadContent } from '@/components/data-collection/export-buttons';
@@ -169,7 +169,7 @@ export function StudentPerformanceViewer({ schoolId, formKey, fileBase, schoolCa
   /* ── Render ── */
 
   const selectClass =
-    'w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-300 sm:w-auto';
+    'h-9 max-w-[11rem] rounded-lg border border-gray-200 bg-white px-2.5 text-sm text-gray-700 shadow-sm transition-colors hover:border-gray-300 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-300';
 
   if (loading) {
     return (
@@ -208,83 +208,90 @@ export function StudentPerformanceViewer({ schoolId, formKey, fileBase, schoolCa
   }
 
   return (
-    <div className="space-y-5">
-      {/* ── Filters + export ── */}
-      <Card className="border-0 shadow-sm">
-        <CardContent className="space-y-3 p-4 sm:p-5">
-          <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">Academic Year</label>
-              <div className="relative">
-                <CalendarRange size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <select value={year} onChange={(e) => setYear(e.target.value)} className={`${selectClass} pl-8`}>
-                  <option value="">All years</option>
-                  {years.map((y) => <option key={y} value={String(y)}>{y}</option>)}
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">Grade</label>
-              <select value={grade} onChange={(e) => setGrade(e.target.value)} className={selectClass}>
-                <option value="">All grades</option>
-                {grades.map((g) => <option key={g} value={g}>{getGradeDisplayName(g, schoolCategory)}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">{def.periodLabel}</label>
-              <select value={period} onChange={(e) => setPeriod(e.target.value)} className={selectClass}>
-                <option value="">All periods</option>
-                {periods.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">Search</label>
-              <div className="relative">
-                <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Year, grade or period…"
-                  className="w-full rounded-lg border border-gray-200 py-2 pl-8 pr-3 text-sm shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-300 sm:w-56"
-                />
-              </div>
-            </div>
-
-            {hasFilters && (
-              <Button variant="outline" size="sm" onClick={resetFilters} className="gap-1.5">
-                <RotateCcw size={14} /> Reset
-              </Button>
-            )}
+    <div className="space-y-4">
+      {/* ── Toolbar: search + filters | count, scope, export ── */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-1 flex-wrap items-center gap-2">
+          <div className="relative w-full sm:w-60 lg:w-52 xl:w-64">
+            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Year, grade or period…"
+              className="h-9 w-full rounded-lg border border-gray-200 bg-white pl-8 pr-3 text-sm shadow-sm placeholder:text-gray-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-300"
+            />
           </div>
 
-          <div className="flex flex-col gap-2 border-t border-gray-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-gray-500">
-              Showing <span className="font-semibold text-gray-700">{filtered.length}</span> of {records.length} submitted
-              {records.length === 1 ? ' record' : ' records'}
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={scope}
-                onChange={(e) => setScope(e.target.value as 'filtered' | 'all')}
-                className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-300"
-              >
-                <option value="filtered">Filtered data ({filtered.length})</option>
-                <option value="all">All data ({records.length})</option>
-              </select>
-              <Button variant="outline" size="sm" onClick={exportCsv} disabled={!exportRecords.length} className="gap-1.5">
-                <Download size={14} /> CSV
-              </Button>
-              <Button variant="outline" size="sm" onClick={exportExcel} disabled={!exportRecords.length} className="gap-1.5">
-                <FileSpreadsheet size={14} /> Excel
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          <select
+            value={year}
+            onChange={(e) => setYear(e.target.value)}
+            aria-label="Academic Year"
+            className={`${selectClass} ${year ? 'border-indigo-300 bg-indigo-50/60 font-medium text-indigo-700' : ''}`}
+          >
+            <option value="">All years</option>
+            {years.map((y) => <option key={y} value={String(y)}>{y}</option>)}
+          </select>
+
+          <select
+            value={grade}
+            onChange={(e) => setGrade(e.target.value)}
+            aria-label="Grade"
+            className={`${selectClass} ${grade ? 'border-indigo-300 bg-indigo-50/60 font-medium text-indigo-700' : ''}`}
+          >
+            <option value="">All grades</option>
+            {grades.map((g) => <option key={g} value={g}>{getGradeDisplayName(g, schoolCategory)}</option>)}
+          </select>
+
+          <select
+            value={period}
+            onChange={(e) => setPeriod(e.target.value)}
+            aria-label={def.periodLabel}
+            className={`${selectClass} ${period ? 'border-indigo-300 bg-indigo-50/60 font-medium text-indigo-700' : ''}`}
+          >
+            <option value="">All periods</option>
+            {periods.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+
+          {hasFilters && (
+            <button
+              type="button"
+              onClick={resetFilters}
+              title="Reset filters"
+              aria-label="Reset filters"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 shadow-sm transition-colors hover:border-rose-200 hover:text-rose-500"
+            >
+              <RotateCcw size={14} />
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600">
+            <ListChecks size={13} className="text-gray-400" />
+            <span className="font-semibold tabular-nums text-gray-800">{filtered.length}</span>
+            <span className="text-gray-400">/</span>
+            <span className="tabular-nums">{records.length}</span>
+          </span>
+
+          <select
+            value={scope}
+            onChange={(e) => setScope(e.target.value as 'filtered' | 'all')}
+            aria-label="Export scope"
+            className="h-9 rounded-lg border border-gray-200 bg-white px-2.5 text-xs text-gray-700 shadow-sm transition-colors hover:border-gray-300 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-300"
+          >
+            <option value="filtered">Filtered data ({filtered.length})</option>
+            <option value="all">All data ({records.length})</option>
+          </select>
+
+          <Button variant="outline" size="sm" onClick={exportCsv} disabled={!exportRecords.length} className="gap-1.5">
+            <Download size={14} /> CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={exportExcel} disabled={!exportRecords.length} className="gap-1.5">
+            <FileSpreadsheet size={14} /> Excel
+          </Button>
+        </div>
+      </div>
 
       {/* ── Records ── */}
       {filtered.length === 0 ? (
