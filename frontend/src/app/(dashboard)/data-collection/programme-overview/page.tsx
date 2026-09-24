@@ -451,15 +451,15 @@ function CategorySummaryTable({ label, header, totals, showSsc }: { label: strin
     },
     sscAPlus: {
       title: 'Percentage of students obtained A+ in SSC exam',
-      meaning: 'Share of A+ grades among all graded subject results of the BRAC Secondary SSC exam, aggregated across every school in this category.',
-      formula: 'A+ rate = (Σ A+ grades ÷ Σ total graded subject results) × 100',
+      meaning: 'Share of BRAC Secondary students who obtained A+ in the SSC exam among those who participated, aggregated across every school in this category.',
+      formula: 'A+ rate = (Σ Students obtained A+ ÷ Σ Students participated) × 100',
       steps: [
-        { label: 'Σ A+ grades (all subjects, all schools)', value: 'from the form' },
-        { label: 'Σ total graded results', value: 'from the form', op: '÷' },
+        { label: 'Σ Students obtained A+ (SSC, all schools)', value: 'from the form' },
+        { label: 'Σ Students participated (SSC, all schools)', value: 'from the form', op: '÷' },
         { label: 'A+ rate', value: t.sscAPlusRate != null ? `${t.sscAPlusRate.toFixed(1)}%` : 'No data', op: '=' },
       ],
       result: t.sscAPlusRate != null ? `${t.sscAPlusRate.toFixed(1)}%` : 'No data',
-      source: 'The "Grade 6–10 & SSC — Subject-wise Results" form (BSS-1, grade = SSC): per-subject A+…F grade counts are summed across all subjects and schools of this category, then A+ ÷ total graded results. This metric has no other data source — schools must submit the BSS-1 form for it to appear.',
+      source: 'Primary source: the "Pedagogical Achievements" form — "Number of Students Obtained A+" ÷ "Number of Students Participated" at the SSC level, summed across every school of this category. When no school submitted it, it falls back to the "Grade 6–10 & SSC — Subject-wise Results" form (BSS-1, grade = SSC): Σ A+ grades ÷ Σ total graded subject results.',
     },
   };
 

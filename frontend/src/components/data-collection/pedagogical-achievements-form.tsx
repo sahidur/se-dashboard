@@ -33,6 +33,7 @@ interface AchievementRecord {
   jrScholarship: number;
   sscParticipated: number;
   sscScholarship: number;
+  sscAPlus: number;
   othersParticipated: number;
   othersScholarship: number;
   talentGrantParticipated: number;
@@ -50,6 +51,7 @@ interface FormState {
   jrScholarship: string;
   sscParticipated: string;
   sscScholarship: string;
+  sscAPlus: string;
   othersParticipated: string;
   othersScholarship: string;
   talentGrantParticipated: string;
@@ -61,7 +63,7 @@ const BLANK: FormState = {
   kgParticipated: '', kgScholarship: '',
   primaryParticipated: '', primaryScholarship: '',
   jrParticipated: '', jrScholarship: '',
-  sscParticipated: '', sscScholarship: '',
+  sscParticipated: '', sscScholarship: '', sscAPlus: '',
   othersParticipated: '', othersScholarship: '',
   talentGrantParticipated: '', talentGrantAwarded: '',
 };
@@ -181,6 +183,7 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
         jrScholarship: String(match.jrScholarship ?? ''),
         sscParticipated: String(match.sscParticipated ?? ''),
         sscScholarship: String(match.sscScholarship ?? ''),
+        sscAPlus: String(match.sscAPlus ?? ''),
         othersParticipated: String(match.othersParticipated ?? ''),
         othersScholarship: String(match.othersScholarship ?? ''),
         talentGrantParticipated: String(match.talentGrantParticipated ?? ''),
@@ -212,6 +215,7 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
       jrScholarship: String(rec.jrScholarship || ''),
       sscParticipated: String(rec.sscParticipated || ''),
       sscScholarship: String(rec.sscScholarship || ''),
+      sscAPlus: String(rec.sscAPlus || ''),
       othersParticipated: String(rec.othersParticipated || ''),
       othersScholarship: String(rec.othersScholarship || ''),
       talentGrantParticipated: String(rec.talentGrantParticipated || ''),
@@ -254,6 +258,7 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
         jrScholarship: form.jrScholarship ? Number(form.jrScholarship) : 0,
         sscParticipated: form.sscParticipated ? Number(form.sscParticipated) : 0,
         sscScholarship: form.sscScholarship ? Number(form.sscScholarship) : 0,
+        sscAPlus: form.sscAPlus ? Number(form.sscAPlus) : 0,
         othersParticipated: form.othersParticipated ? Number(form.othersParticipated) : 0,
         othersScholarship: form.othersScholarship ? Number(form.othersScholarship) : 0,
         talentGrantParticipated: form.talentGrantParticipated ? Number(form.talentGrantParticipated) : 0,
@@ -293,7 +298,10 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
     )},
     ...(school?.schoolCategory !== 'brac_academy' ? [{
       key: 'sscScholarship' as const, header: 'SSC', className: 'text-right', render: (rec: AchievementRecord) => (
-        <span className="font-medium">{rec.sscScholarship}<span className="text-xs font-normal text-gray-400"> / {rec.sscParticipated ?? 0}</span></span>
+        <span className="font-medium">
+          {rec.sscScholarship}<span className="text-xs font-normal text-gray-400"> / {rec.sscParticipated ?? 0}</span>
+          <span className="ml-1.5 text-xs font-normal text-indigo-500">A+ {rec.sscAPlus ?? 0}</span>
+        </span>
       ),
     }] : []),
     { key: 'othersScholarship', header: 'Others', className: 'text-right', render: (rec) => (
@@ -447,6 +455,19 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
                           className="h-9 text-sm"
                         />
                       </div>
+                      {key === 'ssc' && (
+                        <div>
+                          <Label className="mb-1 block text-xs text-gray-500">Number of Students Obtained A+</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={form.sscAPlus}
+                            onChange={(e) => set('sscAPlus', e.target.value)}
+                            placeholder="0"
+                            className="h-9 text-sm"
+                          />
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -502,7 +523,7 @@ export function PedagogicalAchievementsForm({ schoolId }: Props) {
                 kgScholarship: (v, rec) => `${Number(v)} of ${Number((rec as any).kgParticipated ?? 0)}`,
                 primaryScholarship: (v, rec) => `${Number(v)} of ${Number((rec as any).primaryParticipated ?? 0)}`,
                 jrScholarship: (v, rec) => `${Number(v)} of ${Number((rec as any).jrParticipated ?? 0)}`,
-                sscScholarship: (v, rec) => `${Number(v)} of ${Number((rec as any).sscParticipated ?? 0)}`,
+                sscScholarship: (v, rec) => `${Number(v)} of ${Number((rec as any).sscParticipated ?? 0)} (A+ ${Number((rec as any).sscAPlus ?? 0)})`,
                 othersScholarship: (v, rec) => `${Number(v)} of ${Number((rec as any).othersParticipated ?? 0)}`,
                 talentGrantAwarded: (v, rec) => `${Number(v)} of ${Number((rec as any).talentGrantParticipated ?? 0)}`,
                 total: (_v, rec) =>

@@ -527,6 +527,7 @@ async function seedDemoDc() {
             jrScholarship: isSecondary ? 4 : 2,
             sscParticipated: isSecondary ? 30 : 0,
             sscScholarship: isSecondary ? 5 : 0,
+            sscAPlus: isSecondary ? 8 : 0,
             othersParticipated: 10,
             othersScholarship: 2,
             talentGrantParticipated: isAcademy ? 12 : 6,

@@ -71,6 +71,10 @@ export class DcPedagogicalAchievement {
   @Column({ name: 'ssc_scholarship', type: 'int', default: 0 })
   sscScholarship: number;
 
+  /** Students who obtained A+ in the SSC exam (drives the Programme Overview A+ metric). */
+  @Column({ name: 'ssc_a_plus', type: 'int', default: 0 })
+  sscAPlus: number;
+
   @Column({ name: 'ssc_unique_approach', type: 'text', nullable: true })
   sscUniqueApproach: string;
 

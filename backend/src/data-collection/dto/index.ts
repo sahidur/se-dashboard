@@ -647,6 +647,7 @@ export class UpsertPedagogicalAchievementDto {
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) sscParticipated?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) sscScholarship?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) sscAPlus?: number;
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) othersParticipated?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) othersScholarship?: number;
