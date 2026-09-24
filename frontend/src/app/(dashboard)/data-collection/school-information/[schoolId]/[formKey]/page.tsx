@@ -124,7 +124,6 @@ export default function FormDataViewerPage() {
       <div className="space-y-5 p-4 sm:p-6">
         {/* ── Form banner ── */}
         <Card className="overflow-hidden border-0 shadow-sm">
-          <div className={`h-1 bg-gradient-to-r ${category.color}`} />
           <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:p-5">
             <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${category.bg} ring-1 ${category.ring}`}>
               <FormIcon size={22} className={category.text} />

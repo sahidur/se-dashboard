@@ -244,7 +244,7 @@ export function FormDataViewer({ schoolId, category, form, fileBase }: Props) {
 
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<Record<string, string>>({});
-  const [view, setView] = useState<'auto' | 'table' | 'cards'>('auto');
+  const [view, setView] = useState<'table' | 'cards'>('table');
   const [visible, setVisible] = useState(12);
 
   /* ── Derived column metadata ── */
@@ -375,10 +375,7 @@ export function FormDataViewer({ schoolId, category, form, fileBase }: Props) {
     );
   }
 
-  // Wide, single-record or paired forms read far better as cards than as one
-  // endlessly-scrolling table row.
-  const autoCards = !!form.single || rows.length <= 2 || paired || columns.length > 14;
-  const asCards = view === 'auto' ? autoCards : view === 'cards';
+  const asCards = view === 'cards';
 
   return (
     <div className="space-y-4">
