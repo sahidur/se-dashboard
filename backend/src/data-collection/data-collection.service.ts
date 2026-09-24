@@ -1356,15 +1356,20 @@ export class DataCollectionService {
 
     // ── SSC results per school (BRAC Secondary) — dynamic source for the
     // "Pass rate in SSC exam" and "% of students obtained A+ in SSC exam"
-    // metrics of the Programme Overview category breakdown. Primary source
-    // for the pass rate: the Pedagogical Achievements form (students awarded
-    // ÷ students participated in the SSC level). Fallbacks: the BSS-1 form
-    // ("Grade 6–10 & SSC — Subject-wise Results", rows hold A+…F counts per
-    // subject) and then the Performance form's "Board Exam Pass Rate (%)".
-    // When both evaluation periods were filled, the Annual one wins (single
-    // exam year). ──
+    // metrics of the Programme Overview category breakdown. These metrics are
+    // scoped to BRAC Secondary schools ONLY. Primary source for both: the
+    // Pedagogical Achievements form (students awarded / A+ ÷ students
+    // participated in the SSC level). Fallbacks: the BSS-1 form ("Grade 6–10
+    // & SSC — Subject-wise Results", rows hold A+…F counts per subject) and
+    // then the Performance form's "Board Exam Pass Rate (%)". When both
+    // evaluation periods were filled, the Annual one wins (single exam year).
+    // ──
+    const secondarySchoolIds = new Set(
+      schools.filter((s) => s.schoolCategory === 'brac_secondary').map((s) => s.id),
+    );
     const pedagSscBySchool = new Map<string, { participated: number; awarded: number; aPlus: number }>();
     for (const [schoolId, p] of Object.entries(pedagMap)) {
+      if (!secondarySchoolIds.has(schoolId)) continue;
       const participated = Number(p.sscParticipated) || 0;
       const awarded = Number(p.sscScholarship) || 0;
       const aPlus = Number(p.sscAPlus) || 0;
@@ -1385,6 +1390,7 @@ export class DataCollectionService {
         bySchool.set(rec.schoolId, list);
       }
       for (const [schoolId, recs] of bySchool) {
+        if (!secondarySchoolIds.has(schoolId)) continue;
         // Prefer the Annual assessment when both periods were submitted
         const chosen = recs.some((r) => r.evaluationPeriod === 'Annual')
           ? recs.filter((r) => r.evaluationPeriod === 'Annual')
@@ -1502,19 +1508,23 @@ export class DataCollectionService {
       const yearlyStudentTarget =
         aopStudents > 0 ? aopStudents : (b?.totalStudentsTarget ?? a?.totalStudentsTarget ?? 0);
 
-      // Dynamic SSC metrics (BRAC Secondary): Pedagogical Achievements
-      // (awarded ÷ participated, A+ ÷ participated) first, then BSS-1
-      // subject-wise results and the Board Exam Pass Rate field as fallbacks.
+      // Dynamic SSC metrics (BRAC Secondary schools only): Pedagogical
+      // Achievements (awarded ÷ participated, A+ ÷ participated) first, then
+      // BSS-1 subject-wise results and the Board Exam Pass Rate field as
+      // fallbacks. Null for every other school category.
+      const isSecondarySchool = school.schoolCategory === 'brac_secondary';
       const schoolSsc = sscBySchool.get(school.id);
       const pedagSsc = pedagSscBySchool.get(school.id);
-      const sscPassRate =
-        pedagSsc != null
+      const sscPassRate = isSecondarySchool
+        ? pedagSsc != null
           ? (pedagSsc.awarded / pedagSsc.participated) * 100
-          : sscRate(schoolSsc, 'pass') ?? boardExamRateBySchool.get(school.id) ?? null;
-      const sscAPlusRate =
-        pedagSsc != null
+          : sscRate(schoolSsc, 'pass') ?? boardExamRateBySchool.get(school.id) ?? null
+        : null;
+      const sscAPlusRate = isSecondarySchool
+        ? pedagSsc != null
           ? (pedagSsc.aPlus / pedagSsc.participated) * 100
-          : sscRate(schoolSsc, 'aPlus');
+          : sscRate(schoolSsc, 'aPlus')
+        : null;
 
       return {
         id: school.id,
