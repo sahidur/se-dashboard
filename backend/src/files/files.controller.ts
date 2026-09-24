@@ -12,10 +12,13 @@ import {
   BadRequestException,
   NotFoundException,
   Res,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import * as path from 'path';
 import * as fs from 'fs';
+import { Transform } from 'stream';
+import { pipeline } from 'stream/promises';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import {
   ApiTags,
@@ -35,6 +38,39 @@ import { Permissions } from '../common/decorators/permissions.decorator';
 @Controller('files')
 export class FilesController {
   constructor(private readonly filesService: FilesService) {}
+
+  @Get('object')
+  @ApiOperation({ summary: 'Stream a private S3 object to an authenticated user' })
+  async servePrivateObject(@Query('key') key: string, @Res() res: Response) {
+    let object: Awaited<ReturnType<FilesService['getPrivateObject']>>;
+    try {
+      object = await this.filesService.getPrivateObject(key);
+    } catch (error) {
+      if ((error as { name?: string }).name === 'NoSuchKey') {
+        throw new NotFoundException('File not found');
+      }
+      throw error;
+    }
+    res.setHeader('Content-Type', object.mime);
+    res.setHeader('Content-Disposition', object.mime.startsWith('image/') ? 'inline' : 'attachment');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
+    try {
+      let bytes = 0;
+      await pipeline(object.object.Body as NodeJS.ReadableStream, new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          bytes += chunk.length;
+          callback(bytes > 10 * 1024 * 1024 ? new Error('File too large') : null, chunk);
+        },
+      }), res);
+    } catch {
+      if (res.headersSent) { res.destroy(); return; }
+      throw new InternalServerErrorException('Could not stream file');
+    }
+  }
 
   @Post('upload')
   @ApiOperation({ summary: 'Upload a single file' })
@@ -97,9 +133,14 @@ export class FilesController {
   @ApiOperation({ summary: 'Serve a locally stored file (authenticated)' })
   async serveLocalFile(
     @Query('key') key: string,
+    @Query('x-exp') exp: string,
+    @Query('x-sig') sig: string,
     @Res() res: Response,
   ) {
     if (!key) throw new BadRequestException('key is required');
+    if (!this.filesService.verifyLocalRequest(key, exp, sig)) {
+      throw new NotFoundException('File not found');
+    }
     // Prevent path traversal
     const uploadDir = path.resolve(process.cwd(), 'uploads');
     const resolved = path.resolve(uploadDir, key);

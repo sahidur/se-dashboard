@@ -10,6 +10,8 @@ import { AcademicYear, AcademicYearStatus } from './entities/academic-year.entit
 import { FeeHead } from './entities/fee-head.entity';
 import { FeeStructure } from './entities/fee-structure.entity';
 import { StudentDiscount, DiscountType } from './entities/student-discount.entity';
+import { SchoolClass } from '../students/entities/school-class.entity';
+import { Student } from '../students/entities/student.entity';
 import {
   CreateAcademicYearDto,
   UpdateAcademicYearDto,
@@ -180,6 +182,8 @@ export class FeeManagementService {
   // updates changed amounts, removes rows whose amount became 0/removed.
   async saveFeeStructure(dto: SaveFeeStructureDto, userId: string) {
     return this.dataSource.transaction(async (manager) => {
+      const schoolClass = await manager.findOne(SchoolClass, { where: { id: dto.classId, schoolId: dto.schoolId } });
+      if (!schoolClass) throw new BadRequestException('Class does not belong to the selected school');
       const headIds = dto.lines.map((l) => l.feeHeadId);
       const heads = await manager.find(FeeHead, { where: { id: In(headIds) } });
       if (heads.length !== new Set(headIds).size) {
@@ -268,6 +272,8 @@ export class FeeManagementService {
     dto: CreateStudentDiscountDto,
     userId: string,
   ): Promise<StudentDiscount> {
+    const student = await this.dataSource.manager.findOne(Student, { where: { id: dto.studentId } });
+    if (!student) throw new NotFoundException('Student not found');
     if (dto.type === DiscountType.PERCENTAGE && dto.value > 100) {
       throw new BadRequestException('Percentage discount cannot exceed 100');
     }
@@ -308,8 +314,18 @@ export class FeeManagementService {
   ): Promise<StudentDiscount> {
     const discount = await this.discountsRepo.findOne({ where: { id } });
     if (!discount) throw new NotFoundException('Discount not found');
-    if (dto.type === DiscountType.PERCENTAGE && dto.value !== undefined && dto.value > 100) {
+    if ((dto.type ?? discount.type) === DiscountType.PERCENTAGE &&
+        (dto.value ?? parseFloat(discount.value)) > 100) {
       throw new BadRequestException('Percentage discount cannot exceed 100');
+    }
+    if (dto.feeHeadId) {
+      const head = await this.headsRepo.findOne({ where: { id: dto.feeHeadId } });
+      if (!head) throw new NotFoundException('Fee head not found');
+    }
+    if (!(dto.isRecurring ?? discount.isRecurring) &&
+        (dto.effectiveFromMonth ?? discount.effectiveFromMonth ?? 1) >
+          (dto.effectiveToMonth ?? discount.effectiveToMonth ?? MONTHS_IN_YEAR)) {
+      throw new BadRequestException('Invalid effective month range');
     }
     Object.assign(discount, dto);
     if (dto.value !== undefined) discount.value = dto.value.toFixed(2);

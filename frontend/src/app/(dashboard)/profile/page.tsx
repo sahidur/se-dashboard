@@ -191,15 +191,10 @@ export default function ProfilePage() {
     }
     try {
       setChangingPassword(true);
-      const { data } = await api.post('/auth/change-password', {
+      await api.post('/auth/change-password', {
         currentPassword: passwords.currentPassword,
         newPassword: passwords.newPassword,
       });
-      // The backend rotates the refresh token on password change (invalidating
-      // other devices). Persist the fresh pair so this session stays alive.
-      if (data?.accessToken && data?.refreshToken) {
-        useAuthStore.getState().setTokens(data.accessToken, data.refreshToken);
-      }
       setPasswords({ currentPassword: '', newPassword: '', confirmPassword: '' });
       alert('Password changed successfully');
     } catch (error) {

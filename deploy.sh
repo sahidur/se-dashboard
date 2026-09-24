@@ -317,6 +317,7 @@ chown "$APP_USER":"$APP_USER" "${APP_DIR}/backend/.env"
 cat > "${APP_DIR}/frontend/.env.local" <<ENV
 # NEXT_PUBLIC_* vars are embedded at build time.
 NEXT_PUBLIC_API_URL=https://${DOMAIN}/api
+NEXT_PUBLIC_S3_FOLDER=${S3_FOLDER}
 ENV
 
 chmod 600 "${APP_DIR}/frontend/.env.local"
@@ -493,7 +494,7 @@ Group=${APP_USER}
 WorkingDirectory=${APP_DIR}/frontend
 
 # Startup – invoke the Next.js binary directly via node
-ExecStart=/usr/bin/node node_modules/next/dist/bin/next start --port ${FRONTEND_PORT}
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port ${FRONTEND_PORT}
 ExecReload=/bin/kill -HUP \$MAINPID
 
 # Restart policy

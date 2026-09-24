@@ -74,8 +74,8 @@ export class RolesController {
   @Post('seed')
   @Permissions({ module: 'roles', action: 'create' })
   @ApiOperation({ summary: 'Seed default roles' })
-  async seedRoles() {
-    await this.rolesService.seedDefaultRoles();
+  async seedRoles(@CurrentUser('id') actorId: string) {
+    await this.rolesService.seedDefaultRoles(actorId);
     return { message: 'Default roles seeded successfully' };
   }
 }

@@ -5,6 +5,7 @@ import {
   PutObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
+  type GetObjectCommandOutput,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { v4 as uuid } from 'uuid';
@@ -79,6 +80,11 @@ export const SAFE_SERVE_EXTENSIONS = new Set([
   '.jpeg',
 ]);
 
+const SERVE_TYPES: Record<string, string> = {
+  ...Object.fromEntries(Object.entries(ALLOWED_MIME_EXTENSIONS).map(([mime, ext]) => [ext, mime])),
+  '.jpeg': 'image/jpeg',
+};
+
 @Injectable()
 export class FilesService {
   private readonly logger = new Logger(FilesService.name);
@@ -97,6 +103,9 @@ export class FilesService {
 
     this.bucket = this.configService.get('S3_BUCKET', 'dev-shomadhanhobe-resources');
     this.folder = this.configService.get('S3_FOLDER', 'bep-se');
+    if (!/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(this.folder)) {
+      throw new Error('Invalid S3_FOLDER');
+    }
     this.localUploadDir = path.join(process.cwd(), 'uploads');
 
     if (this.allowsUnsignedUrls()) {
@@ -295,14 +304,37 @@ export class FilesService {
           : 'attachment',
         // Don't let shared caches retain authenticated users' uploads.
         CacheControl: 'private, max-age=3600',
-        ACL: 'public-read',
+        ACL: 'private',
       }),
     );
 
-    const region = this.configService.get('S3_REGION', 'sgp1');
-    const url = `https://${this.bucket}.${region}.digitaloceanspaces.com/${key}`;
+    return { url: `/api/files/object?key=${encodeURIComponent(key)}`, key };
+  }
 
-    return { url, key };
+  private assertS3Key(key: string): string {
+    // Never accept URLs, escaped paths, control chars or keys outside this app's
+    // prefix. The SDK endpoint is configured server-side, not from this input.
+    if (typeof key !== 'string' || key.length > 512 ||
+        !key.startsWith(`${this.folder}/`) ||
+        !/^[A-Za-z0-9_/-]+\/[A-Za-z0-9_-]+\.[A-Za-z0-9]+$/.test(key) ||
+        key.split('/').some((part) => !part || part === '.' || part === '..')) {
+      throw new BadRequestException('Invalid file key');
+    }
+    const ext = path.extname(key).toLowerCase();
+    if (!SERVE_TYPES[ext]) throw new BadRequestException('File type not allowed');
+    return SERVE_TYPES[ext];
+  }
+
+  async getPrivateObject(key: string): Promise<{ object: GetObjectCommandOutput; mime: string }> {
+    if (this.useLocal) throw new BadRequestException('S3 storage is not configured');
+    const mime = this.assertS3Key(key);
+    const object = await this.s3Client!.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+    if (object.ContentType?.toLowerCase() !== mime || !object.Body ||
+        (object.ContentLength !== undefined && object.ContentLength > 10 * 1024 * 1024)) {
+      if (object.Body && 'destroy' in object.Body) object.Body.destroy();
+      throw new BadRequestException('File type or size not allowed');
+    }
+    return { object, mime };
   }
 
   async deleteFile(key: string): Promise<void> {
@@ -322,9 +354,7 @@ export class FilesService {
     }
     // Confine deletions to this application's prefix so a crafted key cannot
     // remove unrelated objects that share the bucket.
-    if (!key.startsWith(`${this.folder}/`)) {
-      throw new BadRequestException('Invalid file key');
-    }
+    this.assertS3Key(key);
     await this.s3Client!.send(
       new DeleteObjectCommand({
         Bucket: this.bucket,
@@ -340,8 +370,9 @@ export class FilesService {
     }
     // Confine signing to this application's prefix — same bound as deletion,
     // so a crafted key cannot mint read links into unrelated bucket objects.
-    if (!key || key.includes('..') || !key.startsWith(`${this.folder}/`)) {
-      throw new BadRequestException('Invalid file key');
+    this.assertS3Key(key);
+    if (!Number.isInteger(expiresIn) || expiresIn < 1 || expiresIn > 3600) {
+      throw new BadRequestException('Invalid expiry');
     }
     const command = new GetObjectCommand({
       Bucket: this.bucket,

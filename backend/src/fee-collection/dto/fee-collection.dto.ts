@@ -13,6 +13,7 @@ import {
   Min,
   MaxLength,
   ValidateNested,
+  IsArray,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
@@ -45,8 +46,9 @@ export class PaymentAllocationDto {
   feeHeadId: string;
 
   @ApiProperty({ example: 500 })
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
+  @Max(9999999999.99)
   amount: number;
 }
 
@@ -56,8 +58,9 @@ export class CollectPaymentDto {
   studentFeeId: string;
 
   @ApiProperty({ example: 2000 })
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
+  @Max(9999999999.99)
   amount: number;
 
   @ApiPropertyOptional({
@@ -67,6 +70,7 @@ export class CollectPaymentDto {
       'Heads without installment allowed must be paid in full; installment heads accept partial amounts.',
   })
   @IsOptional()
+  @IsArray()
   @ArrayNotEmpty()
   @ValidateNested({ each: true })
   @Type(() => PaymentAllocationDto)
@@ -98,6 +102,7 @@ export class CancelPaymentDto {
   @ApiProperty({ example: 'Duplicate receipt' })
   @IsString()
   @IsNotEmpty()
+  @MaxLength(2000)
   reason: string;
 }
 

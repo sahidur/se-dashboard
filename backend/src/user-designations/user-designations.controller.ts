@@ -35,6 +35,7 @@ export class UserDesignationsController {
   }
 
   @Get()
+  @Permissions({ module: 'user-designations', action: 'read' })
   @ApiOperation({ summary: 'Get all user designations' })
   @ApiQuery({
     name: 'activeOnly',
@@ -47,6 +48,7 @@ export class UserDesignationsController {
   }
 
   @Get(':id')
+  @Permissions({ module: 'user-designations', action: 'read' })
   @ApiOperation({ summary: 'Get a user designation by ID' })
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.findOne(id);

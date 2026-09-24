@@ -466,7 +466,7 @@ export class RecycleBinService {
     targetUserId: string,
     actorId?: string,
   ): Promise<void> {
-    if (!actorId) return; // internal/system callers (seeding, scripts)
+    if (!actorId) throw new ForbiddenException('Actor is required to manage deleted users');
     const [actor, target] = await Promise.all([
       this.usersRepo.findOne({
         where: { id: actorId },
@@ -481,13 +481,14 @@ export class RecycleBinService {
     const isSuperAdmin = (actor?.roles || []).some(
       (r) => r.name === 'Super Admin',
     );
-    if (!actor || isSuperAdmin) return;
+    if (!actor) throw new ForbiddenException('Actor not found');
+    if (isSuperAdmin) return;
     const bestOf = (roles?: any[] | null) =>
       Math.min(
         ...(roles || []).map((r) => r.hierarchy ?? Number.POSITIVE_INFINITY),
         Number.POSITIVE_INFINITY,
       );
-    if (bestOf(target?.roles) < bestOf(actor.roles)) {
+    if (!target || bestOf(target.roles) <= bestOf(actor.roles)) {
       throw new ForbiddenException(
         'You cannot restore or permanently delete users who have more privileges than you',
       );

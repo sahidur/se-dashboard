@@ -21,19 +21,11 @@ export interface ResolvedAuditContext {
 /**
  * Extracts the client IP.
  *
- * `X-Forwarded-For` is only honoured when the app is explicitly configured to
- * sit behind a trusted reverse proxy (`TRUST_PROXY`). Otherwise any client
- * could set that header and write a forged IP into the audit trail.
+ * Express resolves req.ip using the same trust-proxy setting as the rate
+ * limiter. Parsing X-Forwarded-For here independently would trust client-supplied
+ * entries even when the configured proxy hop count does not trust them.
  */
 function resolveIp(req: any): string | undefined {
-  const trustProxy = process.env.TRUST_PROXY;
-  if (trustProxy && trustProxy !== 'false') {
-    const xff = req?.headers?.['x-forwarded-for'];
-    if (xff) {
-      const first = Array.isArray(xff) ? xff[0] : String(xff).split(',')[0];
-      if (first) return first.trim();
-    }
-  }
   return req?.ip || req?.socket?.remoteAddress || undefined;
 }
 

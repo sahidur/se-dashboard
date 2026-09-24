@@ -14,19 +14,7 @@ import {
 } from 'typeorm';
 import { AuditLog } from '../entities/audit-log.entity';
 import { getAuditContext } from './audit-context';
-
-/** Field names whose values must never be written into an audit record. */
-const SENSITIVE_FIELDS = [
-  'password',
-  'refreshToken',
-  'currentHashedRefreshToken',
-  'token',
-  'accessToken',
-  'refreshtoken',
-  'hashedPassword',
-  // Personal identifier — masked in snapshots like credentials are.
-  'pin',
-];
+import { sanitizeAuditData } from './sanitize-audit-data';
 
 /**
  * When a save() touches ONLY these columns the change is considered internal
@@ -85,34 +73,9 @@ export class AuditSubscriber implements EntitySubscriberInterface {
     );
   }
 
-  /** Produces a shallow, JSON-safe snapshot with sensitive fields masked. */
+  /** Produces a JSON-safe snapshot with sensitive fields masked at every depth. */
   private snapshot(data: any): Record<string, any> | undefined {
-    if (!data || typeof data !== 'object') return undefined;
-    const out: Record<string, any> = {};
-    for (const [key, value] of Object.entries(data)) {
-      if (SENSITIVE_FIELDS.includes(key)) {
-        out[key] = '***';
-        continue;
-      }
-      if (value === null || value === undefined) {
-        out[key] = value ?? null;
-      } else if (value instanceof Date) {
-        out[key] = value;
-      } else if (Array.isArray(value)) {
-        // Collapse related collections to their ids to avoid huge payloads.
-        out[key] = value.map((item) =>
-          item && typeof item === 'object' && 'id' in item
-            ? (item as any).id
-            : item,
-        );
-      } else if (typeof value === 'object') {
-        out[key] =
-          'id' in (value as any) ? { id: (value as any).id } : { ...value };
-      } else {
-        out[key] = value;
-      }
-    }
-    return Object.keys(out).length ? out : undefined;
+    return sanitizeAuditData(data);
   }
 
   private toEntityId(value: any): string | undefined {

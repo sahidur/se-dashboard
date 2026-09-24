@@ -13,6 +13,7 @@ import {
 } from '@/store/auth-store';
 import { loginWithPasskey, passkeySupported } from '@/lib/passkey';
 import { Button } from '@/components/ui/button';
+import type { AuthResponse } from '@/types';
 import { Input } from '@/components/ui/input';
 import {
   Card,
@@ -45,7 +46,7 @@ const clientTrue = () => true;
 const serverFalse = () => false;
 
 export default function LoginPage() {
-  const { setAuth, logout, isAuthenticated, accessToken } = useAuthStore();
+  const { setAuth, logout, isAuthenticated } = useAuthStore();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
@@ -93,9 +94,7 @@ export default function LoginPage() {
         sessionStorage.getItem(REDIRECT_ATTEMPT_KEY) === '1';
     }
 
-    // Cookie sessions keep no persisted access token, so an in-memory token
-    // OR the `se360-session` middleware cookie counts as "probably logged in".
-    const authed = isAuthenticated && (!!accessToken || hasSessionCookie());
+    const authed = isAuthenticated && hasSessionCookie();
 
     if (!authed) {
       // Nothing stale left to redirect with; allow a future successful login
@@ -133,17 +132,17 @@ export default function LoginPage() {
     // spinner. Do not "fix" this by switching back to the router.
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.assign('/data-collection/programme-overview');
-  }, [hydrated, isAuthenticated, accessToken, logout]);
+  }, [hydrated, isAuthenticated, logout]);
 
   const onSubmit = async (data: LoginForm) => {
     try {
       setLoading(true);
       setError('');
-      const response = await api.post('/auth/login', data);
-      const { user, accessToken, refreshToken } = response.data;
+      const response = await api.post<AuthResponse>('/auth/login', data);
+      const { user } = response.data;
       // setAuth flips isAuthenticated -> the effect above performs the redirect.
       // Keep `loading` true so the button stays disabled until the page unloads.
-      setAuth(user, accessToken, refreshToken);
+      setAuth(user);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Login failed');
       setLoading(false);
@@ -157,9 +156,9 @@ export default function LoginPage() {
       // Pass the typed email (if any) to scope the credential list; otherwise
       // the browser offers any discoverable passkey for this site.
       const email = getValues('email')?.trim() || undefined;
-      const { user, accessToken, refreshToken } = await loginWithPasskey(email);
+      const { user } = await loginWithPasskey(email);
       // setAuth flips isAuthenticated -> the effect above performs the redirect.
-      setAuth(user, accessToken, refreshToken);
+      setAuth(user);
     } catch (err: any) {
       if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') {
         setError('Passkey sign-in was cancelled.');

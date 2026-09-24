@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseGuards, ParseUUIDPipe, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { FinanceReportsService } from './finance-reports.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -6,10 +6,17 @@ import { AccessGuard } from '../auth/guards/access.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { SaveAopTargetsDto } from './dto/aop-target.dto';
+import { SchoolScopeGuard } from '../students/school-scope.guard';
+
+function reportMonth(month?: string): number | undefined {
+  if (month === undefined) return undefined;
+  if (!/^(?:[1-9]|1[0-2])$/.test(month)) throw new BadRequestException('Month must be between 1 and 12');
+  return Number(month);
+}
 
 @ApiTags('Finance Reports')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, AccessGuard)
+@UseGuards(JwtAuthGuard, AccessGuard, SchoolScopeGuard)
 @Controller('finance-reports')
 export class FinanceReportsController {
   constructor(private readonly service: FinanceReportsService) {}
@@ -21,13 +28,13 @@ export class FinanceReportsController {
     @Query('schoolId', ParseUUIDPipe) schoolId: string,
     @Query('academicYearId', ParseUUIDPipe) academicYearId: string,
     @Query('month') month?: string,
-    @Query('classId') classId?: string,
-    @Query('sectionId') sectionId?: string,
+    @Query('classId', new ParseUUIDPipe({ optional: true })) classId?: string,
+    @Query('sectionId', new ParseUUIDPipe({ optional: true })) sectionId?: string,
   ) {
     return this.service.collectionReport(
       schoolId,
       academicYearId,
-      month ? parseInt(month, 10) : undefined,
+      reportMonth(month),
       classId || undefined,
       sectionId || undefined,
     );
@@ -39,8 +46,8 @@ export class FinanceReportsController {
   dues(
     @Query('schoolId', ParseUUIDPipe) schoolId: string,
     @Query('academicYearId', ParseUUIDPipe) academicYearId: string,
-    @Query('classId') classId?: string,
-    @Query('sectionId') sectionId?: string,
+    @Query('classId', new ParseUUIDPipe({ optional: true })) classId?: string,
+    @Query('sectionId', new ParseUUIDPipe({ optional: true })) sectionId?: string,
   ) {
     return this.service.dueReport(schoolId, academicYearId, classId || undefined, sectionId || undefined);
   }
@@ -56,7 +63,7 @@ export class FinanceReportsController {
     return this.service.groupedCollection(
       schoolId,
       academicYearId,
-      month ? parseInt(month, 10) : undefined,
+      reportMonth(month),
       'class',
     );
   }
@@ -72,7 +79,7 @@ export class FinanceReportsController {
     return this.service.groupedCollection(
       schoolId,
       academicYearId,
-      month ? parseInt(month, 10) : undefined,
+      reportMonth(month),
       'section',
     );
   }
@@ -88,7 +95,7 @@ export class FinanceReportsController {
     return this.service.feeHeadReport(
       schoolId,
       academicYearId,
-      month ? parseInt(month, 10) : undefined,
+      reportMonth(month),
     );
   }
 
@@ -137,8 +144,8 @@ export class FinanceReportsController {
   studentFees(
     @Query('schoolId', ParseUUIDPipe) schoolId: string,
     @Query('academicYearId', ParseUUIDPipe) academicYearId: string,
-    @Query('classId') classId?: string,
-    @Query('sectionId') sectionId?: string,
+    @Query('classId', new ParseUUIDPipe({ optional: true })) classId?: string,
+    @Query('sectionId', new ParseUUIDPipe({ optional: true })) sectionId?: string,
   ) {
     return this.service.studentFeeReport(schoolId, academicYearId, classId || undefined, sectionId || undefined);
   }

@@ -40,6 +40,8 @@ import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-quer
 export default function UsersPage() {
   const { hasPermission } = useAuthStore();
   const canResetPassword = hasPermission('users', 'update');
+  const canCreate = hasPermission('users', 'create');
+  const canDelete = hasPermission('users', 'delete');
   const queryClient = useQueryClient();
 
   // Filters
@@ -198,6 +200,7 @@ export default function UsersPage() {
   };
 
   const handleSave = async () => {
+    if (editingUser ? !canResetPassword : !canCreate) return;
     try {
       setSaving(true);
       const payload: Record<string, unknown> = {
@@ -227,6 +230,7 @@ export default function UsersPage() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!canDelete) return;
     if (!confirm('Are you sure you want to delete this user?')) return;
     try {
       await api.delete(`/users/${id}`);
@@ -246,6 +250,7 @@ export default function UsersPage() {
   };
 
   const handleConfirmStatus = async () => {
+    if (!canResetPassword) return;
     try {
       setStatusSaving(true);
       await api.patch(`/users/${statusConfirm.userId}/status`, { isActive: statusConfirm.nextActive });
@@ -265,6 +270,7 @@ export default function UsersPage() {
   };
 
   const handleResetPassword = async () => {
+    if (!canResetPassword) return;
     try {
       setResetLoading(true);
       const { data } = await api.post(`/users/${resetModal.userId}/reset-password`);
@@ -298,9 +304,9 @@ export default function UsersPage() {
         title="User Management"
         subtitle={`${meta.total} users registered`}
         actions={
-          <Button onClick={openCreateModal} size="sm">
+          canCreate ? <Button onClick={openCreateModal} size="sm">
             <Plus size={16} className="mr-1" /> Add User
-          </Button>
+          </Button> : undefined
         }
       />
       <div className="page-container">
@@ -484,17 +490,19 @@ export default function UsersPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <button
-                          onClick={(e) => {
+                         {canResetPassword ? <button
+                           onClick={(e) => {
                             e.stopPropagation();
                             openStatusConfirm(user);
                           }}
                           title={user.isActive ? 'Deactivate user' : 'Activate user'}
                           className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${user.isActive ? 'bg-green-50 text-green-700 hover:bg-green-100' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}
-                        >
-                          <Power size={9} />
-                          {user.isActive ? 'Active' : 'Inactive'}
-                        </button>
+                         >
+                           <Power size={9} />
+                           {user.isActive ? 'Active' : 'Inactive'}
+                         </button> : <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${user.isActive ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
+                           {user.isActive ? 'Active' : 'Inactive'}
+                         </span>}
                       </td>
                       <td className="hidden px-4 py-3 text-xs text-gray-500 xl:table-cell">
                         {formatDate(user.createdAt)}
@@ -510,20 +518,20 @@ export default function UsersPage() {
                               <KeyRound size={14} />
                             </button>
                           )}
-                          <button
-                            onClick={() => openEditModal(user)}
+                           {canResetPassword && <button
+                             onClick={() => openEditModal(user)}
                             className="rounded-lg p-1.5 bg-blue-50 text-blue-600 transition-colors hover:bg-blue-100"
                             title="Edit user"
                           >
                             <Edit size={14} />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(user.id)}
+                           </button>}
+                           {canDelete && <button
+                             onClick={() => handleDelete(user.id)}
                             className="rounded-lg p-1.5 bg-red-50 text-red-500 transition-colors hover:bg-red-100"
                             title="Delete user"
                           >
                             <Trash2 size={14} />
-                          </button>
+                           </button>}
                         </div>
                       </td>
                     </tr>

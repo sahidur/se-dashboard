@@ -1,5 +1,6 @@
 import axios, { AxiosError, isAxiosError } from 'axios';
-import { useAuthStore, logoutAndRedirect, hasSessionCookie } from '@/store/auth-store';
+import { useAuthStore, logoutAndRedirect, hasSessionCookie, setSessionCookie } from '@/store/auth-store';
+import { isApiRequestUrl } from '@/lib/security';
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api',
@@ -16,14 +17,11 @@ const api = axios.create({
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
 
-// Request interceptor - add auth token (legacy: only present while an
-// in-memory token from this tab's login is still around; cookie sessions
-// need no header).
+// Keep credentialed requests on the configured API origin.
 api.interceptors.request.use(
   (config) => {
-    const token = useAuthStore.getState().accessToken;
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (!isApiRequestUrl(config.url ?? '', API_BASE_URL, config.baseURL)) {
+      throw new Error('API request must target the configured API base');
     }
     return config;
   },
@@ -45,24 +43,11 @@ function refreshSession(): Promise<void> {
       // call and the server rotates both cookies in its response. Never send
       // a token in the request body — request bodies are more likely to end
       // up in logs/proxies than cookies scoped to /api/auth.
-      const { data } = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
+      await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
         withCredentials: true,
       });
-      // Rotate the in-memory access token with the fresh one from the
-      // response. Without this, the request interceptor keeps re-attaching
-      // the token issued at login — long expired — and the backend's
-      // extractor prefers the Bearer header over the fresh `se360_at`
-      // cookie, so every retried request would 401 again.
-      if (typeof data?.accessToken === 'string') {
-        useAuthStore.getState().setTokens(
-          data.accessToken,
-          typeof data?.refreshToken === 'string' ? data.refreshToken : '',
-        );
-      } else {
-        // Cookie-only response: drop the stale in-memory token entirely so
-        // the fresh cookie authenticates the retry instead of the dead header.
-        useAuthStore.setState({ accessToken: null });
-      }
+      // The API rotates both httpOnly cookies; keep the routing marker alive too.
+      if (useAuthStore.getState().isAuthenticated) setSessionCookie();
     })().finally(() => {
       refreshPromise = null;
     });
@@ -97,9 +82,7 @@ api.interceptors.response.use(
         // Refresh token is invalid/expired — fall through to forced logout below.
       }
 
-      // Either there was no refresh token (session lost, e.g. after a hard
-      // reload) or the refresh attempt itself failed (backend session/token
-      // expired or was revoked). In both cases the session can no longer be
+      // An invalid/expired refresh cookie means the session can no longer be
       // trusted: log the user out and send them back to the login page
       // instead of silently leaving the app in a "loaded but no data" state.
       // The logout must clear the persisted store *and* the middleware cookie,

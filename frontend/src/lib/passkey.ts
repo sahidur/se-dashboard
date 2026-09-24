@@ -5,7 +5,7 @@ import {
   platformAuthenticatorIsAvailable,
 } from '@simplewebauthn/browser';
 import api from '@/lib/api';
-import type { Passkey } from '@/types';
+import type { AuthResponse, Passkey } from '@/types';
 
 /** Whether this browser supports the WebAuthn API at all. */
 export function passkeySupported(): boolean {
@@ -58,13 +58,13 @@ export async function removePasskey(id: string): Promise<void> {
 /**
  * Log in with a passkey. `email` is optional — when omitted the browser offers
  * any discoverable passkey for this site (usernameless flow).
- * Returns the same `{ user, accessToken, refreshToken }` shape as password login.
+ * Returns the user; session credentials are set as httpOnly cookies.
  */
-export async function loginWithPasskey(email?: string) {
+export async function loginWithPasskey(email?: string): Promise<AuthResponse> {
   const { data } = await api.post('/auth/passkey/login/options', { email });
   const { flowId, options } = data;
   const authResp = await startAuthentication({ optionsJSON: options });
-  const { data: result } = await api.post('/auth/passkey/login/verify', {
+  const { data: result } = await api.post<AuthResponse>('/auth/passkey/login/verify', {
     flowId,
     response: authResp,
   });

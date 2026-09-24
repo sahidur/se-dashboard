@@ -8,6 +8,7 @@ import { SchoolSection } from './entities/section.entity';
 import { DcSchool } from '../data-collection/entities/dc-school.entity';
 import { AcademicYear } from '../fee-management/entities/academic-year.entity';
 import { UsersModule } from '../users/users.module';
+import { SchoolScopeGuard } from './school-scope.guard';
 
 @Module({
   imports: [
@@ -15,7 +16,7 @@ import { UsersModule } from '../users/users.module';
     UsersModule,
   ],
   controllers: [StudentsController],
-  providers: [StudentsService],
+  providers: [StudentsService, SchoolScopeGuard],
   exports: [StudentsService],
 })
 export class StudentsModule {}

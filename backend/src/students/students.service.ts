@@ -165,6 +165,10 @@ export class StudentsService {
     dto: CreateStudentDto,
     userId: string,
   ): Promise<Student> {
+    if (dto.classId) {
+      const schoolClass = await this.classesRepo.findOne({ where: { id: dto.classId, schoolId: dto.schoolId } });
+      if (!schoolClass) throw new BadRequestException('Selected class does not belong to the selected school');
+    }
     if (dto.sectionId) {
       if (!dto.classId) {
         throw new BadRequestException('Section requires a class');
@@ -243,6 +247,13 @@ export class StudentsService {
 
   async updateStudent(id: string, dto: UpdateStudentDto): Promise<Student> {
     const student = await this.findStudent(id);
+    if (dto.classId) {
+      const schoolClass = await this.classesRepo.findOne({ where: { id: dto.classId, schoolId: student.schoolId } });
+      if (!schoolClass) throw new BadRequestException('Selected class does not belong to the selected school');
+      if (!dto.sectionId && student.sectionId && dto.classId !== student.classId) {
+        throw new BadRequestException('Select a section of the new class');
+      }
+    }
     if (dto.sectionId) {
       const classId = dto.classId ?? student.classId;
       const section = await this.sectionsRepo.findOne({
@@ -287,8 +298,11 @@ export class StudentsService {
     const students = await this.studentsRepo.find({
       where: { id: In(dto.studentIds), deletedAt: IsNull() },
     });
-    if (students.length !== dto.studentIds.length) {
+    if (students.length !== new Set(dto.studentIds).size) {
       throw new NotFoundException('One or more students not found');
+    }
+    if (students.some((student) => student.schoolId !== targetClass.schoolId)) {
+      throw new BadRequestException('Students must belong to the target class school');
     }
 
     for (const student of students) {
@@ -306,6 +320,15 @@ export class StudentsService {
       throw new BadRequestException(
         'Target school must be different from the current school',
       );
+    }
+    if (dto.targetClassId) {
+      const targetClass = await this.classesRepo.findOne({ where: { id: dto.targetClassId, schoolId: dto.targetSchoolId } });
+      if (!targetClass) throw new BadRequestException('Target class does not belong to the target school');
+    }
+    if (dto.targetSectionId) {
+      if (!dto.targetClassId) throw new BadRequestException('Target section requires a target class');
+      const section = await this.sectionsRepo.findOne({ where: { id: dto.targetSectionId, classId: dto.targetClassId } });
+      if (!section) throw new BadRequestException('Target section does not belong to the target class');
     }
     // Fee/payment history stays attached to the student row; class/section
     // snapshots inside student_fees preserve the old financial records.

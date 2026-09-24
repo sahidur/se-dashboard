@@ -54,7 +54,7 @@ export class SurveysService {
   /**
    * Whether the user may read non-public survey data (drafts, other people's
    * responses, school records). True for admins and any role granted the
-   * `surveys:read` / `school-records:read` permission in Role Management.
+   * `surveys:update` / `school-records:read` permission in Role Management.
    */
   private async hasPermission(
     userId: string,
@@ -82,7 +82,7 @@ export class SurveysService {
     if (survey.status === SurveyStatus.PUBLISHED) return;
     if (this.isAdminRole(roles)) return;
     if (survey.createdById === userId) return;
-    if (await this.hasPermission(userId, 'surveys', 'read')) return;
+    if (await this.hasPermission(userId, 'surveys', 'update')) return;
     // Same "not found" as a missing survey so existence is not disclosed.
     throw new NotFoundException('Survey not found');
   }
@@ -118,7 +118,9 @@ export class SurveysService {
     userId: string,
   ): Promise<void> {
     if (response.respondentId === userId) return;
-    if (await this.hasPermission(userId, 'surveys', 'read')) return;
+    if (await this.hasPermission(userId, 'surveys', 'update')) return;
+    const user = await this.usersService.findOneById(userId);
+    if (user?.roles?.some((r) => this.isAdminRole([r.name]))) return;
     throw new NotFoundException('Response not found');
   }
 
@@ -206,6 +208,7 @@ export class SurveysService {
       description: createSurveyDto.description,
       category: createSurveyDto.category,
       status: createSurveyDto.status || SurveyStatus.DRAFT,
+      wasPublished: createSurveyDto.status === SurveyStatus.PUBLISHED,
       startDate: createSurveyDto.startDate
         ? new Date(createSurveyDto.startDate)
         : undefined,
@@ -301,6 +304,7 @@ export class SurveysService {
       status?: SurveyStatus;
       search?: string;
     },
+    userId?: string,
   ) {
     const query = this.surveysRepository
       .createQueryBuilder('survey')
@@ -315,6 +319,17 @@ export class SurveysService {
         'creator.firstName',
         'creator.lastName',
       ]);
+
+    if (userId) {
+      const user = await this.usersService.findOneById(userId);
+      const admin = user?.roles?.some((role) => this.isAdminRole([role.name]));
+      if (!admin && !(await this.hasPermission(userId, 'surveys', 'update'))) {
+        query.andWhere('(survey.status = :published OR survey.createdById = :viewerId)', {
+          published: SurveyStatus.PUBLISHED,
+          viewerId: userId,
+        });
+      }
+    }
 
     if (filters?.category) {
       query.andWhere('survey.category = :category', {
@@ -384,6 +399,13 @@ export class SurveysService {
   ): Promise<Survey> {
     const survey = await this.findOne(id);
     await this.assertSurveyReadAccess(survey, userId, roles);
+    if (
+      survey.createdById !== userId &&
+      !this.isAdminRole(roles) &&
+      !(await this.hasPermission(userId, 'surveys', 'update'))
+    ) {
+      survey.assignments = [];
+    }
     return survey;
   }
 
@@ -436,6 +458,14 @@ export class SurveysService {
       );
     }
 
+    // Status changes must use updateStatus so transitions and audit logs cannot be bypassed.
+    if (
+      updateSurveyDto.status !== undefined &&
+      updateSurveyDto.status !== survey.status
+    ) {
+      throw new BadRequestException('Use the status endpoint to change survey status');
+    }
+
     // Update survey properties
     Object.assign(survey, {
       ...(updateSurveyDto.title && { title: updateSurveyDto.title }),
@@ -443,7 +473,6 @@ export class SurveysService {
         description: updateSurveyDto.description,
       }),
       ...(updateSurveyDto.category && { category: updateSurveyDto.category }),
-      ...(updateSurveyDto.status && { status: updateSurveyDto.status }),
       ...(updateSurveyDto.startDate && {
         startDate: new Date(updateSurveyDto.startDate),
       }),
@@ -834,6 +863,21 @@ export class SurveysService {
       existingDraft = await this.responsesRepository.findOne({
         where: { id: submitDto.responseId, respondentId: userId },
       });
+      if (
+        !existingDraft ||
+        existingDraft.surveyId !== survey.id ||
+        existingDraft.isComplete
+      ) {
+        throw new NotFoundException('Draft response not found');
+      }
+    }
+
+    const validFieldIds = new Set([
+      ...(survey.fields || []).map((field) => field.id),
+      ...(survey.sections || []).flatMap((section) => (section.fields || []).map((field) => field.id)),
+    ]);
+    if (submitDto.answers.some((answer) => !validFieldIds.has(answer.fieldId))) {
+      throw new BadRequestException('Answer field does not belong to this survey');
     }
 
     if (existingDraft) {

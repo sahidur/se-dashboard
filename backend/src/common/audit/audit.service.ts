@@ -6,6 +6,7 @@ import { QueryAuditLogDto } from './dto/query-audit-log.dto';
 import { UsersService } from '../../users/users.service';
 import { getAuditContext } from './audit-context';
 import { PRIVILEGED_AUDIT_MODULES } from './privileged-modules';
+import { sanitizeAuditData } from './sanitize-audit-data';
 
 // Kept as a re-export so existing importers of `PRIVILEGED_AUDIT_MODULES`
 // from './audit.service' keep working; the definition lives in
@@ -69,6 +70,8 @@ export class AuditService {
     try {
       await this.auditLogRepository.insert({
         ...entry,
+        oldData: sanitizeAuditData(entry.oldData),
+        newData: sanitizeAuditData(entry.newData),
         userId: ctx.userId,
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,

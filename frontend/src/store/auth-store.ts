@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { User, Permission } from '@/types';
+import { clearLegacyDrafts } from '@/lib/security';
 
 const SESSION_COOKIE = 'se360-session';
 
@@ -50,11 +51,8 @@ export function logoutAndRedirect(target = '/auth/login') {
 
 interface AuthState {
   user: User | null;
-  accessToken: string | null;
-  refreshToken: string | null;
   isAuthenticated: boolean;
-  setAuth: (user: User, accessToken: string, refreshToken: string) => void;
-  setTokens: (accessToken: string, refreshToken: string) => void;
+  setAuth: (user: User) => void;
   updateUser: (user: Partial<User>) => void;
   logout: () => void;
   hasRole: (roleName: string) => boolean;
@@ -66,22 +64,15 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       user: null,
-      accessToken: null,
-      refreshToken: null,
       isAuthenticated: false,
 
-      setAuth: (user, accessToken, refreshToken) => {
+      setAuth: (user) => {
         setSessionCookie();
         set({
           user,
-          accessToken,
-          refreshToken,
           isAuthenticated: true,
         });
       },
-
-      setTokens: (accessToken, refreshToken) =>
-        set({ accessToken, refreshToken }),
 
       updateUser: (userData) =>
         set((state) => ({
@@ -89,10 +80,11 @@ export const useAuthStore = create<AuthState>()(
         })),
 
       logout: () => {
+        const userId = get().user?.id;
         // Best-effort server-side revocation FIRST: POST /auth/logout clears
         // the stored refresh token and expires the httpOnly session cookies.
         // Without this, "logging out" only wiped client state while the
-        // refresh credential stayed usable until its 24-hour expiry.
+        // refresh credential stayed usable until its expiry.
         // Raw fetch (not the api client) to avoid an import cycle; keepalive
         // lets the request survive the page teardown of the redirect below;
         // the se360_at cookie authenticates it. Failures are non-blocking.
@@ -112,8 +104,6 @@ export const useAuthStore = create<AuthState>()(
         clearSessionCookie();
         set({
           user: null,
-          accessToken: null,
-          refreshToken: null,
           isAuthenticated: false,
         });
         // Drop the persisted copy as well. Relying on the persist middleware to
@@ -123,6 +113,7 @@ export const useAuthStore = create<AuthState>()(
         // back to the dashboard.
         if (typeof window !== 'undefined') {
           try {
+            if (userId) clearLegacyDrafts(window.localStorage, userId);
             window.localStorage.removeItem('se360-auth');
           } catch {
             // Storage can be unavailable (private mode / blocked); state is
@@ -167,19 +158,40 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'se360-auth',
+      version: 1,
+      migrate: (persisted) => {
+        const saved = persisted as Partial<AuthState> | undefined;
+        return {
+          user: saved?.user ? { ...saved.user, pin: undefined } : null,
+          isAuthenticated: saved?.isAuthenticated === true,
+        };
+      },
+      // Older persisted snapshots (or manually modified storage) may contain
+      // tokens and private profile fields; never hydrate those back into state.
+      merge: (persisted, current) => {
+        const saved = persisted as Partial<AuthState> | undefined;
+        const user = saved?.user;
+        return {
+          ...current,
+          user: user ? { ...user, pin: undefined } : null,
+          isAuthenticated: !!user && saved?.isAuthenticated === true,
+        };
+      },
       partialize: (state) => ({
-        // SECURITY: access/refresh tokens are deliberately NOT persisted.
-        // They live in httpOnly cookies set by the API (`se360_at` / `se360_rt`)
-        // and are sent automatically with every request, so a successful XSS
-        // can no longer steal them from localStorage. The tokens held on the
-        // store object itself are transient, in-memory values only (kept so
-        // login flows can hand them around); they die with the tab.
-        //
+        // Credentials live only in httpOnly cookies set by the API.
         // The user object is persisted so the UI can render immediately after
         // a hard reload while the cookie authenticates the actual API calls.
-        user: state.user,
+        user: state.user ? { ...state.user, pin: undefined } : null,
         isAuthenticated: state.isAuthenticated,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (typeof window === 'undefined' || !state?.user?.id) return;
+        try {
+          clearLegacyDrafts(window.localStorage, state.user.id);
+        } catch {
+          // Browser storage may be disabled; server drafts remain available.
+        }
+      },
     },
   ),
 );

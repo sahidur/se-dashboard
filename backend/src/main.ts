@@ -158,7 +158,12 @@ async function bootstrap() {
   const filesService = app.get(FilesService);
   app.use('/api/uploads', (req: Request, res: Response, next: NextFunction) => {
     // req.path inside a mounted router excludes the mount prefix.
-    const key = decodeURIComponent(req.path.replace(/^\/+/, ''));
+    let key: string;
+    try {
+      key = decodeURIComponent(req.path.replace(/^\/+/, ''));
+    } catch {
+      return res.status(400).json({ message: 'Invalid file path' });
+    }
     const signatureValid = filesService.verifyLocalRequest(
       key,
       req.query['x-exp'],
@@ -203,7 +208,10 @@ async function bootstrap() {
   // Graceful shutdown
   app.enableShutdownHooks();
 
-  await app.listen(port);
+  // The production API is only reachable through the local nginx proxy.
+  // Otherwise direct connections can spoof the trusted proxy hop and bypass
+  // IP-based throttling, even if the host firewall is misconfigured.
+  await app.listen(port, isProduction ? '127.0.0.1' : '0.0.0.0');
   logger.log(`Application running on port ${port} [${process.env.APP_ENV ?? 'development'}]`);
 }
 bootstrap();

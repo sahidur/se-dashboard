@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
   ParseUUIDPipe,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { FeeManagementService } from './fee-management.service';
@@ -25,10 +26,11 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AccessGuard } from '../auth/guards/access.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { SchoolScopeGuard } from '../students/school-scope.guard';
 
 @ApiTags('Fee Management')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, AccessGuard)
+@UseGuards(JwtAuthGuard, AccessGuard, SchoolScopeGuard)
 @Controller()
 export class FeeManagementController {
   constructor(private readonly service: FeeManagementService) {}
@@ -43,12 +45,14 @@ export class FeeManagementController {
   }
 
   @Get('academic-years')
+  @Permissions({ module: 'fee-management', action: 'read' })
   @ApiOperation({ summary: 'List academic years' })
   findYears(@Query('activeOnly') activeOnly?: string) {
     return this.service.findAcademicYears(activeOnly === 'true');
   }
 
   @Get('academic-years/active')
+  @Permissions({ module: 'fee-management', action: 'read' })
   @ApiOperation({ summary: 'Get the current active academic year' })
   findActiveYear() {
     return this.service.findActiveAcademicYear();
@@ -78,6 +82,7 @@ export class FeeManagementController {
   }
 
   @Get('fee-heads')
+  @Permissions({ module: 'fee-management', action: 'read' })
   @ApiOperation({ summary: 'List fee heads' })
   findHeads(@Query('activeOnly') activeOnly?: string) {
     return this.service.findFeeHeads(activeOnly === 'true');
@@ -118,9 +123,10 @@ export class FeeManagementController {
     @Query('classId', ParseUUIDPipe) classId: string,
     @Query('months') months?: string,
   ) {
-    const monthList = months
-      ? months.split(',').map((m) => parseInt(m, 10)).filter((m) => m >= 1 && m <= 12)
-      : undefined;
+    const monthList = months?.split(',').map((m) => {
+      if (!/^(?:[1-9]|1[0-2])$/.test(m)) throw new BadRequestException('Invalid month');
+      return Number(m);
+    });
     return this.service.findFeeStructure(schoolId, academicYearId, classId, monthList);
   }
 

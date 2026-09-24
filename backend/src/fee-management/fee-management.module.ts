@@ -10,6 +10,7 @@ import { Student } from '../students/entities/student.entity';
 import { SchoolClass } from '../students/entities/school-class.entity';
 import { DcSchool } from '../data-collection/entities/dc-school.entity';
 import { UsersModule } from '../users/users.module';
+import { SchoolScopeGuard } from '../students/school-scope.guard';
 
 @Module({
   imports: [
@@ -25,7 +26,7 @@ import { UsersModule } from '../users/users.module';
     UsersModule,
   ],
   controllers: [FeeManagementController],
-  providers: [FeeManagementService],
+  providers: [FeeManagementService, SchoolScopeGuard],
   exports: [FeeManagementService],
 })
 export class FeeManagementModule {}

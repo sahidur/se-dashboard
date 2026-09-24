@@ -46,7 +46,7 @@ export class RolesService {
   } | null> {
     if (!actorId) return null;
     const actor = await this.usersService.findOneById(actorId);
-    if (!actor) return null;
+    if (!actor) throw new ForbiddenException('Acting user not found');
     const isSuperAdmin = (actor.roles || []).some((r) => r.name === 'Super Admin');
     const best = Math.min(
       ...(actor.roles || []).map((r) => r.hierarchy ?? Number.POSITIVE_INFINITY),
@@ -127,6 +127,10 @@ export class RolesService {
   }
 
   async create(createRoleDto: CreateRoleDto, actorId?: string): Promise<Role> {
+    const actor = await this.actorPower(actorId);
+    if (['Super Admin', 'Admin'].includes(createRoleDto.name) && actor && !actor.isSuperAdmin) {
+      throw new ForbiddenException('Only a Super Admin can create a privileged role');
+    }
     const existing = await this.rolesRepository.findOne({
       where: { name: createRoleDto.name },
     });
@@ -134,8 +138,7 @@ export class RolesService {
       throw new ConflictException('Role name already exists');
     }
 
-    const hierarchy = createRoleDto.hierarchy || 0;
-    const actor = await this.actorPower(actorId);
+    const hierarchy = createRoleDto.hierarchy ?? 0;
     this.assertCanCreateRole(actor, hierarchy);
     // Escalation guard: the new role may only carry permissions the actor
     // already holds themselves.
@@ -213,6 +216,9 @@ export class RolesService {
     // to roles above your level.
     const actor = await this.actorPower(actorId);
     this.assertCanModifyRole(actor, role);
+    if (updateRoleDto.name && ['Super Admin', 'Admin'].includes(updateRoleDto.name) && actor && !actor.isSuperAdmin) {
+      throw new ForbiddenException('Only a Super Admin can name a privileged role');
+    }
 
     if (
       updateRoleDto.hierarchy !== undefined &&
@@ -315,7 +321,10 @@ export class RolesService {
     await this.rolesRepository.remove(role);
   }
 
-  async seedDefaultRoles(): Promise<void> {
+  async seedDefaultRoles(actorId?: string): Promise<void> {
+    if (actorId && !(await this.actorPower(actorId))?.isSuperAdmin) {
+      throw new ForbiddenException('Only a Super Admin can seed default roles');
+    }
     const defaultRoles = [
       {
         name: 'Super Admin',

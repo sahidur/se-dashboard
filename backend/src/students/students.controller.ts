@@ -27,10 +27,11 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AccessGuard } from '../auth/guards/access.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { SchoolScopeGuard } from './school-scope.guard';
 
 @ApiTags('Students')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, AccessGuard)
+@UseGuards(JwtAuthGuard, AccessGuard, SchoolScopeGuard)
 @Controller('students')
 export class StudentsController {
   constructor(private readonly service: StudentsService) {}
@@ -45,6 +46,7 @@ export class StudentsController {
   }
 
   @Get('classes')
+  @Permissions({ module: 'student-management', action: 'read' })
   @ApiOperation({ summary: 'List classes (with sections) for a school' })
   findClasses(
     @Query('schoolId', ParseUUIDPipe) schoolId: string,
@@ -77,6 +79,7 @@ export class StudentsController {
   }
 
   @Get('sections')
+  @Permissions({ module: 'student-management', action: 'read' })
   @ApiOperation({ summary: 'List sections of a class' })
   findSections(
     @Query('classId', ParseUUIDPipe) classId: string,

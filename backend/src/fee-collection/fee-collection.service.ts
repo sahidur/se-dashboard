@@ -530,17 +530,19 @@ export class FeeCollectionService {
    */
   async cancelPayment(paymentId: string, reason: string, userId: string) {
     return this.dataSource.transaction(async (manager) => {
-      const payment = await manager.findOne(Payment, {
-        where: { id: paymentId },
-      });
+      const payment = await manager.createQueryBuilder(Payment, 'p')
+        .setLock('pessimistic_write')
+        .where('p.id = :paymentId', { paymentId })
+        .getOne();
       if (!payment) throw new NotFoundException('Payment not found');
       if (payment.status !== PaymentStatus.COMPLETED) {
         throw new BadRequestException('Payment is already cancelled/refunded');
       }
 
-      const fee = await manager.findOne(StudentFee, {
-        where: { id: payment.studentFeeId },
-      });
+      const fee = await manager.createQueryBuilder(StudentFee, 'f')
+        .setLock('pessimistic_write')
+        .where('f.id = :feeId', { feeId: payment.studentFeeId })
+        .getOne();
       if (!fee) throw new NotFoundException('Student fee record not found');
 
       payment.status = PaymentStatus.CANCELLED;
@@ -577,9 +579,11 @@ export class FeeCollectionService {
     const limit = query.limit ?? 50;
     const qb = this.paymentsRepo
       .createQueryBuilder('p')
-      .leftJoinAndSelect('p.student', 'student')
+      .leftJoin('p.student', 'student')
+      .addSelect(['student.id', 'student.name', 'student.admissionNumber', 'student.schoolId'])
       .leftJoinAndSelect('p.studentFee', 'fee')
-      .leftJoinAndSelect('p.collectedBy', 'collectedBy')
+      .leftJoin('p.collectedBy', 'collectedBy')
+      .addSelect(['collectedBy.id', 'collectedBy.firstName', 'collectedBy.lastName'])
       .orderBy('p.paymentDate', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
@@ -605,7 +609,6 @@ export class FeeCollectionService {
       relations: [
         'payment',
         'payment.studentFee',
-        'payment.collectedBy',
         'student',
         'student.school',
         'student.schoolClass',
@@ -614,16 +617,30 @@ export class FeeCollectionService {
       ],
     });
     if (!receipt) throw new NotFoundException('Receipt not found');
-    return receipt;
+    const { student, ...details } = receipt;
+    return {
+      ...details,
+      student: {
+        id: student.id,
+        name: student.name,
+        admissionNumber: student.admissionNumber,
+        school: student.school && { id: student.school.id, name: student.school.name },
+        schoolClass: student.schoolClass && { id: student.schoolClass.id, name: student.schoolClass.name },
+        section: student.section && { id: student.section.id, name: student.section.name },
+        academicYear: student.academicYear && { id: student.academicYear.id, name: student.academicYear.name },
+      },
+    };
   }
 
   async findReceipts(schoolId: string, search?: string) {
+    if (search && search.length > 150) throw new BadRequestException('Search is too long');
     const qb = this.receiptsRepo
       .createQueryBuilder('r')
       .leftJoinAndSelect('r.payment', 'payment')
       .leftJoinAndSelect('payment.studentFee', 'fee')
-      .leftJoinAndSelect('r.student', 'student')
-      .where('student.school_id = :schoolId', { schoolId })
+      .leftJoin('r.student', 'student')
+      .addSelect(['student.id', 'student.name', 'student.admissionNumber'])
+      .where('payment.school_id = :schoolId', { schoolId })
       .orderBy('r.createdAt', 'DESC')
       .take(100);
 

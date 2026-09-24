@@ -39,7 +39,9 @@ const EMPTY_FORM: RoleFormData = {
 };
 
 export default function RolesPage() {
-  const { user } = useAuthStore();
+  const canCreate = useAuthStore((s) => s.hasPermission('roles', 'create'));
+  const canUpdate = useAuthStore((s) => s.hasPermission('roles', 'update'));
+  const canDelete = useAuthStore((s) => s.hasPermission('roles', 'delete'));
 
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,6 +95,7 @@ export default function RolesPage() {
   };
 
   const handleSave = async () => {
+    if (editingRole ? !canUpdate : !canCreate) return;
     try {
       setSaving(true);
       setFormError(null);
@@ -111,7 +114,7 @@ export default function RolesPage() {
   };
 
   const handleDelete = async () => {
-    if (!showDelete) return;
+    if (!showDelete || !canDelete) return;
     try {
       setDeleting(true);
       await api.delete(`/roles/${showDelete.id}`);
@@ -153,9 +156,9 @@ export default function RolesPage() {
         title="Role Management"
         subtitle={`${roles.length} roles · ${totalGrants} permission grants configured`}
         actions={
-          <Button onClick={openCreateModal} size="sm">
+          canCreate ? <Button onClick={openCreateModal} size="sm">
             <Plus size={16} className="mr-1" /> Add Role
-          </Button>
+          </Button> : undefined
         }
       />
       <div className="page-container space-y-6">
@@ -194,9 +197,9 @@ export default function RolesPage() {
           <div className="flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-gray-200 py-20 text-gray-400 animate-fadeIn">
             <Shield size={40} className="mb-3 opacity-40" />
             <p className="font-medium">No roles configured yet</p>
-            <Button onClick={openCreateModal} size="sm" className="mt-4">
+            {canCreate && <Button onClick={openCreateModal} size="sm" className="mt-4">
               <Plus size={14} className="mr-1" /> Create your first role
-            </Button>
+            </Button>}
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -226,7 +229,8 @@ export default function RolesPage() {
                           </span>
                         </div>
                       </div>
-                      <div className="flex shrink-0 gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
+                      {(canUpdate || canDelete) && <div className="flex shrink-0 gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
+                        {canUpdate && (
                         <button
                           onClick={() => openEditModal(role)}
                           title="Edit role"
@@ -234,6 +238,8 @@ export default function RolesPage() {
                         >
                           <Edit3 size={15} />
                         </button>
+                        )}
+                        {canDelete && (
                         <button
                           onClick={() => {
                             setFormError(null);
@@ -244,7 +250,8 @@ export default function RolesPage() {
                         >
                           <Trash2 size={15} />
                         </button>
-                      </div>
+                        )}
+                      </div>}
                     </div>
 
                     {role.description && (

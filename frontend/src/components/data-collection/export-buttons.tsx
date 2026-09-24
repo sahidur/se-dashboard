@@ -3,6 +3,7 @@
 import { Download, FileSpreadsheet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/auth-store';
+import { escapeCsvCell, safeSpreadsheetCell } from '@/lib/security';
 
 /**
  * Shared confidential-data export helpers used by every data-collection
@@ -39,14 +40,7 @@ function triggerDownload(content: string, mime: string, filename: string) {
 // CSV formula-injection defence: spreadsheet apps execute cells starting
 // with = + - @ or tab/CR as formulas (=WEBSERVICE(...) can exfiltrate data).
 // Prefix them so they are treated as text; genuine negative numbers pass.
-const sanitizeCsvCell = (v: string): string => {
-  if (/^[-=+@\t\r]/.test(v) && !/^-\d+(\.\d+)?$/.test(v)) return `'${v}`;
-  return v;
-};
-const escapeCsv = (v: string) => {
-  const safe = sanitizeCsvCell(v);
-  return /[",\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
-};
+const escapeCsv = escapeCsvCell;
 const escapeHtml = (v: string) =>
   v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -96,12 +90,12 @@ export function buildCsv(payload: ExportPayload): string {
 export function buildExcelHtml(payload: ExportPayload): string {
   const cols = Math.max(1, payload.headers.length);
   const banner = (text: string, style: string) =>
-    `<tr><td colspan="${cols}" style="${style}">${escapeHtml(text)}</td></tr>`;
+    `<tr><td colspan="${cols}" style="${style}">${escapeHtml(safeSpreadsheetCell(text))}</td></tr>`;
   const head = `<tr>${payload.headers
-    .map((h) => `<th style="background:#e5e7eb;color:#374151;font-weight:bold;text-align:left">${escapeHtml(h)}</th>`)
+    .map((h) => `<th style="background:#e5e7eb;color:#374151;font-weight:bold;text-align:left">${escapeHtml(safeSpreadsheetCell(h))}</th>`)
     .join('')}</tr>`;
   const body = payload.rows
-    .map((row) => `<tr>${row.map((v) => `<td>${escapeHtml(cellText(v))}</td>`).join('')}</tr>`)
+    .map((row) => `<tr>${row.map((v) => `<td>${escapeHtml(safeSpreadsheetCell(cellText(v)))}</td>`).join('')}</tr>`)
     .join('');
   const disclaimer =
     banner(EXPORT_DISCLAIMER_TITLE, 'background:#7f1d1d;color:#ffffff;font-size:12pt;font-weight:bold;text-align:center')

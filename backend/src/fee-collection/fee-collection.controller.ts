@@ -7,6 +7,8 @@ import {
   Query,
   UseGuards,
   ParseUUIDPipe,
+  ParseIntPipe,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { FeeCollectionService } from './fee-collection.service';
@@ -20,10 +22,11 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AccessGuard } from '../auth/guards/access.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { SchoolScopeGuard } from '../students/school-scope.guard';
 
 @ApiTags('Fee Collection')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, AccessGuard)
+@UseGuards(JwtAuthGuard, AccessGuard, SchoolScopeGuard)
 @Controller('fee-collection')
 export class FeeCollectionController {
   constructor(private readonly service: FeeCollectionService) {}
@@ -41,14 +44,15 @@ export class FeeCollectionController {
   monthly(
     @Query('schoolId', ParseUUIDPipe) schoolId: string,
     @Query('academicYearId', ParseUUIDPipe) academicYearId: string,
-    @Query('month') month: string,
-    @Query('classId') classId?: string,
-    @Query('sectionId') sectionId?: string,
+    @Query('month', ParseIntPipe) month: number,
+    @Query('classId', new ParseUUIDPipe({ optional: true })) classId?: string,
+    @Query('sectionId', new ParseUUIDPipe({ optional: true })) sectionId?: string,
   ) {
+    if (month < 1 || month > 12) throw new BadRequestException('Month must be between 1 and 12');
     return this.service.monthlyCollection(
       schoolId,
       academicYearId,
-      parseInt(month, 10),
+      month,
       classId || undefined,
       sectionId || undefined,
     );
@@ -109,7 +113,7 @@ export class FeeCollectionController {
   @Get('students/:id/dues-by-head')
   @Permissions({ module: 'fee-collection', action: 'read' })
   @ApiOperation({ summary: 'Head-wise dues of a student per month (for the dues detail modal)' })
-  duesByHead(@Param('id', ParseUUIDPipe) id: string, @Query('academicYearId') academicYearId?: string) {
+  duesByHead(@Param('id', ParseUUIDPipe) id: string, @Query('academicYearId', new ParseUUIDPipe({ optional: true })) academicYearId?: string) {
     return this.service.studentDuesByHead(id, academicYearId || undefined);
   }
 

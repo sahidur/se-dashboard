@@ -564,6 +564,7 @@ export class ListStudentsQueryDto {
   @ApiPropertyOptional({ description: 'Search by name / guardian / phone' })
   @IsOptional()
   @IsString()
+  @MaxLength(150)
   search?: string;
 
   @ApiPropertyOptional({ example: 1, default: 1 })

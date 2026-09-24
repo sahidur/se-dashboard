@@ -21,7 +21,6 @@ import { AuthService } from './auth.service';
 import { WebAuthnService } from './webauthn.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import {
   VerifyRegistrationDto,
@@ -57,10 +56,8 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const result = await this.authService.login(loginDto);
-    // httpOnly cookie session for the browser; tokens remain in the body for
-    // non-browser clients (Swagger / scripts).
     setAuthCookies(res, result.accessToken, result.refreshToken);
-    return result;
+    return { user: result.user };
   }
 
   // Public registration disabled – users can only be created from the admin panel
@@ -78,21 +75,16 @@ export class AuthController {
   // Token refresh: allow enough for normal use but block flooding
   @Throttle({ default: { ttl: 60000, limit: 20 } })
   async refreshTokens(
-    @Body() refreshTokenDto: RefreshTokenDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    // Browser sessions present the refresh token via the httpOnly cookie;
-    // API clients may still send it in the body.
-    const refreshToken =
-      (req.cookies?.[REFRESH_TOKEN_COOKIE] as string | undefined) ||
-      refreshTokenDto.refreshToken;
+    const refreshToken = req.cookies?.[REFRESH_TOKEN_COOKIE] as string | undefined;
     if (!refreshToken) {
       throw new BadRequestException('Refresh token is required');
     }
     const tokens = await this.authService.refreshTokens(refreshToken);
     setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
-    return tokens;
+    return { message: 'Session refreshed' };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -125,10 +117,8 @@ export class AuthController {
     );
     // The service rotates the refresh token (invalidating other devices);
     // keep this device's cookies in sync with the new pair.
-    if ('accessToken' in result && 'refreshToken' in result) {
-      setAuthCookies(res, result.accessToken, result.refreshToken);
-    }
-    return result;
+    setAuthCookies(res, result.accessToken, result.refreshToken);
+    return { message: result.message };
   }
 
   // ── Passkey (WebAuthn) enrolment — requires an authenticated user ──────
@@ -216,6 +206,6 @@ export class AuthController {
       body.response,
     );
     setAuthCookies(res, result.accessToken, result.refreshToken);
-    return result;
+    return { user: result.user };
   }
 }

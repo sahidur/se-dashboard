@@ -17,6 +17,7 @@ import { AopTarget } from '../fee-management/entities/aop-target.entity';
 import { AcademicYear } from '../fee-management/entities/academic-year.entity';
 import { DcSchool } from '../data-collection/entities/dc-school.entity';
 import { UsersModule } from '../users/users.module';
+import { SchoolScopeGuard } from '../students/school-scope.guard';
 
 @Module({
   imports: [
@@ -37,7 +38,7 @@ import { UsersModule } from '../users/users.module';
     UsersModule,
   ],
   controllers: [FeeCollectionController, FinanceReportsController],
-  providers: [FeeCollectionService, FinanceReportsService],
+  providers: [FeeCollectionService, FinanceReportsService, SchoolScopeGuard],
   exports: [FinanceReportsService],
 })
 export class FeeCollectionModule {}

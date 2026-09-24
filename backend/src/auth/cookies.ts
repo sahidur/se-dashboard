@@ -7,15 +7,14 @@ import { Response } from 'express';
  * can no longer exfiltrate long-lived credentials:
  *  - `se360_at`: access token (mirrors the 15m JWT TTL), sent with
  *    every API request.
- *  - `se360_rt`: refresh token scoped to `/api/auth` only — the browser never
- *    presents it anywhere except POST /api/auth/refresh. Lives as long as
+ *  - `se360_rt`: refresh token scoped to `/api/auth` only. Lives as long as
  *    JWT_REFRESH_EXPIRES_IN (7d by default).
  *
  * SameSite=Lax is sufficient CSRF protection here: in production nginx serves
  * the API on the SAME origin (/api proxy) and in development localhost:3000 ->
  * localhost:4000 is same-site (ports are ignored by SameSite). The
- * Authorization Bearer header remains fully supported for Swagger and
- * non-browser API clients.
+ * Bearer headers remain supported on authenticated routes; session creation
+ * and refresh return credentials only as cookies.
  */
 
 export const ACCESS_TOKEN_COOKIE = 'se360_at';

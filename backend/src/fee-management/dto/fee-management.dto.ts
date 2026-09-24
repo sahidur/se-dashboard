@@ -14,8 +14,11 @@ import {
   MaxLength,
   Min,
   IsIn,
+  ArrayUnique,
+  ValidateNested,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import { AcademicYearStatus } from '../entities/academic-year.entity';
 import { DiscountType } from '../entities/student-discount.entity';
 import { FeeSchedule } from '../entities/fee-head.entity';
@@ -143,6 +146,15 @@ export class UpdateFeeHeadDto {
   isActive?: boolean;
 }
 
+export class FeeStructureLineDto {
+  @IsUUID()
+  feeHeadId: string;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  amount: number;
+}
+
 export class SaveFeeStructureDto {
   @ApiProperty()
   @IsUUID()
@@ -167,8 +179,10 @@ export class SaveFeeStructureDto {
     example: [{ feeHeadId: '<uuid>', amount: 2000 }],
   })
   @IsArray()
-  @IsNotEmpty()
-  lines: { feeHeadId: string; amount: number }[];
+  @ArrayUnique((line: FeeStructureLineDto) => line.feeHeadId)
+  @ValidateNested({ each: true })
+  @Type(() => FeeStructureLineDto)
+  lines: FeeStructureLineDto[];
 }
 
 export class CreateStudentDiscountDto {

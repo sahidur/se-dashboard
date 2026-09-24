@@ -140,9 +140,8 @@ export function displayGradeLabel(
  *
  * Locally-stored uploads are saved with a relative path (e.g. `/api/uploads/..`)
  * so they are domain-agnostic. This prefixes them with the API origin. It also
- * rewrites legacy absolute `http://localhost:PORT/uploads/..` URLs (persisted
- * before this fix) to the current API origin, while leaving remote absolute
- * URLs (e.g. S3 / DigitalOcean Spaces) untouched.
+ * rewrites legacy absolute `http://localhost:PORT/uploads/..` URLs. Persisted
+ * Spaces URLs are routed through the authenticated API after ACL migration.
  */
 export function resolveAssetUrl(raw?: string | null): string {
   if (!raw) return '';
@@ -151,30 +150,36 @@ export function resolveAssetUrl(raw?: string | null): string {
     process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
   const origin = apiBase.replace(/\/api\/?$/, '');
 
-  // Absolute URL
-  if (/^https?:\/\//i.test(raw)) {
-    try {
-      const u = new URL(raw);
-      // Legacy local-storage URLs pointed at localhost — repoint to API origin.
-      if (
-        (u.hostname === 'localhost' || u.hostname === '127.0.0.1') &&
-        u.pathname.includes('/uploads/')
-      ) {
-        const key = u.pathname.slice(
-          u.pathname.indexOf('/uploads/') + '/uploads/'.length,
-        );
-        return `${origin}/api/uploads/${key}`;
-      }
-      return raw; // remote (S3/Spaces) or already-correct absolute URL
-    } catch {
-      return raw;
+  try {
+    const apiOrigin = new URL(origin).origin;
+    const url = new URL(raw, apiOrigin);
+    // Never turn protocol-relative URLs, script URLs, or arbitrary schemes into
+    // a link. URL() also normalizes traversal before checking the path.
+    if (/^\/\//.test(raw) || (!/^https?:\/\//i.test(raw) && /^[a-z][\w+.-]*:/i.test(raw))) return '';
+    if (
+      (url.hostname === 'localhost' || url.hostname === '127.0.0.1') &&
+      url.pathname.startsWith('/uploads/')
+    ) {
+      return `${apiOrigin}/api${url.pathname}${url.search}`;
     }
+    if (url.origin === apiOrigin) {
+      const path = url.pathname.startsWith('/uploads/') ? `/api${url.pathname}` : url.pathname;
+      if (path.startsWith('/api/uploads/')) return `${apiOrigin}${path}${url.search}`;
+      if (path === '/api/files/object' && url.searchParams.has('key')) {
+        return `${apiOrigin}/api/files/object?key=${encodeURIComponent(url.searchParams.get('key')!)}`;
+      }
+      return '';
+    }
+    const folder = process.env.NEXT_PUBLIC_S3_FOLDER || 'bep-se';
+    if (url.protocol === 'https:' && /^[a-z0-9.-]+\.[a-z0-9-]+\.digitaloceanspaces\.com$/i.test(url.hostname) &&
+        url.pathname.startsWith(`/${folder}/`) &&
+        /^[A-Za-z0-9_/-]+\/[A-Za-z0-9_-]+\.[A-Za-z0-9]+$/.test(url.pathname.slice(1))) {
+      return `${apiOrigin}/api/files/object?key=${encodeURIComponent(url.pathname.slice(1))}`;
+    }
+  } catch {
+    // Invalid stored URL.
   }
-
-  // Relative path — normalise legacy `/uploads/..` to `/api/uploads/..`
-  let path = raw.startsWith('/') ? raw : `/${raw}`;
-  if (path.startsWith('/uploads/')) path = `/api${path}`;
-  return `${origin}${path}`;
+  return '';
 }
 
 /** Human-friendly "time ago" label (e.g. "3 min ago", "2 days ago"). */

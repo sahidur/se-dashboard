@@ -8,10 +8,11 @@
 #  /api/uploads/) on already-deployed boxes.
 #
 #  Usage: sudo bash redeploy.sh
-#         sudo STRICT_UPLOADS=true bash redeploy.sh   # enforce signed-only upload URLs
+#         sudo STRICT_UPLOADS=false bash redeploy.sh  # temporary legacy URL grace
 # =============================================================================
 set -euo pipefail
 IFS=$'\n\t'
+umask 077
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
@@ -33,12 +34,10 @@ FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 DOMAIN="${DOMAIN:-se.somadhanhobe.com}"
 
 # Upload URL enforcement (see the "Reconciling backend environment file" step):
-#   false (default) -> first reconciliation adds UPLOADS_ALLOW_UNSIGNED=true so
-#                      pre-signing upload URLs stored in DB rows keep working.
-#   true            -> flips UPLOADS_ALLOW_UNSIGNED to false: anonymous access
-#                      then requires a valid signature; logged-in users are
-#                      unaffected. Safe to run any time, idempotent.
-STRICT_UPLOADS="${STRICT_UPLOADS:-false}"
+#   true (default) -> flips UPLOADS_ALLOW_UNSIGNED to false: anonymous access
+#                     requires a valid signature; logged-in users are unaffected.
+#   false          -> temporarily preserve an existing legacy unsigned setting.
+STRICT_UPLOADS="${STRICT_UPLOADS:-true}"
 
 # =============================================================================
 #  Migration – legacy "bep-*" naming → "se360-*"
@@ -447,7 +446,7 @@ Type=simple
 User=${APP_USER}
 Group=${APP_USER}
 WorkingDirectory=${APP_DIR}/frontend
-ExecStart=/usr/bin/node node_modules/next/dist/bin/next start --port ${FRONTEND_PORT}
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port ${FRONTEND_PORT}
 ExecReload=/bin/kill -HUP \$MAINPID
 Restart=on-failure
 RestartSec=10
@@ -489,6 +488,16 @@ UNIT
 
 systemctl list-unit-files se360-backend.service &>/dev/null && \
   systemctl list-unit-files se360-frontend.service &>/dev/null || create_services
+
+# Existing frontend units are not rewritten by create_services. Enforce a local
+# listener for them too, so direct requests cannot bypass nginx's TLS/headers.
+mkdir -p /etc/systemd/system/se360-frontend.service.d
+cat > /etc/systemd/system/se360-frontend.service.d/loopback.conf <<UNIT
+[Service]
+ExecStart=
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port ${FRONTEND_PORT}
+UNIT
+systemctl daemon-reload
 
 # =============================================================================
 #  Pull latest code
@@ -618,26 +627,20 @@ ensure_env UPLOAD_URL_SECRET "$(openssl rand -hex 64)"
 ensure_env UPLOAD_URL_TTL_SECONDS "2592000"   # 30 days
 
 # UPLOADS_ALLOW_UNSIGNED controls the legacy grace window:
-#   true  -> unsigned URLs (uploaded before signing existed) are still served,
-#            so existing DB rows keep rendering. Safe upgrade default.
+#   true  -> unsigned URLs (uploaded before signing existed) are still served.
 #   false -> anonymous access requires a valid signature. Logged-in users are
-#            unaffected either way (their requests carry the session cookie),
-#            so flipping to false never breaks the admin UI.
+#            unaffected either way (their requests carry the session cookie).
 if grep -q '^UPLOADS_ALLOW_UNSIGNED=' "$BACKEND_ENV_FILE"; then
   if [[ "$STRICT_UPLOADS" == "true" ]]; then
     sed -i 's|^UPLOADS_ALLOW_UNSIGNED=.*|UPLOADS_ALLOW_UNSIGNED=false|' "$BACKEND_ENV_FILE"
     ok "Strict uploads enabled: anonymous access now requires signed URLs"
-    ok "  (logged-in users unaffected; re-run without STRICT_UPLOADS=true to keep this setting)"
+    ok "  (logged-in users are unaffected)"
   else
-    info "UPLOADS_ALLOW_UNSIGNED=$(grep -E '^UPLOADS_ALLOW_UNSIGNED=' "$BACKEND_ENV_FILE" | tail -n 1 | cut -d'=' -f2) (enforce signed-only later with: sudo STRICT_UPLOADS=true bash redeploy.sh)"
+    info "UPLOADS_ALLOW_UNSIGNED=$(grep -E '^UPLOADS_ALLOW_UNSIGNED=' "$BACKEND_ENV_FILE" | tail -n 1 | cut -d'=' -f2) (temporary legacy grace; signed-only is the default on redeploy)"
   fi
-elif [[ "$STRICT_UPLOADS" == "true" ]]; then
-  ensure_env UPLOADS_ALLOW_UNSIGNED "false"
-  ok "Strict uploads enabled from the start"
 else
-  ensure_env UPLOADS_ALLOW_UNSIGNED "true"
-  warn "Upload signing added in permissive mode (legacy unsigned URLs still work)."
-  warn "Once comfortable, enforce signed-only access: sudo STRICT_UPLOADS=true bash redeploy.sh"
+  ensure_env UPLOADS_ALLOW_UNSIGNED "false"
+  ok "Anonymous upload requests now require signed URLs"
 fi
 
 chmod 600 "$BACKEND_ENV_FILE"
@@ -740,6 +743,17 @@ fi
 # =============================================================================
 #  Build frontend  (NODE_OPTIONS caps heap to avoid OOM on small droplets)
 # =============================================================================
+_spaces_folder="$(grep -E '^S3_FOLDER=' "$BACKEND_ENV_FILE" | tail -n 1 | cut -d'=' -f2- || true)"
+_spaces_folder="${_spaces_folder:-bep-se}"
+[[ "$_spaces_folder" =~ ^[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$ ]] || die 'Invalid S3_FOLDER'
+_frontend_env="${APP_DIR}/frontend/.env.local"
+if grep -q '^NEXT_PUBLIC_S3_FOLDER=' "$_frontend_env"; then
+  sed -i "s|^NEXT_PUBLIC_S3_FOLDER=.*|NEXT_PUBLIC_S3_FOLDER=${_spaces_folder}|" "$_frontend_env"
+else
+  printf 'NEXT_PUBLIC_S3_FOLDER=%s\n' "$_spaces_folder" >> "$_frontend_env"
+fi
+chmod 600 "$_frontend_env"
+unset _spaces_folder _frontend_env
 step "Rebuilding frontend"
 # .next is discarded every time: a cache written by a different Next.js major
 # (the app moved 14 → 16) makes the build fail or serve stale chunks.
@@ -790,7 +804,7 @@ if [[ "$UPLOAD_MODE" == "false" ]]; then
   echo -e "    · Uploads: signed, expiring URLs; anonymous access requires a signature"
 else
   echo -e "    · Uploads: signing active in permissive mode — enforce with:"
-  echo -e "        sudo STRICT_UPLOADS=true bash redeploy.sh"
+   echo -e "        sudo bash redeploy.sh"
 fi
 echo ""
 echo -e "  ${BOLD}Database${NC}: additive schema changes applied and roles/permissions re-seeded."

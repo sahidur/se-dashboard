@@ -65,11 +65,13 @@ export class SurveysController {
     @Query('category') category?: string,
     @Query('status') status?: SurveyStatus,
     @Query('search') search?: string,
+    @CurrentUser('id') userId?: string,
   ) {
     return this.surveysService.findAll(
       parseInt(page || '1', 10) || 1,
       parseInt(limit || '20', 10) || 20,
       { category, status, search },
+      userId,
     );
   }
 
