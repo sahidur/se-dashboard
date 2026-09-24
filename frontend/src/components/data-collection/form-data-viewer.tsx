@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
-  CheckCircle2, Download, FileSpreadsheet,
+  CheckCircle2, ChevronLeft, ChevronRight, Download, FileSpreadsheet,
   LayoutGrid, ListChecks, Rows3, RotateCcw, Search, XCircle,
 } from 'lucide-react';
 import api from '@/lib/api';
@@ -245,7 +245,10 @@ export function FormDataViewer({ schoolId, category, form, fileBase }: Props) {
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [view, setView] = useState<'table' | 'cards'>('table');
-  const [visible, setVisible] = useState(12);
+  const [page, setPage] = useState(1);
+
+  /* ── Pagination ── */
+  const PAGE_SIZE = 15;
 
   /* ── Derived column metadata ── */
 
@@ -309,7 +312,13 @@ export function FormDataViewer({ schoolId, category, form, fileBase }: Props) {
   }, [rows, filters, search, columns, kinds]);
 
   const activeFilters = Object.values(filters).filter(Boolean).length + (search.trim() ? 1 : 0);
-  const resetFilters = () => { setFilters({}); setSearch(''); };
+  const resetFilters = () => { setFilters({}); setSearch(''); setPage(1); };
+
+  /* ── Pagination ── */
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   /* ── Export ── */
 
@@ -387,7 +396,7 @@ export function FormDataViewer({ schoolId, category, form, fileBase }: Props) {
             <input
               type="text"
               value={search}
-              onChange={(e) => { setSearch(e.target.value); setVisible(12); }}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
               placeholder="Search records…"
               className="h-9 w-full rounded-lg border border-gray-200 bg-white pl-8 pr-3 text-sm shadow-sm placeholder:text-gray-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-300"
             />
@@ -397,7 +406,7 @@ export function FormDataViewer({ schoolId, category, form, fileBase }: Props) {
             <select
               key={key}
               value={filters[key] ?? ''}
-              onChange={(e) => { setFilters((f) => ({ ...f, [key]: e.target.value })); setVisible(12); }}
+              onChange={(e) => { setFilters((f) => ({ ...f, [key]: e.target.value })); setPage(1); }}
               aria-label={humanizeKey(key)}
               className={`${selectClass} ${filters[key] ? 'border-indigo-300 bg-indigo-50/60 font-medium text-indigo-700' : ''}`}
             >
@@ -473,11 +482,11 @@ export function FormDataViewer({ schoolId, category, form, fileBase }: Props) {
       ) : asCards ? (
         <>
           <div className="space-y-4">
-            {filtered.slice(0, visible).map((row, idx) => (
+            {pageRows.map((row, idx) => (
               <RecordCard
                 key={(row.id as string) ?? idx}
                 row={row}
-                index={idx}
+                index={(safePage - 1) * PAGE_SIZE + idx}
                 columns={columns}
                 kinds={kinds}
                 dimensions={dimensions}
@@ -487,17 +496,105 @@ export function FormDataViewer({ schoolId, category, form, fileBase }: Props) {
               />
             ))}
           </div>
-          {filtered.length > visible && (
-            <div className="flex justify-center">
-              <Button variant="outline" size="sm" onClick={() => setVisible((v) => v + 12)}>
-                Show more ({filtered.length - visible} remaining)
-              </Button>
-            </div>
-          )}
+          <PaginationFooter
+            page={safePage}
+            totalPages={totalPages}
+            total={filtered.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
+          />
         </>
       ) : (
-        <RecordTable filtered={filtered} columns={columns} kinds={kinds} dimensions={dimensions} />
+        <>
+          <RecordTable
+            filtered={filtered}
+            pageRows={pageRows}
+            columns={columns}
+            kinds={kinds}
+            dimensions={dimensions}
+          />
+          <PaginationFooter
+            page={safePage}
+            totalPages={totalPages}
+            total={filtered.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
+          />
+        </>
       )}
+    </div>
+  );
+}
+
+/* ─── Pagination ────────────────────────────────────────── */
+
+function PaginationFooter({
+  page, totalPages, total, pageSize, onPageChange,
+}: {
+  page: number;
+  totalPages: number;
+  total: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+
+  const from = (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, total);
+
+  // Numbered pages with ellipsis: 1 … p-1 p p+1 … last
+  const pages: (number | '…')[] = [];
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || Math.abs(i - page) <= 1) pages.push(i);
+    else if (pages[pages.length - 1] !== '…') pages.push('…');
+  }
+
+  const btnBase =
+    'inline-flex h-8 items-center justify-center rounded-lg border text-xs font-medium transition-colors disabled:pointer-events-none disabled:opacity-40';
+  const btnIdle = 'border-gray-200 bg-white text-gray-600 hover:border-indigo-200 hover:text-indigo-600';
+  const btnActive = 'border-indigo-600 bg-indigo-600 text-white shadow-sm';
+
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-xs text-gray-500">
+        Showing <span className="font-semibold text-gray-700">{from}–{to}</span> of{' '}
+        <span className="font-semibold text-gray-700">{total}</span> records
+      </p>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => onPageChange(page - 1)}
+          disabled={page <= 1}
+          aria-label="Previous page"
+          className={`${btnBase} w-8 ${btnIdle}`}
+        >
+          <ChevronLeft size={14} />
+        </button>
+        {pages.map((p, i) =>
+          p === '…' ? (
+            <span key={`ellipsis-${i}`} className="px-1 text-xs text-gray-400">…</span>
+          ) : (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onPageChange(p)}
+              aria-current={p === page ? 'page' : undefined}
+              className={`${btnBase} min-w-8 px-1.5 tabular-nums ${p === page ? btnActive : btnIdle}`}
+            >
+              {p}
+            </button>
+          ),
+        )}
+        <button
+          type="button"
+          onClick={() => onPageChange(page + 1)}
+          disabled={page >= totalPages}
+          aria-label="Next page"
+          className={`${btnBase} w-8 ${btnIdle}`}
+        >
+          <ChevronRight size={14} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -618,9 +715,11 @@ function RecordCard({
 /* ─── Table view ────────────────────────────────────────── */
 
 function RecordTable({
-  filtered, columns, kinds, dimensions,
+  filtered, pageRows, columns, kinds, dimensions,
 }: {
+  /** Full filtered set — totals are computed across every matching record, not just the visible page. */
   filtered: Row[];
+  pageRows: Row[];
   columns: string[];
   kinds: Record<string, FieldKind>;
   dimensions: string[];
@@ -628,15 +727,15 @@ function RecordTable({
   const groupKey = dimensions.includes('academicYear') ? 'academicYear' : dimensions.includes('year') ? 'year' : null;
 
   const groups = useMemo(() => {
-    if (!groupKey) return [{ label: '', rows: filtered }];
+    if (!groupKey) return [{ label: '', rows: pageRows }];
     const map = new Map<string, Row[]>();
-    filtered.forEach((r) => {
+    pageRows.forEach((r) => {
       const k = String(r[groupKey] ?? '—');
       if (!map.has(k)) map.set(k, []);
       map.get(k)!.push(r);
     });
     return [...map.entries()].map(([label, rows]) => ({ label, rows }));
-  }, [filtered, groupKey]);
+  }, [pageRows, groupKey]);
 
   const totals = useMemo(() => {
     const out: Record<string, number | null> = {};
