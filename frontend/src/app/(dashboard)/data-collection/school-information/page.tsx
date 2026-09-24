@@ -405,29 +405,39 @@ function RowGrade({ row }: { row: StatusRow }) {
   return <span className="text-gray-300">—</span>;
 }
 
-function ScaleLegend() {
-  return (
-    <Card className="border-0 shadow-sm">
-      <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-2 p-4 text-xs text-gray-600">
-        <span className="font-semibold text-gray-700">Grade scale</span>
-        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full bg-green-400" /> A (Green) — 80 &amp; above</span>
-        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full bg-yellow-400" /> B (Yellow) — 70 to 79</span>
-        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full bg-red-400" /> C (Red) — less than 70</span>
-        <span className="mx-1 h-4 w-px bg-gray-200" />
-        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full bg-green-400" /> Yes = Green</span>
-        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full bg-red-400" /> No = Red</span>
-        <span className="mx-1 h-4 w-px bg-gray-200" />
-        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full bg-green-400" /> Strong = A</span>
-        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full bg-yellow-400" /> Moderate = B</span>
-        <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-full bg-red-400" /> Weak = C</span>
-      </CardContent>
-    </Card>
-  );
+interface ScaleItem { color: string; label: string; }
+
+function tableScaleItems(rows: StatusRow[]): ScaleItem[] {
+  const kinds = new Set(rows.map((r) => r.kind));
+  const items: ScaleItem[] = [];
+  if (kinds.has('percent')) {
+    items.push(
+      { color: 'bg-green-400', label: 'A (Green) — 80 & above' },
+      { color: 'bg-yellow-400', label: 'B (Yellow) — 70 to 79' },
+      { color: 'bg-red-400', label: 'C (Red) — less than 70' },
+    );
+  }
+  if (kinds.has('yesno')) {
+    items.push(
+      { color: 'bg-green-400', label: 'Yes = Green' },
+      { color: 'bg-red-400', label: 'No = Red' },
+    );
+  }
+  if (kinds.has('grade')) {
+    items.push(
+      { color: 'bg-green-400', label: 'Strong = A (Green)' },
+      { color: 'bg-yellow-400', label: 'Moderate = B (Yellow)' },
+      { color: 'bg-red-400', label: 'Weak = C (Red)' },
+    );
+  }
+  return items;
 }
 
 function StatusTable({ title, accent, graded, rows }: StatusTableDef) {
   const avgPoint = graded ? groupAveragePoint(rows) : null;
   const [info, setInfo] = useState<{ indicator: string; data: IndicatorInfo } | null>(null);
+  const [scaleOpen, setScaleOpen] = useState(false);
+  const scaleItems = useMemo(() => tableScaleItems(rows), [rows]);
   return (
     <Card className="border-0 shadow-sm overflow-hidden">
       <div className={`px-4 py-2.5 text-center text-sm font-bold ${accent}`}>{title}</div>
@@ -437,7 +447,22 @@ function StatusTable({ title, accent, graded, rows }: StatusTableDef) {
             <tr>
               <th className="py-2 px-3 text-left text-[11px] font-bold uppercase tracking-wider text-orange-900/70">Indicators</th>
               <th className="py-2 px-3 text-left text-[11px] font-bold uppercase tracking-wider text-orange-900/70">Status</th>
-              <th className="py-2 px-3 text-center text-[11px] font-bold uppercase tracking-wider text-orange-900/70">Grade</th>
+              <th className="py-2 px-3 text-center text-[11px] font-bold uppercase tracking-wider text-orange-900/70">
+                <span className="inline-flex items-center gap-1">
+                  Grade
+                  {scaleItems.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setScaleOpen(true)}
+                      className="shrink-0 text-orange-900/40 transition-colors hover:text-indigo-500"
+                      title="What does the grading scale mean?"
+                      aria-label="Show grading scale"
+                    >
+                      <Info size={13} />
+                    </button>
+                  )}
+                </span>
+              </th>
               <th className="py-2 px-3 text-center text-[11px] font-bold uppercase tracking-wider text-orange-900/70">Average Grade</th>
             </tr>
           </thead>
@@ -529,6 +554,25 @@ function StatusTable({ title, accent, graded, rows }: StatusTableDef) {
             )}
           </div>
         )}
+      </Modal>
+
+      <Modal isOpen={scaleOpen} onClose={() => setScaleOpen(false)} title="Grading scale" size="sm">
+        <div className="space-y-3">
+          <p className="text-xs text-gray-500">
+            How the <span className="font-semibold text-gray-700">Grade</span> column is determined for this table:
+          </p>
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {scaleItems.map((item) => (
+              <li
+                key={item.label}
+                className="flex items-center gap-2.5 rounded-lg bg-gray-50 px-3 py-2 text-xs font-medium text-gray-700 ring-1 ring-gray-100"
+              >
+                <span className={`h-3 w-3 shrink-0 rounded-full ${item.color}`} />
+                {item.label}
+              </li>
+            ))}
+          </ul>
+        </div>
       </Modal>
     </Card>
   );
@@ -909,7 +953,6 @@ function StatusTables({ profile }: { profile: SchoolProfile }) {
         <BarChart3 size={17} className="text-indigo-500" />
         <h3 className="text-base font-bold text-gray-800">Status Breakdown</h3>
       </div>
-      <ScaleLegend />
       <div className="grid items-start gap-5 xl:grid-cols-2">
         {tables.map((t) => (
           <StatusTable key={t.title} {...t} />
