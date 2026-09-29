@@ -57,6 +57,42 @@ const MODULE_GROUPS: {
     ],
   },
   {
+    label: 'Student Management',
+    accent: 'bg-indigo-50 text-indigo-700',
+    modules: [
+      {
+        key: 'student-management',
+        label: 'Student Management',
+        description:
+          'Student list, profiles, and Classes & Sections (Student Management menu group)',
+      },
+    ],
+  },
+  {
+    label: 'Fee & Finance',
+    accent: 'bg-teal-50 text-teal-700',
+    modules: [
+      {
+        key: 'fee-management',
+        label: 'Fee Management',
+        description:
+          'Academic years, fee heads, class fee structure grids, and student discounts',
+      },
+      {
+        key: 'fee-collection',
+        label: 'Fee Collection',
+        description:
+          'Generate monthly fee snapshots, collect payments, receipts, and student dues. "Delete" = cancel a payment / void a receipt.',
+      },
+      {
+        key: 'finance-reports',
+        label: 'Finance Reports',
+        description:
+          'Collection, dues, class-wise, fee-head, revenue and student ledger reports. "Create" = save AOP planned revenue targets.',
+      },
+    ],
+  },
+  {
     label: 'School Monitoring',
     accent: 'bg-emerald-50 text-emerald-700',
     modules: [
