@@ -89,6 +89,11 @@ export default function UsersPage() {
   // Create/Edit modal
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  // Whether the currently edited user's PIN is visible to us (owner or Super
+  // Admin). When it is, clearing the PIN field wipes the stored PIN (null);
+  // when it is not (PIN hidden from the list payload), an empty field must
+  // leave the stored PIN untouched instead of blindly nulling it.
+  const [pinVisible, setPinVisible] = useState(false);
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -141,6 +146,7 @@ export default function UsersPage() {
 
   const openCreateModal = () => {
     setEditingUser(null);
+    setPinVisible(false);
     setFormData({
       firstName: '',
       lastName: '',
@@ -159,6 +165,7 @@ export default function UsersPage() {
 
   const openEditModal = (user: User) => {
     setEditingUser(user);
+    setPinVisible(user.pin != null);
     setFormData({
       firstName: user.firstName,
       lastName: user.lastName,
@@ -173,6 +180,29 @@ export default function UsersPage() {
       profilePicture: user.profilePicture || '',
     });
     setShowModal(true);
+    // The users list payload deliberately omits the PIN and does not carry the
+    // raw geoLocationId FK, so pre-filling from the row leaves those fields
+    // empty even when the user has them — making saved changes look reverted.
+    // Refetch the full record and re-prefill so the form shows the real data.
+    api.get<User>(`/users/${user.id}`).then(({ data }) => {
+      setEditingUser(data);
+      setPinVisible(data.pin != null);
+      setFormData((prev) => ({
+        ...prev,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email,
+        phone: data.phone || '',
+        roleIds: (data.roles ?? []).map((r) => r.id),
+        pin: data.pin != null ? String(data.pin) : '',
+        designation: data.designation || '',
+        base: data.base || '',
+        geoLocationId: data.geoLocationId || null,
+        profilePicture: data.profilePicture || '',
+      }));
+    }).catch(() => {
+      // Detail fetch failed — keep the list-row prefill.
+    });
   };
 
   const handleProfilePictureChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -209,11 +239,18 @@ export default function UsersPage() {
         email: formData.email,
         phone: formData.phone,
         roleIds: formData.roleIds,
-        pin: formData.pin ? Number(formData.pin) : undefined,
-        designation: formData.designation || undefined,
-        base: formData.base || undefined,
-        geoLocationId: formData.geoLocationId || undefined,
-        profilePicture: formData.profilePicture || undefined,
+        // Empty optional fields are sent as explicit null so the backend
+        // clears them — undefined would be dropped from the JSON body and
+        // the old value would silently survive the save.
+        pin: formData.pin
+          ? Number(formData.pin)
+          : editingUser && pinVisible
+            ? null
+            : undefined,
+        designation: formData.designation || null,
+        base: formData.base || null,
+        geoLocationId: formData.geoLocationId || null,
+        profilePicture: formData.profilePicture || null,
       };
       if (editingUser) {
         await api.patch(`/users/${editingUser.id}`, payload);

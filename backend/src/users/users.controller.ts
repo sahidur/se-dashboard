@@ -76,7 +76,11 @@ export class UsersController {
     // UpdateProfileDto is an explicit allowlist — role, active-status and
     // school-access fields are not accepted here (see the DTO for why).
     // userId doubles as actorId: self-edits always pass the hierarchy guard.
-    return this.usersService.update(userId, updateProfileDto, userId);
+    await this.usersService.update(userId, updateProfileDto, userId);
+    // Return the reloaded self view rather than the saved entity: the raw
+    // entity has pin @Exclude()'-stripped and schools not loaded, which left
+    // the client's auth store with an incomplete profile after every save.
+    return this.usersService.findOneForSelf(userId);
   }
 
   @Get('schools/available')

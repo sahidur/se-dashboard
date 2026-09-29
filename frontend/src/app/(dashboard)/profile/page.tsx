@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
-import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -60,6 +60,7 @@ function geoLocationBreadcrumb(loc?: GeoLocation | null): string {
 
 export default function ProfilePage() {
   const { user, updateUser } = useAuthStore();
+  const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [tab, setTab] = useState<Tab>('overview');
 
@@ -163,13 +164,24 @@ export default function ProfilePage() {
         lastName: profile.lastName,
         email: profile.email,
         phone: profile.phone,
-        pin: profile.pin ? Number(profile.pin) : undefined,
-        designation: profile.designation || undefined,
-        base: profile.base || undefined,
-        geoLocationId: profile.geoLocationId || undefined,
+        // /users/me returns the owner's own PIN, so an emptied field means the
+        // user is clearing it (null). If no PIN was loaded, leave it untouched
+        // rather than nulling a value we never saw.
+        pin: profile.pin
+          ? Number(profile.pin)
+          : me?.pin != null
+            ? null
+            : undefined,
+        designation: profile.designation || null,
+        base: profile.base || null,
+        geoLocationId: profile.geoLocationId || null,
       };
       const { data } = await api.patch('/users/me/profile', payload);
       updateUser(data);
+      // The overview renders `me ?? user`, and the ['me'] query is only
+      // refetched on remount/refocus — without this invalidation the page
+      // kept showing the pre-save values right after a successful save.
+      queryClient.invalidateQueries({ queryKey: ['me'] });
       setEditing(false);
     } catch (error) {
       alert(getErrorMessage(error, 'Failed to update profile'));
@@ -215,6 +227,7 @@ export default function ProfilePage() {
       });
       const { data: updated } = await api.patch('/users/me/profile', { profilePicture: data.url });
       updateUser(updated);
+      queryClient.invalidateQueries({ queryKey: ['me'] });
     } catch {
       alert('Failed to upload image');
     }
