@@ -57,7 +57,14 @@ async function bootstrap() {
     logger: process.env.APP_ENV === 'production'
       ? ['warn', 'error']
       : ['log', 'warn', 'error', 'debug'],
+    // Default parsers are disabled here and re-registered below with an
+    // explicit limit: Express's built-in 100 KB JSON ceiling would reject
+    // bulk student uploads (up to 1000 rows ≈ 1 MB) with a 413 before the
+    // validation pipe ever runs. nginx still caps bodies at 10 MB.
+    bodyParser: false,
   });
+  app.useBodyParser('json', { limit: '2mb' });
+  app.useBodyParser('urlencoded', { limit: '2mb', extended: true });
 
   // Reverse-proxy awareness. Only enable when the app really sits behind a
   // trusted proxy (nginx): with `trust proxy` off, a spoofed X-Forwarded-For is
