@@ -38,6 +38,16 @@ export class FeeCollectionController {
     return this.service.generateFees(dto);
   }
 
+  @Post('recalculate')
+  @Permissions({ module: 'fee-collection', action: 'create' })
+  @ApiOperation({
+    summary:
+      'Recalculate unpaid fee snapshots against the current structure/discounts (paid months untouched)',
+  })
+  recalculate(@Body() dto: GenerateFeesDto) {
+    return this.service.recalculateFees(dto);
+  }
+
   @Get('monthly')
   @Permissions({ module: 'fee-collection', action: 'read' })
   @ApiOperation({ summary: 'Monthly collection list for a class/section' })

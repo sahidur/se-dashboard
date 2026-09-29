@@ -303,7 +303,11 @@ export default function MonthlyCollectionPage() {
                   month: parseInt(month, 10),
                   classId: classId || undefined,
                 });
-                setMessage(`Generated ${data.created} fee record(s) (${data.skipped} already existed).`);
+                const failedCount = Array.isArray(data.failed) ? data.failed.length : 0;
+                const failedDetail = failedCount
+                  ? ` — failed: ${data.failed.map((f: { admissionNumber: string; reason: string }) => `${f.admissionNumber} (${f.reason})`).join('; ')}`
+                  : '';
+                setMessage(`Generated ${data.created} fee record(s) (${data.skipped} already existed).${failedDetail}`);
                 loadCollection();
               } catch (error) {
                 alert(getErrorMessage(error, 'Fee generation failed'));

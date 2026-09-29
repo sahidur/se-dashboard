@@ -7,6 +7,7 @@ import { Student, StudentStatus } from '../students/entities/student.entity';
 import { SchoolClass } from '../students/entities/school-class.entity';
 import { SchoolSection } from '../students/entities/section.entity';
 import { toMoney } from '../fee-management/fee-management.service';
+import { computeHeadWisePaid } from './head-wise-paid';
 import { AopTarget } from '../fee-management/entities/aop-target.entity';
 import { FeeStructure } from '../fee-management/entities/fee-structure.entity';
 import { FeeHead, FeeSchedule } from '../fee-management/entities/fee-head.entity';
@@ -172,7 +173,9 @@ export class FinanceReportsService {
       }
       row.payable = toMoney(row.payable + parseFloat(f.payableAmount));
       row.paid = toMoney(row.paid + parseFloat(f.paidAmount));
-      row.due = toMoney(row.due + due);
+      // An overpayment in one month is an advance, not a credit against a
+      // separate month's outstanding balance.
+      row.due = toMoney(row.due + Math.max(due, 0));
       if (due > 0) {
         row.months.push({ month: f.month, due, status: f.status });
       }
@@ -225,7 +228,7 @@ export class FinanceReportsService {
           students: r.students.size,
           payable: r.payable,
           collected: r.collected,
-          due: toMoney(r.payable - r.collected),
+          due: toMoney(Math.max(r.payable - r.collected, 0)),
         }))
         .sort((a, b) => a.className.localeCompare(b.className));
       return rows;
@@ -263,46 +266,11 @@ export class FinanceReportsService {
       students: r.students.size,
       payable: r.payable,
       collected: r.collected,
-      due: toMoney(r.payable - r.collected),
+      due: toMoney(Math.max(r.payable - r.collected, 0)),
     }));
   }
 
   // ---------- Fee Head Report ----------
-  /**
-   * Head-wise collected amounts for one fee from its completed payments.
-   * Payments with explicit allocations contribute per head; legacy
-   * month-level payments (no allocations) are distributed proportionally by
-   * each head's payable share. Both kinds can coexist on one fee (old data +
-   * newer allocations) — each payment is attributed independently, so no
-   * collected money is lost to the other kind.
-   */
-  private headCollectedForFee(
-    feePayments: Payment[] | undefined,
-    breakdown: StudentFee['breakdown'],
-  ): Map<string, number> {
-    const paid = new Map<string, number>();
-    const payableTotal = breakdown.reduce((s, b) => s + b.payable, 0);
-    let legacyTotal = 0;
-
-    for (const p of feePayments ?? []) {
-      if ((p.allocations ?? []).length > 0) {
-        for (const a of p.allocations ?? []) {
-          paid.set(a.feeHeadId, toMoney((paid.get(a.feeHeadId) ?? 0) + (a.amount ?? 0)));
-        }
-      } else {
-        legacyTotal = toMoney(legacyTotal + parseFloat(p.amount));
-      }
-    }
-
-    if (legacyTotal > 0) {
-      for (const b of breakdown) {
-        const share = payableTotal > 0 ? b.payable / payableTotal : 0;
-        paid.set(b.feeHeadId, toMoney((paid.get(b.feeHeadId) ?? 0) + legacyTotal * share));
-      }
-    }
-    return paid;
-  }
-
   private paymentsByFeeId(fees: StudentFee[]): Promise<Payment[]> {
     const paymentRepo = this.feesRepo.manager.getRepository(Payment);
     return fees.length
@@ -330,7 +298,7 @@ export class FinanceReportsService {
     // the "generated" side and their payable belongs to "due".
     const map = new Map<string, { name: string; base: number; discount: number; payable: number; collected: number }>();
     for (const f of fees) {
-      const collectedByHead = this.headCollectedForFee(paymentsByFee.get(f.id), f.breakdown ?? []);
+      const collectedByHead = computeHeadWisePaid(f.breakdown ?? [], paymentsByFee.get(f.id) ?? []);
       for (const line of f.breakdown ?? []) {
         let row = map.get(line.feeHeadId);
         if (!row) {
@@ -344,7 +312,7 @@ export class FinanceReportsService {
       }
     }
     return [...map.values()]
-      .map((r) => ({ ...r, due: toMoney(r.payable - r.collected) }))
+      .map((r) => ({ ...r, due: toMoney(Math.max(r.payable - r.collected, 0)) }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
@@ -383,7 +351,7 @@ export class FinanceReportsService {
     );
 
     for (const f of fees) {
-      const collectedByHead = this.headCollectedForFee(paymentsByFee.get(f.id), f.breakdown ?? []);
+      const collectedByHead = computeHeadWisePaid(f.breakdown ?? [], paymentsByFee.get(f.id) ?? []);
       const monthRow = allMonths[f.month - 1];
       for (const line of f.breakdown ?? []) {
         let head = heads.get(line.feeHeadId);
@@ -400,16 +368,18 @@ export class FinanceReportsService {
         const cell = head.months[f.month] ?? { planned: 0, collected: 0, due: 0 };
         cell.planned = toMoney(cell.planned + line.payable);
         cell.collected = toMoney(cell.collected + collected);
-        cell.due = toMoney(cell.planned - cell.collected);
+        // Due floors at zero — over-collection in a cell is an advance, not
+        // a negative liability (matches the collection report convention).
+        cell.due = toMoney(Math.max(cell.planned - cell.collected, 0));
         head.months[f.month] = cell;
 
         head.total.planned = toMoney(head.total.planned + line.payable);
         head.total.collected = toMoney(head.total.collected + collected);
-        head.total.due = toMoney(head.total.planned - head.total.collected);
+        head.total.due = toMoney(Math.max(head.total.planned - head.total.collected, 0));
 
         monthRow.planned = toMoney(monthRow.planned + line.payable);
         monthRow.collected = toMoney(monthRow.collected + collected);
-        monthRow.due = toMoney(monthRow.planned - monthRow.collected);
+        monthRow.due = toMoney(Math.max(monthRow.planned - monthRow.collected, 0));
       }
     }
 
@@ -454,7 +424,11 @@ export class FinanceReportsService {
       order: { month: 'ASC' },
       relations: ['academicYear'],
     });
-    return fees.map((f) => ({
+    // Cancelled rows are excluded to match studentDues/studentFeeSummary —
+    // the ledger and the summary must agree for the same student.
+    return fees
+      .filter((f) => f.status !== StudentFeeStatus.CANCELLED)
+      .map((f) => ({
       id: f.id,
       academicYear: f.academicYear?.name,
       month: f.month,
@@ -694,10 +668,16 @@ feeStatus: row ? [...row.status].join(', ') : 'no fees generated',
     const ay = await this.yearsRepo.findOne({ where: { name: String(academicYearName) } });
     if (!ay) return result;
 
+    const activeClasses = await this.classesRepo.find({
+      where: { schoolId: In(schoolIds), deletedAt: IsNull(), isActive: true },
+      select: ['id'],
+    });
+    const activeClassIds = new Set(activeClasses.map((schoolClass) => schoolClass.id));
     const targets = await this.aopRepo.find({
       where: { academicYearId: ay.id, schoolId: In(schoolIds), deletedAt: IsNull() },
     });
-    if (targets.length === 0) return result;
+    const activeTargets = targets.filter((target) => activeClassIds.has(target.classId));
+    if (activeTargets.length === 0) return result;
 
     const structures = await this.structuresRepo.find({
       where: { academicYearId: ay.id, deletedAt: IsNull(), schoolId: In(schoolIds) },
@@ -705,7 +685,7 @@ feeStatus: row ? [...row.status].join(', ') : 'no fees generated',
     });
     const feesByClass = this.headYearAmountsByClass(structures);
 
-    for (const t of targets) {
+    for (const t of activeTargets) {
       const row = result.get(t.schoolId) ?? { planned: 0, targetStudents: 0 };
       row.targetStudents += t.targetStudents;
       const heads = feesByClass.get(`${t.schoolId}|${t.classId}`);
@@ -754,10 +734,10 @@ feeStatus: row ? [...row.status].join(', ') : 'no fees generated',
     }
     const classIds = [...new Set(dto.lines.map((l) => l.classId))];
     const classes = await this.classesRepo.find({
-      where: { id: In(classIds), schoolId: dto.schoolId, deletedAt: IsNull() },
+      where: { id: In(classIds), schoolId: dto.schoolId, deletedAt: IsNull(), isActive: true },
     });
     if (classes.length !== classIds.length) {
-      throw new BadRequestException('One or more classes do not belong to this school');
+      throw new BadRequestException('One or more classes are inactive or do not belong to this school');
     }
     const year = await this.yearsRepo.findOne({ where: { id: dto.academicYearId } });
     if (!year) throw new NotFoundException('Academic year not found');
