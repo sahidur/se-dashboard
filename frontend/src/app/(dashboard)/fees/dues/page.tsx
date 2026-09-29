@@ -61,7 +61,6 @@ export default function DuesPage() {
   const [classId, setClassId] = useState('');
   const [sectionId, setSectionId] = useState('');
   const [rows, setRows] = useState<DueRow[]>([]);
-  const [totalDue, setTotalDue] = useState(0);
   const [loading, setLoading] = useState(false);
 
   const [detailTarget, setDetailTarget] = useState<DueRow | null>(null);
@@ -100,7 +99,6 @@ export default function DuesPage() {
       )
       .then(({ data }) => {
         setRows(data.rows ?? []);
-        setTotalDue(data.totalDue ?? 0);
         setLoading(false);
       })
       .catch(() => {
@@ -128,6 +126,11 @@ export default function DuesPage() {
   };
 
   const visibleRows = month ? rows.filter((r) => r.months.some((m) => m.month === parseInt(month, 10))) : rows;
+  const visibleTotalDue = visibleRows.reduce((sum, row) => {
+    if (!month) return sum + row.due;
+    const selectedMonth = parseInt(month, 10);
+    return sum + (row.months.find((m) => m.month === selectedMonth)?.due ?? 0);
+  }, 0);
 
   return (
     <>
@@ -165,7 +168,7 @@ export default function DuesPage() {
             </span>
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-red-500">Total outstanding</p>
-              <p className="text-xl font-bold tracking-tight text-red-700 sm:text-2xl">BDT {formatBDT(totalDue)}</p>
+              <p className="text-xl font-bold tracking-tight text-red-700 sm:text-2xl">BDT {formatBDT(visibleTotalDue)}</p>
             </div>
           </div>
           <span className="rounded-full bg-white/70 px-3 py-1 text-xs font-medium text-red-600 ring-1 ring-red-100">
