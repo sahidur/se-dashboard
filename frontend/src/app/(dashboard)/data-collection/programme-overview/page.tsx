@@ -30,7 +30,7 @@ interface CategoryTotals {
   totalEthnic: number;
   yearlyStudentTarget: number;
   budgetRevenueTarget: number;
-  /** AOP plan figure (target students × fee structure) when it won over the fallbacks, else 0. */
+  /** AOP plan figure (target students × fee structure) when set, else 0. */
   aopPlannedRevenue?: number;
   budgetRevenueAchievement: number;
   actualRevenueTarget: number;
@@ -78,8 +78,6 @@ interface SchoolRow {
   actualRevenueAchievement: number;
   /** Auto-calculated from the fee-collection module when the school has generated fees. */
   feeCollection?: FeeCollectionStats | null;
-  /** 'fee-collection' = auto-calculated from payments; 'reported' = manual revenue forms. */
-  revenueSource?: 'fee-collection' | 'reported';
   /** Overall score out of 3.00 (same rating as the school-information page). */
   overallScore: number | null;
   overallGrade: 'A' | 'B' | 'C' | null;
@@ -353,8 +351,8 @@ function CategorySummaryTable({ label, header, totals, showSsc }: { label: strin
         { label: 'Planned Revenue Target', value: fmtTaka(t.budgetRevenueTarget) },
       ],
       result: fmtTaka(t.budgetRevenueTarget),
-      source: 'The "Planned Revenue Target" report (Finance Reports): for every school the AOP target student count per class is multiplied by that class\u2019s fee structure (all fee heads, schedule-aware) — no discounts, independent of the enrolled student list. Schools without AOP targets fall back to the "Revenue as per Budget — Yearly Total" form (dc_revenue_budget_total), then to the auto-calculated fee plan (total fees generated in the Fee Collection module).',
-      notes: ['A school with no AOP targets, no budget form and no generated fees contributes ৳0, so it drags the category total down rather than being excluded.'],
+      source: 'The "Planned Revenue Target" report (Finance Reports): for every school the AOP target student count per class is multiplied by that class\u2019s fee structure (all fee heads, schedule-aware) — no discounts, independent of the enrolled student list. Schools without AOP targets use the auto-calculated fee plan (total fees generated in the Fee Collection module).',
+      notes: ['A school with no AOP targets and no generated fees contributes ৳0, so it drags the category total down rather than being excluded.'],
     },
     actualTarget: {
       title: 'Actual Revenue Target',
@@ -366,7 +364,7 @@ function CategorySummaryTable({ label, header, totals, showSsc }: { label: strin
         { label: 'Gap vs plan', value: signedTaka(targetGap), op: '=' },
       ],
       result: fmtTaka(t.actualRevenueTarget),
-      source: 'Auto-calculated from the Fee Collection module: the payable amount of every monthly student-fee record generated for the year. Schools whose fees are not yet generated fall back to the "Revenue as per Actual Student — Yearly Total" form (dc_revenue_actual_total).',
+      source: 'Auto-calculated from the Fee Collection module: the payable amount of every monthly student-fee record generated for the year. Schools whose fees are not yet generated contribute ৳0 — no finance figure is shown for them.',
       notes: ['A gap against the plan here reflects enrolment (fewer/more students than budgeted), not a collection problem.'],
     },
     collected: {
@@ -379,7 +377,7 @@ function CategorySummaryTable({ label, header, totals, showSsc }: { label: strin
         { label: 'Collection rate', value: rate(collected, t.actualRevenueTarget), op: '=' },
       ],
       result: fmtTaka(collected),
-      source: 'Auto-calculated from the Fee Collection module: every payment posted against a monthly student fee (per-head allocations included). Schools without fee payments fall back to the achievement column of the "Revenue as per Actual Student" form.',
+      source: 'Auto-calculated from the Fee Collection module: every payment posted against a monthly student fee (per-head allocations included). Schools without fee payments contribute ৳0 — no finance figure is shown for them.',
     },
     dues: {
       title: 'Outstanding dues',
@@ -393,7 +391,7 @@ function CategorySummaryTable({ label, header, totals, showSsc }: { label: strin
       ],
       result: fmtTaka(outstandingDues),
       resultTone: outstandingDues > 0 ? 'danger' : 'success',
-      source: 'Auto-calculated from the Fee Collection module (billed payable − payments collected, per fee head). Schools without fee data fall back to the reported "Revenue as per Actual Student" form.',
+      source: 'Auto-calculated from the Fee Collection module (billed payable − payments collected, per fee head). Schools without fee data contribute ৳0 — no finance figure is shown for them.',
       notes: [
         'Measured against the ACTUAL target, not the planned one — dues can only exist for money that was really billed.',
         rawDues < 0
@@ -415,7 +413,7 @@ function CategorySummaryTable({ label, header, totals, showSsc }: { label: strin
       ],
       result: signedTaka(revenueDeficit),
       resultTone: revenueDeficit < 0 ? 'danger' : 'success',
-      source: 'Planned figure from the "Revenue as per Budget" yearly total (or the auto-calculated fee plan when no budget was submitted); collected figure auto-calculated from Fee Collection payments (fallback: reported actual-student form).',
+      source: 'Planned figure from the AOP plan (target students × fee structure; falls back to the auto-calculated fee plan when no AOP targets are set); collected figure auto-calculated from Fee Collection payments.',
       notes: [
         'The deficit is the sum of the two "of which" lines: an enrolment/target gap (fewer or more students than budgeted) plus whatever was billed but not collected. That split tells you whether the shortfall is an admissions problem or a collection problem.',
         'Deliberately measured against the PLANNED target, so it stays comparable year-on-year even when enrolment moves.',

@@ -762,7 +762,6 @@ function buildStatusTables(p: SchoolProfile): StatusTableDef[] {
   const students = p.students || [];
   const st = p.studentTotals;
   const rbt = p.revenueBudgetTotal;
-  const rat = p.revenueActualTotal;
   const acts = p.activityParticipation || [];
   const dev = p.teachersDevelopment || [];
   const events = p.eventParticipation || [];
@@ -802,24 +801,15 @@ function buildStatusTables(p: SchoolProfile): StatusTableDef[] {
   const htLeadershipGrade = htLeadership ? LEADERSHIP_GRADE[htLeadership] ?? null : null;
 
 /* ── Revenue (auto, target vs achievement across all fee types) ──
-     Preferred source: fee-collection module auto-calculation (fees billed to
-     actual students vs payments actually received). Fallback: the reported
-     Programme Overview forms:
-        Planned Revenue Target = Σ Budget targets
-        Actual Revenue Target  = Σ Actual (enrolled-student) targets
-        Collected              = Σ Actual achievements
-        Outstanding dues       = max(Actual target − Collected, 0)
-        Revenue deficit        = Collected − Planned target (negative = short) */
+     Source: fee-collection module auto-calculation only (fees billed to
+     actual students vs payments actually received). No fallback to the old
+     reported revenue forms — with no fee data nothing is shown. */
   const feeAuto = p.feeCollection ?? null;
-  const FEES = ['admissionFee', 'sessionFee', 'assessmentFee', 'sportsFee',
-    'syllabusFee', 'testimonialFee', 'othersFee', 'transportFee'];
-  const sumFees = (r: Record<string, unknown> | null | undefined, suffix: 'Target' | 'Achievement') =>
-    (r ? FEES.reduce((s, f) => s + num(r[`${f}${suffix}`]), 0) : 0);
-  const plannedTarget = feeAuto ? feeAuto.planned : sumFees(rbt, 'Target');
-  const actualTarget = feeAuto ? feeAuto.planned : sumFees(rat, 'Target');
-  const collected = feeAuto ? feeAuto.collected : sumFees(rat, 'Achievement');
-  const duesAmount = feeAuto ? feeAuto.outstanding : Math.max(actualTarget - collected, 0);
-  const deficitAmount = feeAuto ? feeAuto.deficit : collected - plannedTarget;
+  const plannedTarget = feeAuto?.planned ?? 0;
+  const actualTarget = feeAuto?.planned ?? 0;
+  const collected = feeAuto?.collected ?? 0;
+  const duesAmount = feeAuto?.outstanding ?? 0;
+  const deficitAmount = feeAuto?.deficit ?? 0;
   const collectedPct = actualTarget > 0 ? cap100((collected / actualTarget) * 100) : null;
   const duesPct = actualTarget > 0 ? cap100((duesAmount / actualTarget) * 100) : null;
   const deficitPct = plannedTarget > 0 ? ((deficitAmount / plannedTarget) * 100) : null;

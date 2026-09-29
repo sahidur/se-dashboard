@@ -174,7 +174,7 @@ const METRICS: Record<string, MetricConfig> = {
   'budget-target': {
     title: 'Planned Revenue Target',
     description:
-      'Planned revenue target per school — from the AOP plan (target students × fee structure, no discounts) when set; otherwise the reported budget form or the auto-calculated fee plan.',
+      'Planned revenue target per school — from the AOP plan (target students × fee structure, no discounts) when set; otherwise the auto-calculated fee plan from the Fee Collection module.',
     columns: [
       schoolCol,
       categoryCol,

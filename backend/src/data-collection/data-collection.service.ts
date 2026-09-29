@@ -1253,21 +1253,15 @@ export class DataCollectionService {
       ...(year != null ? { academicYear: year } : {}),
     };
 
-    const revenueWhere = schoolIds.map((id) =>
-      year != null ? { schoolId: id, academicYear: year } : { schoolId: id },
-    );
-
     // Parallel aggregate queries
     const [
-      teacherRows, studentRecords, budgetTotals, actualTotals,
+      teacherRows, studentRecords,
       teacherIndividuals, teachersDevRecords, activityRecords,
       pedagRecords, studentsPerfRecords, eventRecords,
       studentPerfBssRecords, performanceRecords,
     ] = await Promise.all([
       teacherQb.getRawMany(),
       this.studentsRepo.find({ where: studentWhere }),
-      this.revBudgetTotalRepo.find({ where: revenueWhere }),
-      this.revActualTotalRepo.find({ where: revenueWhere }),
       // ── School-ranking inputs (mirror the Overall Score / 3.00 in
       // school-information: Students', Teachers', Revenue Collection and
       // Pedagogical Performance status groups; Infrastructure & Head
@@ -1338,12 +1332,6 @@ export class DataCollectionService {
       entry.ethnic += rec.ethnic || 0;
     }
 
-    // Revenue maps
-    const budgetMap: Record<string, typeof budgetTotals[0]> = {};
-    for (const r of budgetTotals) budgetMap[r.schoolId] = r;
-    const actualMap: Record<string, typeof actualTotals[0]> = {};
-    for (const r of actualTotals) actualMap[r.schoolId] = r;
-
     // ── School-ranking aggregates (grouped per school) ──
     const attendVals: Record<string, number[]> = {};
     const dropoutVals: Record<string, number[]> = {};
@@ -1388,8 +1376,8 @@ export class DataCollectionService {
 
     // Build per-school rows
     // ── Auto-calculated revenue from the fee-collection module (billed vs
-    // collected per actual student). Schools without generated fees fall
-    // back to the reported dc_revenue forms. ──
+    // collected per actual student). Finance figures come ONLY from the new
+    // finance modules — no fallback to the old reported revenue forms. ──
     const feeRevenue = await this.buildFeeRevenue(schoolIds, year);
 
     // ── SSC results per school (BRAC Secondary) — dynamic source for the
@@ -1460,61 +1448,33 @@ export class DataCollectionService {
 
     // AOP plan figures per school — the pure plan baseline:
     // AOP target students × category fee structure (no discounts, no link to
-    // the enrolled student list). Wins over the reported budget form and the
-    // generated fee plan whenever AOP targets exist for the school, and also
-    // supplies the yearly student target (Σ AOP target students per class).
+    // the enrolled student list). Supplies the planned revenue baseline and
+    // the yearly student target (Σ AOP target students per class).
     const aopSummary = await this.financeReportsService.aopPlannedSummary(schoolIds, year);
 
     const schoolRows = schools.map((school) => {
       const t = teacherMap[school.id] ?? { male: 0, female: 0 };
       const s = studentMap[school.id] ?? { boys: 0, girls: 0, total: 0, pwd: 0, ethnic: 0 };
-      const b = budgetMap[school.id];
-      const a = actualMap[school.id];
       const feeRev = feeRevenue.get(school.id) ?? null;
       const aop = aopSummary.get(school.id) ?? null;
       const aopPlanned = aop?.planned ?? 0;
       const aopStudents = aop?.targetStudents ?? 0;
-      const sumBudgetTarget = b
-        ? [b.admissionFeeTarget, b.sessionFeeTarget, b.assessmentFeeTarget, b.sportsFeeTarget, b.syllabusFeeTarget, b.testimonialFeeTarget, b.othersFeeTarget, b.transportFeeTarget]
-            .reduce((acc, v) => acc + parseFloat(String(v ?? 0)), 0)
-        : 0;
-      const sumBudgetAchievement = b
-        ? [b.admissionFeeAchievement, b.sessionFeeAchievement, b.assessmentFeeAchievement, b.sportsFeeAchievement, b.syllabusFeeAchievement, b.testimonialFeeAchievement, b.othersFeeAchievement, b.transportFeeAchievement]
-            .reduce((acc, v) => acc + parseFloat(String(v ?? 0)), 0)
-        : 0;
-      const sumActualTarget = a
-        ? [a.admissionFeeTarget, a.sessionFeeTarget, a.assessmentFeeTarget, a.sportsFeeTarget, a.syllabusFeeTarget, a.testimonialFeeTarget, a.othersFeeTarget, a.transportFeeTarget]
-            .reduce((acc, v) => acc + parseFloat(String(v ?? 0)), 0)
-        : 0;
-      const sumActualAchievement = a
-        ? [a.admissionFeeAchievement, a.sessionFeeAchievement, a.assessmentFeeAchievement, a.sportsFeeAchievement, a.syllabusFeeAchievement, a.testimonialFeeAchievement, a.othersFeeAchievement, a.transportFeeAchievement]
-            .reduce((acc, v) => acc + parseFloat(String(v ?? 0)), 0)
-        : 0;
 
-      // Auto-calculated figures win when fee data exists; the reported forms
-      // are the fallback. The planned baseline comes from the AOP targets
-      // (target students × fee structure, no discounts) whenever they exist,
-      // then falls back to the reported budget form and finally the
-      // generated fee plan.
+      // Finance figures come ONLY from the new finance modules: the planned
+      // baseline from the AOP targets (target students × fee structure, no
+      // discounts) or the generated fee plan; billed/collected from the
+      // fee-collection module. No fallback to the old reported revenue
+      // forms — a school with no fee data simply shows no finance data.
       const budgetRevenueTarget =
-        aopPlanned > 0
-          ? aopPlanned
-          : sumBudgetTarget > 0
-            ? sumBudgetTarget
-            : (feeRev?.planned ?? 0);
-      const actualRevenueTarget = feeRev ? feeRev.planned : sumActualTarget;
-      const actualRevenueAchievement = feeRev ? feeRev.collected : sumActualAchievement;
+        aopPlanned > 0 ? aopPlanned : (feeRev?.planned ?? 0);
+      const actualRevenueTarget = feeRev?.planned ?? 0;
+      const actualRevenueAchievement = feeRev?.collected ?? 0;
 
       // Overall score out of 3.00 — same rules as the school-information page
       const overallScore = this.computeSchoolOverallScore({
         studentTotal: s.total,
-        // enrolment is graded against the plan's student count — AOP first
-        studentTarget:
-          aopStudents > 0
-            ? aopStudents
-            : b?.totalStudentsTarget != null
-              ? Number(b.totalStudentsTarget)
-              : null,
+        // enrolment is graded against the plan's student count (AOP only)
+        studentTarget: aopStudents > 0 ? aopStudents : null,
         attendance: this.avgOrNull(attendVals[school.id]),
         dropout: this.avgOrNull(dropoutVals[school.id]),
         teacherCount: teacherStats[school.id]?.total ?? 0,
@@ -1541,10 +1501,8 @@ export class DataCollectionService {
         hasEvents: !!eventHas[school.id],
       });
 
-      // The yearly student target is the plan's student count — AOP targets win,
-      // then the reported budget/actual-student forms.
-      const yearlyStudentTarget =
-        aopStudents > 0 ? aopStudents : (b?.totalStudentsTarget ?? a?.totalStudentsTarget ?? 0);
+      // The yearly student target is the plan's student count — AOP targets only.
+      const yearlyStudentTarget = aopStudents;
 
       // Dynamic SSC metrics (BRAC Secondary schools only): Pedagogical
       // Achievements (awarded ÷ participated, A+ ÷ participated) first, then
@@ -1578,14 +1536,14 @@ export class DataCollectionService {
         students: s,
         yearlyStudentTarget,
         budgetRevenueTarget,
-        /** AOP plan figure (target students × fee structure) that won over the fallbacks, 0 when absent */
+        /** AOP plan figure (target students × fee structure) when set, 0 when absent */
         aopPlannedRevenue: aopPlanned,
-        budgetRevenueAchievement: sumBudgetAchievement,
+        /** Collected per the fee-collection module (billed vs paid) */
+        budgetRevenueAchievement: feeRev?.collected ?? 0,
         actualRevenueTarget,
         actualRevenueAchievement,
         /** Auto-calculated from fee collection when the school has generated fees. */
         feeCollection: feeRev,
-        revenueSource: feeRev ? 'fee-collection' : 'reported',
         /** SSC exam results (BRAC Secondary) — null when nothing was submitted */
         sscPassRate,
         sscAPlusRate,
@@ -1716,8 +1674,8 @@ export class DataCollectionService {
    *   Planned  = Σ payable amounts (fees generated for the actual students)
    *   Collected = Σ paid amounts (real payments, head allocations included)
    *   Outstanding dues / % of collection / deficit are derived from those two.
-   * Schools without generated fees get no entry → the reported dc_revenue
-   * forms remain the fallback data source for them.
+   * Schools without generated fees get no entry — the overview then shows no
+   * finance figures for them (no fallback to the old reported revenue forms).
    */
   private async buildFeeRevenue(
     schoolIds: string[],
