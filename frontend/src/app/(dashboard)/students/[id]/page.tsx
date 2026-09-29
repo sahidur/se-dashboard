@@ -182,6 +182,16 @@ export default function StudentProfilePage() {
     }
   };
 
+  const removeStudent = async () => {
+    if (!confirm(`Delete student "${student?.name}"? Their financial history will be preserved.`)) return;
+    try {
+      await api.delete(`/students/${id}`);
+      router.push('/students');
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to delete student'));
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -207,9 +217,14 @@ export default function StudentProfilePage() {
         title={student.name}
         subtitle={`${student.admissionNumber} — ${student.school?.name ?? ''}`}
         actions={
-          <Button size="sm" variant="outline" onClick={() => router.push('/students')}>
-            Back to list
-          </Button>
+          <>
+            <Button size="sm" variant="outline" onClick={removeStudent} className="text-red-600 hover:bg-red-50">
+              Delete
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => router.push('/students')}>
+              Back to list
+            </Button>
+          </>
         }
       />
       <div className="page-container space-y-4">
@@ -267,7 +282,7 @@ export default function StudentProfilePage() {
               <h3 className="mb-3 font-semibold text-gray-900">Fee Summary</h3>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
                 {[
-                  ['Base Fee', summary.baseAmount],
+                  ['Gross Annual Fee', summary.baseAmount],
                   ['Total Discount', summary.discountAmount],
                   ['Total Payable', summary.payableAmount],
                   ['Total Paid', summary.paidAmount],
@@ -288,7 +303,7 @@ export default function StudentProfilePage() {
                     <thead className="border-b bg-gray-50 text-left text-xs uppercase text-gray-500">
                       <tr>
                         <th className="px-3 py-2">Month</th>
-                        <th className="px-3 py-2">Base Fee</th>
+                        <th className="px-3 py-2">Gross Annual Fee</th>
                         <th className="px-3 py-2">Discount</th>
                         <th className="px-3 py-2">Payable</th>
                         <th className="px-3 py-2">Paid</th>

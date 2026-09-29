@@ -18,6 +18,7 @@ import {
   GraduationCap,
   ArrowRightLeft,
   Upload,
+  Trash2,
 } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import { Select, useSchools, useAcademicYears } from '@/components/fee/filters';
@@ -217,10 +218,30 @@ export default function StudentsPage() {
       .map((s) => ({ value: s.id, label: s.name }));
   }, [classes, classId, form.sectionId]);
 
+  // Sections for the add/edit modal — keyed off the class chosen in the form,
+  // not the page's class filter, so picking a class in the modal loads its sections.
+  const formSectionOptions = useMemo(() => {
+    const cls = classes.find((c) => c.id === form.classId);
+    return (cls?.sections ?? [])
+      .filter((s) => s.isActive || s.id === form.sectionId)
+      .map((s) => ({ value: s.id, label: s.name }));
+  }, [classes, form.classId, form.sectionId]);
+
   const openCreate = () => {
     setEditingId(null);
     setForm({ ...emptyForm });
     setShowModal(true);
+  };
+
+  const handleDelete = async (row: StudentRow) => {
+    if (!confirm(`Delete student "${row.name}"? Their financial history will be preserved.`)) return;
+    try {
+      await api.delete(`/students/${row.id}`);
+      setSelected((prev) => prev.filter((id) => id !== row.id));
+      fetchStudents();
+    } catch (error) {
+      alert(getErrorMessage(error, 'Failed to delete student'));
+    }
   };
 
   const openEdit = (row: StudentRow) => {
@@ -554,6 +575,13 @@ export default function StudentsPage() {
                             >
                               <ArrowRightLeft size={16} />
                             </button>
+                            <button
+                              onClick={() => handleDelete(row)}
+                              className="rounded p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-600"
+                              title="Delete"
+                            >
+                              <Trash2 size={16} />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -639,7 +667,7 @@ export default function StudentsPage() {
                 value={form.sectionId}
                 onChange={(v) => setForm({ ...form, sectionId: v })}
                 placeholder="Select section"
-                options={sectionOptions}
+                options={formSectionOptions}
               />
               <Select
                 label="Is PWD (Yes/No)"
