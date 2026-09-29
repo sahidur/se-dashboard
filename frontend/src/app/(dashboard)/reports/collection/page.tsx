@@ -118,7 +118,7 @@ export default function CollectionReportPage() {
         ) : (
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
             {[
-              { label: 'Total Base Fee', value: summary.baseAmount, color: 'text-blue-700 bg-gradient-to-br from-blue-50 to-blue-100/60' },
+              { label: 'Total Gross Annual Fee', value: summary.baseAmount, color: 'text-blue-700 bg-gradient-to-br from-blue-50 to-blue-100/60' },
               { label: 'Total Discount', value: summary.discountAmount, color: 'text-purple-700 bg-gradient-to-br from-purple-50 to-purple-100/60' },
               { label: 'Total Payable', value: summary.payableAmount, color: 'text-indigo-700 bg-gradient-to-br from-indigo-50 to-indigo-100/60' },
               { label: 'Total Collection', value: summary.collected, color: 'text-green-700 bg-gradient-to-br from-green-50 to-green-100/60' },

@@ -594,7 +594,7 @@ export default function MonthlyCollectionPage() {
                 ['Student', `${receipt.receipt.student.name} (${receipt.receipt.student.admissionNumber})`],
                 ['Class', `${receipt.receipt.student.schoolClass?.name ?? '-'} · Section ${receipt.receipt.student.section?.name ?? '-'}`],
                 ['Fee Month', monthName(receipt.fee.month)],
-                ['Base Fee', `BDT ${formatBDT(receipt.fee.baseAmount)}`],
+                ['Gross Annual Fee', `BDT ${formatBDT(receipt.fee.baseAmount)}`],
                 ['Discount', `BDT ${formatBDT(receipt.fee.discountAmount)}`],
                 ['Payable', `BDT ${formatBDT(receipt.fee.payableAmount)}`],
                 ['Amount Paid', `BDT ${formatBDT(receipt.payment.amount)}`],

@@ -427,7 +427,7 @@ export default function PaymentHistoryPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   <tr>
-                    <td className="py-1 text-gray-600">Base fee</td>
+                    <td className="py-1 text-gray-600">Gross annual fee</td>
                     <td className="py-1 text-right tabular-nums text-gray-700">{formatBDT(receipt.fee.baseAmount)}</td>
                   </tr>
                   <tr>
