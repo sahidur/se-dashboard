@@ -152,6 +152,7 @@ export class FeeStructureLineDto {
 
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  @Max(9999999999.99)
   amount: number;
 }
 
@@ -204,8 +205,9 @@ export class CreateStudentDiscountDto {
   type: DiscountType;
 
   @ApiProperty({ example: 10, description: 'Percentage (0-100) or fixed amount' })
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
+  @Max(9999999999.99)
   value: number;
 
   @ApiPropertyOptional({ default: true })
@@ -246,8 +248,9 @@ export class UpdateStudentDiscountDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
+  @Max(9999999999.99)
   value?: number;
 
   @ApiPropertyOptional()

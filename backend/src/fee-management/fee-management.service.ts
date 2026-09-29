@@ -278,9 +278,14 @@ export class FeeManagementService {
       throw new BadRequestException('Percentage discount cannot exceed 100');
     }
     if (!dto.isRecurring) {
-      const from = dto.effectiveFromMonth ?? 1;
-      const to = dto.effectiveToMonth ?? MONTHS_IN_YEAR;
-      if (from > to) {
+      // Without an explicit range a "one-time" discount would silently apply
+      // to every generated month of the year (the old 1..12 default).
+      if (dto.effectiveFromMonth == null || dto.effectiveToMonth == null) {
+        throw new BadRequestException(
+          'Non-recurring discounts require an effective month range (from/to)',
+        );
+      }
+      if (dto.effectiveFromMonth > dto.effectiveToMonth) {
         throw new BadRequestException('Invalid effective month range');
       }
     }
@@ -322,10 +327,17 @@ export class FeeManagementService {
       const head = await this.headsRepo.findOne({ where: { id: dto.feeHeadId } });
       if (!head) throw new NotFoundException('Fee head not found');
     }
-    if (!(dto.isRecurring ?? discount.isRecurring) &&
-        (dto.effectiveFromMonth ?? discount.effectiveFromMonth ?? 1) >
-          (dto.effectiveToMonth ?? discount.effectiveToMonth ?? MONTHS_IN_YEAR)) {
-      throw new BadRequestException('Invalid effective month range');
+    if (!(dto.isRecurring ?? discount.isRecurring)) {
+      const from = dto.effectiveFromMonth ?? discount.effectiveFromMonth;
+      const to = dto.effectiveToMonth ?? discount.effectiveToMonth;
+      if (from == null || to == null) {
+        throw new BadRequestException(
+          'Non-recurring discounts require an effective month range (from/to)',
+        );
+      }
+      if (from > to) {
+        throw new BadRequestException('Invalid effective month range');
+      }
     }
     Object.assign(discount, dto);
     if (dto.value !== undefined) discount.value = dto.value.toFixed(2);
