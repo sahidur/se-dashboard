@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, IsNull } from 'typeorm';
-import { Student, StudentStatus } from './entities/student.entity';
+import { Student, StudentStatus, StudentGender } from './entities/student.entity';
 import { SchoolClass } from './entities/school-class.entity';
 import { SchoolSection } from './entities/section.entity';
 import {
@@ -19,7 +19,29 @@ import {
   PromoteStudentsDto,
   TransferStudentDto,
   ListStudentsQueryDto,
+  BulkUploadStudentsDto,
 } from './dto/student.dto';
+
+export interface BulkRowResult {
+  row: number;
+  name: string;
+  admissionNumber?: string;
+  error: string;
+}
+
+interface BulkStudentFields {
+  name: string;
+  rollNumber?: number;
+  gender?: StudentGender;
+  dateOfBirth?: string;
+  admissionDate?: string;
+  guardianName?: string;
+  guardianPhone?: string;
+  address?: string;
+  referenceNumber?: string;
+  birthCertificateId?: string;
+  religion?: string;
+}
 
 @Injectable()
 export class StudentsService {
@@ -137,7 +159,7 @@ export class StudentsService {
 
   // ---------- Students ----------
 
-  private async nextAdmissionNumber(
+  private async admissionPrefix(
     schoolId: string,
     academicYearName: string,
   ): Promise<string> {
@@ -145,7 +167,13 @@ export class StudentsService {
       .getRepository('DcSchool')
       .findOne({ where: { id: schoolId } });
     const schoolCode: string = school?.['code'] ?? 'SCH';
-    const prefix = `${schoolCode}-${academicYearName}-`;
+    return `${schoolCode}-${academicYearName}-`;
+  }
+
+  private async maxAdmissionSequence(
+    schoolId: string,
+    prefix: string,
+  ): Promise<number> {
     const rows = await this.studentsRepo
       .createQueryBuilder('s')
       .select('s.admission_number', 'adm')
@@ -158,6 +186,15 @@ export class StudentsService {
       const seq = parseInt(row.adm.slice(prefix.length), 10);
       if (!isNaN(seq) && seq > max) max = seq;
     }
+    return max;
+  }
+
+  private async nextAdmissionNumber(
+    schoolId: string,
+    academicYearName: string,
+  ): Promise<string> {
+    const prefix = await this.admissionPrefix(schoolId, academicYearName);
+    const max = await this.maxAdmissionSequence(schoolId, prefix);
     return `${prefix}${String(max + 1).padStart(4, '0')}`;
   }
 
@@ -342,5 +379,199 @@ export class StudentsService {
     }
     student.status = StudentStatus.TRANSFERRED;
     return this.studentsRepo.save(student);
+  }
+
+  // ---------- Bulk upload ----------
+
+  private normalizeGender(raw: string): StudentGender | null {
+    const value = raw.trim().toLowerCase();
+    if (!value) return null;
+    if (['male', 'm', 'boy'].includes(value)) return StudentGender.MALE;
+    if (['female', 'f', 'girl'].includes(value)) return StudentGender.FEMALE;
+    if (['other'].includes(value)) return StudentGender.OTHER;
+    return null;
+  }
+
+  private normalizeDate(raw: string): string | null {
+    const value = raw.trim();
+    if (!value) return null;
+    const iso = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (iso) {
+      return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`;
+    }
+    // Excel serial date (a plain number, e.g. 45005)
+    const serial = value.match(/^\d{5}(?:\.\d+)?$/);
+    if (serial) {
+      const date = new Date(Math.round((Number(value) - 25569) * 86400000));
+      if (!isNaN(date.getTime())) return date.toISOString().slice(0, 10);
+    }
+    // DD/MM/YYYY or DD-MM-YYYY (spreadsheet exports in this region)
+    const dmy = value.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+    if (dmy) {
+      const day = Number(dmy[1]);
+      const month = Number(dmy[2]);
+      if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+        return `${dmy[3]}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      }
+    }
+    return null;
+  }
+
+  async bulkUploadStudents(
+    dto: BulkUploadStudentsDto,
+    userId: string,
+  ): Promise<{ total: number; inserted: number; failed: BulkRowResult[]; errors: BulkRowResult[] }> {
+    const school = await this.studentsRepo.manager
+      .getRepository('DcSchool')
+      .findOne({ where: { id: dto.schoolId } });
+    if (!school) throw new NotFoundException('School not found');
+
+    if (dto.classId) {
+      const schoolClass = await this.classesRepo.findOne({
+        where: { id: dto.classId, schoolId: dto.schoolId },
+      });
+      if (!schoolClass) {
+        throw new BadRequestException('Selected class does not belong to the selected school');
+      }
+    }
+    if (dto.sectionId) {
+      if (!dto.classId) throw new BadRequestException('Section requires a class');
+      const section = await this.sectionsRepo.findOne({
+        where: { id: dto.sectionId },
+      });
+      if (!section || section.classId !== dto.classId) {
+        throw new BadRequestException('Selected section does not belong to the selected class');
+      }
+    }
+
+    let yearName = String(new Date().getFullYear());
+    if (dto.academicYearId) {
+      const year = await this.studentsRepo.manager
+        .getRepository('AcademicYear')
+        .findOne({ where: { id: dto.academicYearId } });
+      if (!year) throw new NotFoundException('Academic year not found');
+      yearName = year.name;
+    }
+
+    // Validate every row first; if anything is invalid, nothing is imported
+    // and the caller gets the full per-row error list to fix and re-upload.
+    const errors: BulkRowResult[] = [];
+    const rows: { row: number; entity: BulkStudentFields }[] = [];
+
+    dto.students.forEach((row, index) => {
+      // +2: spreadsheet rows are 1-based and row 1 is the header
+      const rowNo = index + 2;
+      const fail = (error: string) => {
+        errors.push({ row: rowNo, name: (row.name ?? '').trim(), error });
+      };
+      const name = (row.name ?? '').trim();
+      if (!name) {
+        fail('Name is required');
+        return;
+      }
+
+      const entity: BulkStudentFields = { name };
+
+      if (row.rollNumber != null && String(row.rollNumber).trim() !== '') {
+        const roll = parseInt(String(row.rollNumber).trim(), 10);
+        if (isNaN(roll) || roll < 1) {
+          fail('Roll number must be a positive whole number');
+          return;
+        }
+        entity.rollNumber = roll;
+      }
+
+      if (row.gender != null && row.gender.trim() !== '') {
+        const gender = this.normalizeGender(row.gender);
+        if (!gender) {
+          fail(`Unknown gender "${row.gender.trim()}" — use Male, Female or Other`);
+          return;
+        }
+        entity.gender = gender;
+      }
+
+      for (const [key, label] of [
+        ['dateOfBirth', 'Date of birth'],
+        ['admissionDate', 'Admission date'],
+      ] as const) {
+        const raw = row[key];
+        if (raw != null && String(raw).trim() !== '') {
+          const iso = this.normalizeDate(String(raw));
+          if (!iso) {
+            fail(`${label} is not a valid date — use YYYY-MM-DD, DD/MM/YYYY or a date cell`);
+            return;
+          }
+          entity[key] = iso;
+        }
+      }
+
+      for (const key of [
+        'guardianName',
+        'guardianPhone',
+        'address',
+        'referenceNumber',
+        'birthCertificateId',
+        'religion',
+      ] as const) {
+        const raw = row[key];
+        if (raw != null && String(raw).trim() !== '') {
+          entity[key] = String(raw).trim();
+        }
+      }
+
+      rows.push({ row: rowNo, entity });
+    });
+
+    if (errors.length > 0) {
+      return { total: dto.students.length, inserted: 0, failed: [], errors };
+    }
+
+    const prefix = await this.admissionPrefix(dto.schoolId, yearName);
+    let sequence = await this.maxAdmissionSequence(dto.schoolId, prefix);
+    const numbered = rows.map(({ row, entity }) => {
+      sequence += 1;
+      const admissionNumber = `${prefix}${String(sequence).padStart(4, '0')}`;
+      const student = this.studentsRepo.create({
+        ...entity,
+        schoolId: dto.schoolId,
+        academicYearId: dto.academicYearId,
+        classId: dto.classId,
+        sectionId: dto.sectionId,
+        status: StudentStatus.ACTIVE,
+        admissionNumber,
+        createdById: userId,
+      });
+      return { row, student };
+    });
+
+    // Fast path: batched inserts. If a batch fails (e.g. a concurrent request
+    // grabbed an admission number), fall back to row-by-row so only the
+    // genuinely broken rows are reported.
+    const failed: BulkRowResult[] = [];
+    let inserted = 0;
+    const CHUNK_SIZE = 200;
+    for (let i = 0; i < numbered.length; i += CHUNK_SIZE) {
+      const chunk = numbered.slice(i, i + CHUNK_SIZE);
+      try {
+        await this.studentsRepo.insert(chunk.map((c) => c.student));
+        inserted += chunk.length;
+      } catch {
+        for (const { row, student } of chunk) {
+          try {
+            await this.studentsRepo.insert(student);
+            inserted += 1;
+          } catch {
+            failed.push({
+              row,
+              name: student.name,
+              admissionNumber: student.admissionNumber,
+              error: `Could not save (admission number ${student.admissionNumber} may conflict) — retry this row`,
+            });
+          }
+        }
+      }
+    }
+
+    return { total: dto.students.length, inserted, failed, errors: [] };
   }
 }

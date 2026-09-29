@@ -17,9 +17,11 @@ import {
   Edit,
   GraduationCap,
   ArrowRightLeft,
+  Upload,
 } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import { Select, useSchools, useAcademicYears } from '@/components/fee/filters';
+import { BulkUploadModal } from '@/components/students/bulk-upload-modal';
 
 const PAGE_SIZE = 20;
 
@@ -139,6 +141,7 @@ export default function StudentsPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
+  const [formLoading, setFormLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [promoteModal, setPromoteModal] = useState(false);
@@ -151,6 +154,8 @@ export default function StudentsPage() {
 
   const [transferStudent, setTransferStudent] = useState<StudentRow | null>(null);
   const [transferForm, setTransferForm] = useState({ targetSchoolId: '' });
+
+  const [bulkModal, setBulkModal] = useState(false);
 
   // Derived default: first school (no setState inside effects)
   const activeSchoolId = schoolId || (schools[0]?.id ?? '');
@@ -220,6 +225,7 @@ export default function StudentsPage() {
 
   const openEdit = (row: StudentRow) => {
     setEditingId(row.id);
+    setFormLoading(true);
     setForm({
       ...emptyForm,
       name: row.name,
@@ -230,7 +236,9 @@ export default function StudentsPage() {
       rollNumber: row.rollNumber != null ? String(row.rollNumber) : '',
       status: row.status,
     });
-    // Load full profile for edit
+    // Load full profile for edit. Saving stays disabled until this resolves —
+    // otherwise a save built from the partial list-row prefill would null out
+    // every extended field it couldn't see yet.
     api.get(`/students/${row.id}`).then(({ data }) => {
       setForm({
         ...emptyForm,
@@ -270,6 +278,10 @@ export default function StudentsPage() {
         waiverPercent: data.waiverPercent ?? '',
         bkashNumber: data.bkashNumber ?? '',
       });
+      setFormLoading(false);
+    }).catch((error) => {
+      setFormLoading(false);
+      alert(getErrorMessage(error, 'Failed to load student details'));
     });
     setShowModal(true);
   };
@@ -282,43 +294,49 @@ export default function StudentsPage() {
     setSaving(true);
     try {
       const payload: Record<string, unknown> = {
+        // Empty optional fields are sent as explicit null so the backend
+        // clears them — undefined would be dropped from the JSON body and
+        // the old value would silently survive the save.
         name: form.name.trim(),
-        guardianName: form.guardianName || undefined,
-        guardianPhone: form.guardianPhone || undefined,
-        address: form.address || undefined,
-        classId: form.classId || undefined,
-        sectionId: form.sectionId || undefined,
-        rollNumber: form.rollNumber ? parseInt(form.rollNumber, 10) : undefined,
+        guardianName: form.guardianName || null,
+        guardianPhone: form.guardianPhone || null,
+        address: form.address || null,
+        classId: form.classId || null,
+        sectionId: form.sectionId || null,
+        rollNumber: form.rollNumber ? parseInt(form.rollNumber, 10) : null,
         status: form.status,
-        referenceNumber: form.referenceNumber || undefined,
-        birthCertificateId: form.birthCertificateId || undefined,
-        religion: form.religion || undefined,
-        languageSpoken: form.languageSpoken || undefined,
-        motherName: form.motherName || undefined,
-        motherNid: form.motherNid || undefined,
-        motherEducation: form.motherEducation || undefined,
-        motherOccupation: form.motherOccupation || undefined,
-        motherIncome: form.motherIncome || undefined,
-        fatherName: form.fatherName || undefined,
-        fatherNid: form.fatherNid || undefined,
-        fatherEducation: form.fatherEducation || undefined,
-        fatherOccupation: form.fatherOccupation || undefined,
-        fatherIncome: form.fatherIncome || undefined,
-        parentsIncome: form.parentsIncome || undefined,
-        waiverPercent: form.waiverPercent || undefined,
-        bkashNumber: form.bkashNumber || undefined,
-        isPwd: form.isPwd === '' ? undefined : form.isPwd === 'true',
-        involveWithBracService: form.involveWithBracService === '' ? undefined : form.involveWithBracService === 'true',
-        isOrphan: form.isOrphan === '' ? undefined : form.isOrphan === 'true',
-        attendedBracOtherService: form.attendedBracOtherService === '' ? undefined : form.attendedBracOtherService === 'true',
-        participateWithOtherNgo: form.participateWithOtherNgo === '' ? undefined : form.participateWithOtherNgo === 'true',
+        referenceNumber: form.referenceNumber || null,
+        birthCertificateId: form.birthCertificateId || null,
+        religion: form.religion || null,
+        languageSpoken: form.languageSpoken || null,
+        motherName: form.motherName || null,
+        motherNid: form.motherNid || null,
+        motherEducation: form.motherEducation || null,
+        motherOccupation: form.motherOccupation || null,
+        motherIncome: form.motherIncome || null,
+        fatherName: form.fatherName || null,
+        fatherNid: form.fatherNid || null,
+        fatherEducation: form.fatherEducation || null,
+        fatherOccupation: form.fatherOccupation || null,
+        fatherIncome: form.fatherIncome || null,
+        parentsIncome: form.parentsIncome || null,
+        waiverPercent: form.waiverPercent || null,
+        bkashNumber: form.bkashNumber || null,
+        isPwd: form.isPwd === '' ? null : form.isPwd === 'true',
+        involveWithBracService: form.involveWithBracService === '' ? null : form.involveWithBracService === 'true',
+        isOrphan: form.isOrphan === '' ? null : form.isOrphan === 'true',
+        attendedBracOtherService: form.attendedBracOtherService === '' ? null : form.attendedBracOtherService === 'true',
+        participateWithOtherNgo: form.participateWithOtherNgo === '' ? null : form.participateWithOtherNgo === 'true',
+        dateOfBirth: form.dateOfBirth || null,
+        motherDob: form.motherDob || null,
+        fatherDob: form.fatherDob || null,
+        gender: form.gender || null,
+        admissionDate: form.admissionDate || null,
       };
-      if (form.dateOfBirth) payload.dateOfBirth = form.dateOfBirth;
-      if (form.motherDob) payload.motherDob = form.motherDob;
-      if (form.fatherDob) payload.fatherDob = form.fatherDob;
-      if (form.gender) payload.gender = form.gender;
-      if (form.admissionDate) payload.admissionDate = form.admissionDate;
-      if (academicYearId) payload.academicYearId = academicYearId;
+      // The academic year comes from the edit form only; on create it defaults
+      // to the page's year filter. Attaching the filter to edits silently
+      // reassigned the student's academic year on every save.
+      if (!editingId && academicYearId) payload.academicYearId = academicYearId;
 
       if (editingId) {
         await api.patch(`/students/${editingId}`, payload);
@@ -378,6 +396,9 @@ export default function StudentsPage() {
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => setPromoteModal(true)}>
               <GraduationCap size={16} className="mr-1" /> Promote
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setBulkModal(true)}>
+              <Upload size={16} className="mr-1" /> Bulk Upload
             </Button>
             <Button size="sm" onClick={openCreate}>
               <Plus size={16} className="mr-1" /> Add Student
@@ -749,7 +770,9 @@ export default function StudentsPage() {
         </div>
         <div className="mt-4 flex justify-end gap-2 border-t border-gray-100 pt-3">
           <Button variant="outline" onClick={() => setShowModal(false)}>Cancel</Button>
-          <Button onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save Student'}</Button>
+          <Button onClick={handleSave} disabled={saving || formLoading}>
+            {formLoading ? 'Loading…' : saving ? 'Saving…' : 'Save Student'}
+          </Button>
         </div>
       </Modal>
 
@@ -805,6 +828,14 @@ export default function StudentsPage() {
           <Button onClick={handleTransfer}>Transfer</Button>
         </div>
       </Modal>
+
+      {/* Bulk upload */}
+      <BulkUploadModal
+        isOpen={bulkModal}
+        onClose={() => setBulkModal(false)}
+        defaultSchoolId={activeSchoolId}
+        onUploaded={fetchStudents}
+      />
     </>
   );
 }

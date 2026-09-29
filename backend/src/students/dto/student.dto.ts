@@ -11,7 +11,11 @@ import {
   MaxLength,
   Min,
   Max,
+  ArrayMinSize,
+  ArrayMaxSize,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { StudentGender, StudentStatus } from '../entities/student.entity';
 
@@ -579,4 +583,104 @@ export class ListStudentsQueryDto {
   @Min(1)
   @Max(200)
   limit?: number;
+}
+
+// Row values are validated loosely here (strings only) and semantically in
+// the service, so a single malformed spreadsheet row produces a per-row error
+// report instead of a 400 for the whole upload.
+export class BulkStudentRowDto {
+  @ApiPropertyOptional({ example: 'Rahim Ahmed' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  name?: string;
+
+  @ApiPropertyOptional({ example: '1' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(15)
+  rollNumber?: string;
+
+  @ApiPropertyOptional({ example: 'Male' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  gender?: string;
+
+  @ApiPropertyOptional({ example: '2015-01-15' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  dateOfBirth?: string;
+
+  @ApiPropertyOptional({ example: 'Karim Ahmed' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  guardianName?: string;
+
+  @ApiPropertyOptional({ example: '01712345678' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  guardianPhone?: string;
+
+  @ApiPropertyOptional({ example: 'Village, Upazila, District' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  address?: string;
+
+  @ApiPropertyOptional({ example: '2026-01-05' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  admissionDate?: string;
+
+  @ApiPropertyOptional({ description: 'External reference / registry number' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  referenceNumber?: string;
+
+  @ApiPropertyOptional({ description: 'Birth certificate ID' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  birthCertificateId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  religion?: string;
+}
+
+export class BulkUploadStudentsDto {
+  @ApiProperty()
+  @IsUUID()
+  schoolId: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  academicYearId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  classId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  sectionId?: string;
+
+  @ApiProperty({ type: [BulkStudentRowDto] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(1000)
+  @ValidateNested({ each: true })
+  @Type(() => BulkStudentRowDto)
+  students: BulkStudentRowDto[];
 }

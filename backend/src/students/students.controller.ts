@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
   ParseUUIDPipe,
+  HttpCode,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { StudentsService } from './students.service';
@@ -22,6 +23,7 @@ import {
   PromoteStudentsDto,
   TransferStudentDto,
   ListStudentsQueryDto,
+  BulkUploadStudentsDto,
 } from './dto/student.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AccessGuard } from '../auth/guards/access.guard';
@@ -112,6 +114,19 @@ export class StudentsController {
     @CurrentUser('id') userId: string,
   ) {
     return this.service.createStudent(dto, userId);
+  }
+
+  @Post('bulk-upload')
+  @Permissions({ module: 'student-management', action: 'create' })
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Bulk import students (rows parsed from Excel/CSV, sent as JSON)',
+  })
+  bulkUpload(
+    @Body() dto: BulkUploadStudentsDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.service.bulkUploadStudents(dto, userId);
   }
 
   @Get()
