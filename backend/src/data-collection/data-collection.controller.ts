@@ -15,6 +15,7 @@ import { AccessGuard } from '../auth/guards/access.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { DataCollectionService } from './data-collection.service';
+import { HtLeadershipGuard } from './guards/ht-leadership.guard';
 import {
   CreateDcSchoolDto,
   UpdateDcSchoolDto,
@@ -270,6 +271,7 @@ export class DataCollectionController {
 
   @Post('teachers/development')
   @Permissions({ module: 'data-collection', action: 'create', resource: 'teachers-development' })
+  @UseGuards(HtLeadershipGuard)
   upsertTeachersDevelopment(
     @Body() dto: UpsertTeachersDevelopmentDto,
     @CurrentUser('id') userId: string,

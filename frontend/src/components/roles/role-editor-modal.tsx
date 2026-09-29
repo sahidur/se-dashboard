@@ -21,7 +21,13 @@ import {
 const MODULE_GROUPS: {
   label: string;
   accent: string;
-  modules: { key: string; label: string; description?: string }[];
+  modules: {
+    key: string;
+    label: string;
+    description?: string;
+    /** Optional per-question resource — grant is scoped to module+resource. */
+    resource?: string;
+  }[];
 }[] = [
   {
     label: 'General',
@@ -53,6 +59,19 @@ const MODULE_GROUPS: {
         label: 'Edit Submitted Data',
         description:
           'Only the "Update" checkbox matters here. Without it, this role can still create new data-collection records but cannot modify one that has already been submitted.',
+      },
+    ],
+  },
+  {
+    label: 'Per-question Access',
+    accent: 'bg-fuchsia-50 text-fuchsia-700',
+    modules: [
+      {
+        key: 'data-collection',
+        resource: 'ht-leadership',
+        label: 'Leadership Status of HT (Strong / Moderate / Weak)',
+        description:
+          'Exclusive per-question grant — only these roles and Super Admin can set the "Leadership Status of Head Teacher" answer on the Teachers\u2019 Development form (displayed under School-wise Basic Information). Regular form access does not include this question.',
       },
     ],
   },
@@ -206,6 +225,13 @@ interface RoleEditorModalProps {
 }
 
 const DC_FORM_GROUPS = groupDcFormResources();
+
+/** Resource keys rendered as their own per-question module entries. */
+const PER_QUESTION_RESOURCES = new Set(
+  MODULE_GROUPS.flatMap((g) =>
+    g.modules.filter((m) => m.resource).map((m) => m.resource as string),
+  ),
+);
 
 export function RoleEditorModal({
   isOpen,
@@ -452,27 +478,39 @@ export function RoleEditorModal({
                     <span className="text-sm font-bold">{group.label}</span>
                     <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold ring-1 ring-gray-200">
                       {
-                        formData.permissions.filter(
-                          (p) =>
-                            group.modules.some((m) => m.key === p.module) ||
-                            (p.module === 'data-collection' && p.resource),
+                        formData.permissions.filter((p) =>
+                          group.modules.some((m) => {
+                            if (p.module !== m.key) return false;
+                            if (m.resource) return p.resource === m.resource;
+                            // Umbrella module rows match wildcard grants;
+                            // the data-collection row also aggregates its
+                            // per-form grants (per-question grants belong
+                            // to their own group).
+                            return (
+                              !p.resource ||
+                              (p.module === 'data-collection' &&
+                                !PER_QUESTION_RESOURCES.has(p.resource))
+                            );
+                          }),
                         ).length
                       }{' '}
                       granted
                     </span>
                   </div>
                   <div className="divide-y divide-gray-100">
-                    {group.modules.map((module) => (
-                      <Fragment key={module.key}>
+                    {group.modules.map((module) => {
+                      const entryResource = module.resource ?? null;
+                      return (
+                      <Fragment key={`${module.key}:${module.resource ?? ''}`}>
                         <div
                           className={cn(
                             'flex flex-col gap-2 px-4 py-3 transition-colors sm:flex-row sm:items-center',
-                            hasAnyAction(module.key) && 'bg-brand-50/40',
+                            hasAnyAction(module.key, entryResource) && 'bg-brand-50/40',
                           )}
                         >
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
-                              {module.key === 'data-collection' ? (
+                              {module.key === 'data-collection' && !module.resource ? (
                                 <button
                                   type="button"
                                   onClick={() => setDcFormsExpanded((v) => !v)}
@@ -490,7 +528,7 @@ export function RoleEditorModal({
                                   {module.label}
                                 </span>
                               )}
-                              {hasAnyAction(module.key) && (
+                              {hasAnyAction(module.key, entryResource) && (
                                 <Check size={13} className="shrink-0 text-emerald-500" />
                               )}
                             </div>
@@ -507,9 +545,9 @@ export function RoleEditorModal({
                                 <input
                                   type="checkbox"
                                   className="peer sr-only"
-                                  checked={hasPermission(module.key, action)}
+                                  checked={hasPermission(module.key, action, entryResource)}
                                   onChange={() =>
-                                    togglePermission(module.key, action)
+                                    togglePermission(module.key, action, entryResource)
                                   }
                                 />
                                 <span
@@ -528,9 +566,9 @@ export function RoleEditorModal({
                               onClick={() =>
                                 setAllActions(
                                   module.key,
-                                  null,
+                                  entryResource,
                                   !ACTIONS.every((a) =>
-                                    hasPermission(module.key, a),
+                                    hasPermission(module.key, a, entryResource),
                                   ),
                                 )
                               }
@@ -543,7 +581,7 @@ export function RoleEditorModal({
                         </div>
 
                         {/* Per-form DC resources */}
-                        {module.key === 'data-collection' && dcFormsExpanded && (
+                        {module.key === 'data-collection' && !module.resource && dcFormsExpanded && (
                           <div className="bg-violet-50/30 px-4 py-3">
                             {Object.entries(DC_FORM_GROUPS).map(
                               ([groupName, forms]) => (
@@ -641,7 +679,8 @@ export function RoleEditorModal({
                           </div>
                         )}
                       </Fragment>
-                    ))}
+                      );
+                    })}
                   </div>
                 </section>
               ))}

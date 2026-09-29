@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DataCollectionService } from './data-collection.service';
 import { DataCollectionController } from './data-collection.controller';
+import { HtLeadershipGuard } from './guards/ht-leadership.guard';
 import { DcSchool } from './entities/dc-school.entity';
 import { DcBasicInfo } from './entities/dc-basic-info.entity';
 import { DcInfrastructure } from './entities/dc-infrastructure.entity';
@@ -63,7 +64,7 @@ import { FeeCollectionModule } from '../fee-collection/fee-collection.module';
     FeeCollectionModule,
   ],
   controllers: [DataCollectionController],
-  providers: [DataCollectionService],
+  providers: [DataCollectionService, HtLeadershipGuard],
   exports: [DataCollectionService],
 })
 export class DataCollectionModule {}

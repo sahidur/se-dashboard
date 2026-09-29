@@ -377,6 +377,7 @@ export class RolesService {
           { module: 'school-information', actions: ['read'] },
           { module: 'activity-logs', actions: ['read'] },
           { module: 'student-management', actions: ['create', 'read', 'update', 'delete'] },
+          { module: 'data-collection', actions: ['create', 'update'], resource: 'ht-leadership' },
           { module: 'fee-management', actions: ['create', 'read', 'update', 'delete'] },
           { module: 'fee-collection', actions: ['create', 'read', 'update', 'delete'] },
           { module: 'finance-reports', actions: ['read'] },
@@ -408,6 +409,7 @@ export class RolesService {
           { module: 'school-monitoring', actions: ['create', 'read'] },
           { module: 'school-information', actions: ['read'] },
           { module: 'student-management', actions: ['create', 'read', 'update'] },
+          { module: 'data-collection', actions: ['create', 'update'], resource: 'ht-leadership' },
           { module: 'fee-management', actions: ['create', 'read', 'update'] },
           { module: 'fee-collection', actions: ['create', 'read', 'update'] },
           { module: 'finance-reports', actions: ['read'] },
@@ -474,12 +476,13 @@ export class RolesService {
 
         for (const perm of roleData.permissions) {
           for (const action of perm.actions) {
-            const key = `${perm.module}:${action}:*`;
+            const key = `${perm.module}:${action}:${perm.resource || '*'}`;
             if (!existingKeys.has(key)) {
               missing.push(
                 this.permissionsRepository.create({
                   module: perm.module,
                   action: action as any,
+                  resource: perm.resource ?? null,
                   roleId,
                 }),
               );

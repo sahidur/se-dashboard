@@ -117,6 +117,12 @@ export function TeachersDevForm({ schoolId }: Props) {
   const [tab, setTab] = useState<'entry' | 'data'>('entry');
   const canEditSubmitted = useAuthStore((s) => s.hasPermission('data-collection-edit', 'update'));
   const canDeleteSubmitted = useAuthStore((s) => s.hasPermission('data-collection', 'delete', 'teachers-development'));
+  // Exclusive per-question grant (Role Management → Per-question Access):
+  // only roles granted "Leadership Status of HT" (or Super Admin) may answer it.
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const canSetLeadership =
+    hasPermission('data-collection', 'create', 'ht-leadership') ||
+    hasPermission('data-collection', 'update', 'ht-leadership');
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const showToast = useCallback((type: 'success' | 'error', msg: string) => {
@@ -291,7 +297,9 @@ export function TeachersDevForm({ schoolId }: Props) {
         othersTrainingName: form.othersTrainingName.trim() || undefined,
         teacherDropoutRate: toNum(form.teacherDropoutRate),
         headTeacherDropoutRate: toNum(form.headTeacherDropoutRate),
-        headTeacherLeadership: form.headTeacherLeadership,
+        // Omitted without the exclusive grant — the backend preserves any
+        // existing value; new records simply leave the question unanswered.
+        ...(canSetLeadership ? { headTeacherLeadership: form.headTeacherLeadership } : {}),
       });
       const successText = `${month} development data saved successfully!`;
       showToast('success', successText);
@@ -571,13 +579,18 @@ export function TeachersDevForm({ schoolId }: Props) {
                       <select
                         value={form.headTeacherLeadership}
                         onChange={(e) => setForm((prev) => ({ ...prev, headTeacherLeadership: e.target.value as HeadTeacherLeadership }))}
-                        disabled={!academicYear || !month}
+                        disabled={!academicYear || !month || !canSetLeadership}
                         className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300 disabled:opacity-50"
                       >
                         {LEADERSHIP_OPTIONS.map((o) => (
                           <option key={o.value} value={o.value}>{o.label}</option>
                         ))}
                       </select>
+                      {!canSetLeadership && (
+                        <p className="mt-1 text-[11px] text-gray-400">
+                          Locked — only a role with the &ldquo;Leadership Status of HT&rdquo; grant can answer this question.
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
