@@ -57,7 +57,7 @@ import { AcademicYear } from '../fee-management/entities/academic-year.entity';
 import { FinanceReportsService } from '../fee-collection/finance-reports.service';
 import { UsersService } from '../users/users.service';
 
-/** Fee keys stored on the monthly revenue tables; % collection is computed over all of them. */
+/** Union of fee keys stored on monthly revenue records across school categories. */
 const REVENUE_MONTHLY_FEE_KEYS = [
   'tuitionFee', 'admissionFee', 'sessionFee', 'assessmentFee', 'sportsFee',
   'syllabusFee', 'admissionForm', 'testimonialFee', 'othersFee', 'transportFee',
@@ -65,6 +65,24 @@ const REVENUE_MONTHLY_FEE_KEYS = [
   'boatFee', 'terminalAssessment1Fee', 'terminalAssessment2Fee',
   'formativeAssessmentFee', 'classroomLibraryFee', 'eventFee', 'playActivityFee',
 ] as const;
+
+const REVENUE_MONTHLY_FEE_KEYS_BY_CATEGORY: Record<string, readonly string[]> = {
+  brac_primary: [
+    'admissionFee', 'sessionFee', 'tuitionFee', 'assessmentFee', 'sportsFee',
+    'admissionForm', 'exerciseBookFee', 'testimonialFee', 'othersFee',
+  ],
+  brac_secondary: [
+    'tuitionFee', 'admissionFee', 'sessionFee', 'assessmentFee', 'labLibraryFee',
+    'projectClubFee', 'sportsFee', 'sscRegistrationFee', 'admissionForm', 'boatFee',
+    'testimonialFee', 'othersFee',
+  ],
+  brac_academy: [
+    'admissionFee', 'tuitionFee', 'sessionFee', 'assessmentFee', 'sportsFee',
+    'syllabusFee', 'admissionForm', 'testimonialFee', 'othersFee', 'transportFee',
+    'terminalAssessment1Fee', 'terminalAssessment2Fee', 'formativeAssessmentFee',
+    'classroomLibraryFee', 'eventFee', 'playActivityFee',
+  ],
+};
 
 @Injectable()
 export class DataCollectionService {
@@ -667,28 +685,40 @@ export class DataCollectionService {
     return Math.min(parseFloat(((achievement / target) * 100).toFixed(2)), 9999.99);
   }
 
-  /** Sum of every fee target/achievement pair on a monthly revenue payload. */
-  private monthlyTotals(dto: Record<string, number | undefined>): { target: number; achievement: number } {
+  private monthlyFeeKeysForCategory(category?: string): readonly string[] {
+    return REVENUE_MONTHLY_FEE_KEYS_BY_CATEGORY[category ?? ''] ?? REVENUE_MONTHLY_FEE_KEYS;
+  }
+
+  /** Sum the persisted fee target/achievement pairs shown for this school. */
+  private monthlyTotals(record: Record<string, unknown>, feeKeys: readonly string[]): { target: number; achievement: number } {
     let target = 0;
     let achievement = 0;
-    for (const key of REVENUE_MONTHLY_FEE_KEYS) {
-      target += Number(dto[`${key}Target`] ?? 0) || 0;
-      achievement += Number(dto[`${key}Achievement`] ?? 0) || 0;
+    for (const key of feeKeys) {
+      target += Number(record[`${key}Target`] ?? 0) || 0;
+      achievement += Number(record[`${key}Achievement`] ?? 0) || 0;
     }
     return { target, achievement };
   }
 
   async upsertRevenueBudgetMonthly(dto: UpsertRevenueBudgetMonthlyDto, userId: string, roles: string[]): Promise<DcRevenueBudgetMonthly> {
-    await this.validateSchoolAccess(dto.schoolId, userId, roles);
-    const totals = this.monthlyTotals(dto as unknown as Record<string, number | undefined>);
-    const collectionPct = this.calcPct(totals.target, totals.achievement);
+    const school = await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.revBudgetMonthlyRepo.findOne({ where: { schoolId: dto.schoolId, academicYear: dto.academicYear, month: dto.month } });
     await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
-      Object.assign(record, dto, { collectionPct, updatedById: userId });
+      Object.assign(record, dto, { updatedById: userId });
     } else {
-      record = this.revBudgetMonthlyRepo.create({ ...dto, collectionPct, createdById: userId });
+      record = this.revBudgetMonthlyRepo.create({ ...dto, createdById: userId });
     }
+    const feeKeys = this.monthlyFeeKeysForCategory(school.schoolCategory);
+    const activeKeys = new Set(feeKeys);
+    for (const key of REVENUE_MONTHLY_FEE_KEYS) {
+      if (!activeKeys.has(key)) {
+        (record as unknown as Record<string, unknown>)[`${key}Target`] = 0;
+        (record as unknown as Record<string, unknown>)[`${key}Achievement`] = 0;
+      }
+    }
+    const totals = this.monthlyTotals(record as unknown as Record<string, unknown>, feeKeys);
+    record.collectionPct = this.calcPct(totals.target, totals.achievement);
     return this.revBudgetMonthlyRepo.save(record);
   }
 
@@ -737,16 +767,24 @@ export class DataCollectionService {
   // ===================== Revenue Actual Monthly =====================
 
   async upsertRevenueActualMonthly(dto: UpsertRevenueActualMonthlyDto, userId: string, roles: string[]): Promise<DcRevenueActualMonthly> {
-    await this.validateSchoolAccess(dto.schoolId, userId, roles);
-    const totals = this.monthlyTotals(dto as unknown as Record<string, number | undefined>);
-    const collectionPct = this.calcPct(totals.target, totals.achievement);
+    const school = await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.revActualMonthlyRepo.findOne({ where: { schoolId: dto.schoolId, academicYear: dto.academicYear, month: dto.month } });
     await this.assertCanEditExisting(!!record, userId, roles);
     if (record) {
-      Object.assign(record, dto, { collectionPct, updatedById: userId });
+      Object.assign(record, dto, { updatedById: userId });
     } else {
-      record = this.revActualMonthlyRepo.create({ ...dto, collectionPct, createdById: userId });
+      record = this.revActualMonthlyRepo.create({ ...dto, createdById: userId });
     }
+    const feeKeys = this.monthlyFeeKeysForCategory(school.schoolCategory);
+    const activeKeys = new Set(feeKeys);
+    for (const key of REVENUE_MONTHLY_FEE_KEYS) {
+      if (!activeKeys.has(key)) {
+        (record as unknown as Record<string, unknown>)[`${key}Target`] = 0;
+        (record as unknown as Record<string, unknown>)[`${key}Achievement`] = 0;
+      }
+    }
+    const totals = this.monthlyTotals(record as unknown as Record<string, unknown>, feeKeys);
+    record.collectionPct = this.calcPct(totals.target, totals.achievement);
     return this.revActualMonthlyRepo.save(record);
   }
 
