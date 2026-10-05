@@ -14,6 +14,7 @@ import { useSchools } from '@/components/fee/filters';
 // Predefined class list offered in the Add Class modal (in display order;
 // the index doubles as the ordering sequence).
 const PREDEFINED_CLASSES = [
+  'Nursery',
   'Play World',
   'Play & Learn',
   'Grade 1',
@@ -26,6 +27,9 @@ const PREDEFINED_CLASSES = [
   'Grade 8',
   'Grade 9',
   'Grade 10',
+  'SSC',
+  'Grade 5 (Closed)',
+  'Grade 10 (Closed)',
 ];
 
 interface SectionRow {
@@ -297,7 +301,11 @@ export default function ClassesPage() {
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setSelectedPredefined(existingNames)}
+                  onClick={() =>
+                    setSelectedPredefined(
+                      PREDEFINED_CLASSES.filter((name) => !existingNames.includes(name)),
+                    )
+                  }
                   className="text-xs text-brand-600 hover:underline"
                 >
                   Select All

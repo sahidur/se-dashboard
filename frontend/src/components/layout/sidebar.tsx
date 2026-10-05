@@ -479,7 +479,7 @@ export function Sidebar({
       {/* Logo */}
       <div className="flex h-16 items-center justify-between border-b border-gray-100 px-4">
         {!collapsed && (
-          <Link href="/dashboard" className="flex items-center gap-2.5">
+          <Link href="/data-collection/programme-overview" className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-sm font-bold text-white shadow-md shadow-brand-600/30">
               SE
             </div>
