@@ -257,8 +257,11 @@ export class StudentsService {
       .take(limit)
       // Class lists read top-to-bottom by roll: 1, 2, 3… Students without a
       // roll go last (name-ordered); the id tiebreaker keeps pagination
-      // stable when rolls repeat or are missing.
-      .orderBy('student.roll_number', 'ASC', 'NULLS LAST')
+      // stable when rolls repeat or are missing. NOTE: orderBy must use
+      // PROPERTY names — with take/skip pagination TypeORM resolves them
+      // against entity metadata for its DISTINCT wrapper; raw column names
+      // crash it (empty student list).
+      .orderBy('student.rollNumber', 'ASC', 'NULLS LAST')
       .addOrderBy('student.name', 'ASC')
       .addOrderBy('student.id', 'ASC');
 
