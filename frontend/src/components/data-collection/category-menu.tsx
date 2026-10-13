@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -124,6 +124,12 @@ function NavLinkRow({ label, href, icon: Icon, onNavigate }: { label: string; hr
   );
 }
 
+/** Hover-intent delays for the ribbon menu: a quick diagonal pass over a
+ * neighbouring pill must not steal the open dropdown, and the dropdown must
+ * not vanish while the pointer travels the (bridged) gap toward its items. */
+const OPEN_DELAY_MS = 120;
+const CLOSE_DELAY_MS = 300;
+
 /**
  * Compact single-row ribbon menu shown on the School Information detail
  * page. Each form category is a small pill sitting side-by-side, separated
@@ -133,7 +139,9 @@ function NavLinkRow({ label, href, icon: Icon, onNavigate }: { label: string; hr
  */
 export function CategoryMenu({ schoolId, schoolName, schoolCode, schoolCategory }: CategoryMenuProps) {
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const menuRowRef = useRef<HTMLDivElement>(null);
   const hasPermission = useAuthStore((s) => s.hasPermission);
 
   // Hide forms this role cannot read (form-scoped grants; wildcard passes all).
@@ -171,16 +179,59 @@ export function CategoryMenu({ schoolId, schoolName, schoolCode, schoolCategory 
     children: cat.children.filter((c) => canReadModule(c.module)),
   })).filter((cat) => cat.children.length > 0);
 
-  const cancelClose = () => {
+  const clearTimers = () => {
+    if (openTimer.current) {
+      clearTimeout(openTimer.current);
+      openTimer.current = null;
+    }
     if (closeTimer.current) {
       clearTimeout(closeTimer.current);
       closeTimer.current = null;
     }
   };
-  const scheduleClose = () => {
-    cancelClose();
-    closeTimer.current = setTimeout(() => setOpenKey(null), 150);
+  useEffect(() => clearTimers, []);
+
+  /** Pointer entered a pill: switch/open after a short intent delay. */
+  const handleParentEnter = (key: string) => {
+    clearTimers();
+    if (openKey === key) return;
+    openTimer.current = setTimeout(() => setOpenKey(key), OPEN_DELAY_MS);
   };
+
+  /** Pointer entered the open panel: cancel any pending open/close. */
+  const handlePanelEnter = () => clearTimers();
+
+  /** Pointer left the pill/panel: close after a grace period. */
+  const handleLeave = () => {
+    clearTimers();
+    closeTimer.current = setTimeout(() => setOpenKey(null), CLOSE_DELAY_MS);
+  };
+
+  /** Click or keyboard toggle — always overrides pending hover timers. */
+  const togglePanel = (key: string) => {
+    clearTimers();
+    setOpenKey((prev) => (prev === key ? null : key));
+  };
+
+  // Close on outside click or Escape — hover intent alone leaves the panel
+  // dangling after the user clicks elsewhere on the page.
+  useEffect(() => {
+    if (!openKey) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (menuRowRef.current && !menuRowRef.current.contains(e.target as Node)) {
+        setOpenKey(null);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpenKey(null);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [openKey]);
 
   const qs = new URLSearchParams();
   if (schoolName) qs.set('schoolName', schoolName);
@@ -190,7 +241,10 @@ export function CategoryMenu({ schoolId, schoolName, schoolCode, schoolCategory 
   return (
     <Card className="border-0 shadow-sm">
       <CardContent className="px-3 pb-4 pt-4">
-        <div className="flex flex-wrap items-stretch rounded-xl border border-gray-100 bg-gray-50/60 sm:divide-x sm:divide-gray-100">
+        <div
+          ref={menuRowRef}
+          className="flex flex-wrap items-stretch rounded-xl border border-gray-100 bg-gray-50/60 sm:divide-x sm:divide-gray-100"
+        >
           {visibleCategories.map((cat) => {
             const CatIcon = cat.icon;
             const expanded = openKey === cat.key;
@@ -198,12 +252,12 @@ export function CategoryMenu({ schoolId, schoolName, schoolCode, schoolCategory 
               <div
                 key={cat.key}
                 className="relative"
-                onMouseEnter={() => { cancelClose(); setOpenKey(cat.key); }}
-                onMouseLeave={scheduleClose}
+                onMouseEnter={() => handleParentEnter(cat.key)}
+                onMouseLeave={handleLeave}
               >
                 <button
                   type="button"
-                  onClick={() => setOpenKey(expanded ? null : cat.key)}
+                  onClick={() => togglePanel(cat.key)}
                   aria-expanded={expanded}
                   className={`flex items-center gap-1.5 whitespace-nowrap px-3 py-2 text-xs font-medium transition-colors first:rounded-l-xl last:rounded-r-xl ${
                     expanded ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-600 hover:bg-white/70 hover:text-gray-900'
@@ -219,42 +273,45 @@ export function CategoryMenu({ schoolId, schoolName, schoolCode, schoolCategory 
                   />
                 </button>
 
-                {/* Hover/click dropdown with child forms */}
+                {/* Hover/click dropdown with child forms. The pt wrapper keeps
+                    the panel hover-contiguous with the pill (no dead gap). */}
                 {expanded && (
                   <div
-                    onMouseEnter={cancelClose}
-                    onMouseLeave={scheduleClose}
-                    className={`absolute left-0 top-full z-20 mt-1.5 max-h-[70vh] w-80 overflow-y-auto rounded-xl border border-gray-100 bg-white shadow-lg ring-1 sm:w-96 ${cat.ring} max-sm:static max-sm:mt-2 max-sm:w-full`}
+                    onMouseEnter={handlePanelEnter}
+                    onMouseLeave={handleLeave}
+                    className="absolute left-0 top-full z-20 pt-2 max-sm:static"
                   >
-                    <div className="flex flex-col divide-y divide-gray-50 py-1">
-                      {groupForms(cat.forms).map((entry) =>
-                        entry.group ? (
-                          <div key={entry.group} className="py-1">
-                            <p className="px-3 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                              {entry.group}
-                            </p>
-                            <div className="ml-4 border-l border-dashed border-gray-200">
-                              {entry.forms.map((form) => (
-                                <FormLink
-                                  key={form.key}
-                                  form={form}
-                                  href={`/data-collection/school-information/${schoolId}/${form.key}${query}`}
-                                  onNavigate={() => setOpenKey(null)}
-                                  schoolCategory={schoolCategory}
-                                />
-                              ))}
+                    <div className={`max-h-[70vh] w-80 overflow-y-auto rounded-xl border border-gray-100 bg-white shadow-lg ring-1 sm:w-96 ${cat.ring} max-sm:w-full`}>
+                      <div className="flex flex-col divide-y divide-gray-50 py-1">
+                        {groupForms(cat.forms).map((entry) =>
+                          entry.group ? (
+                            <div key={entry.group} className="py-1">
+                              <p className="px-3 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                                {entry.group}
+                              </p>
+                              <div className="ml-4 border-l border-dashed border-gray-200">
+                                {entry.forms.map((form) => (
+                                  <FormLink
+                                    key={form.key}
+                                    form={form}
+                                    href={`/data-collection/school-information/${schoolId}/${form.key}${query}`}
+                                    onNavigate={() => setOpenKey(null)}
+                                    schoolCategory={schoolCategory}
+                                  />
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                        ) : (
-                          <FormLink
-                            key={entry.forms[0].key}
-                            form={entry.forms[0]}
-                            href={`/data-collection/school-information/${schoolId}/${entry.forms[0].key}${query}`}
-                            onNavigate={() => setOpenKey(null)}
-                            schoolCategory={schoolCategory}
-                          />
-                        ),
-                      )}
+                          ) : (
+                            <FormLink
+                              key={entry.forms[0].key}
+                              form={entry.forms[0]}
+                              href={`/data-collection/school-information/${schoolId}/${entry.forms[0].key}${query}`}
+                              onNavigate={() => setOpenKey(null)}
+                              schoolCategory={schoolCategory}
+                            />
+                          ),
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -268,12 +325,12 @@ export function CategoryMenu({ schoolId, schoolName, schoolCode, schoolCategory 
               <div
                 key={cat.key}
                 className="relative"
-                onMouseEnter={() => { cancelClose(); setOpenKey(cat.key); }}
-                onMouseLeave={scheduleClose}
+                onMouseEnter={() => handleParentEnter(cat.key)}
+                onMouseLeave={handleLeave}
               >
                 <button
                   type="button"
-                  onClick={() => setOpenKey(expanded ? null : cat.key)}
+                  onClick={() => togglePanel(cat.key)}
                   aria-expanded={expanded}
                   className={`flex items-center gap-1.5 whitespace-nowrap px-3 py-2 text-xs font-medium transition-colors first:rounded-l-xl last:rounded-r-xl ${
                     expanded ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-600 hover:bg-white/70 hover:text-gray-900'
@@ -289,23 +346,26 @@ export function CategoryMenu({ schoolId, schoolName, schoolCode, schoolCategory 
                   />
                 </button>
 
-                {/* Hover/click dropdown with the module's pages */}
+                {/* Hover/click dropdown with the module's pages. The pt wrapper
+                    keeps the panel hover-contiguous with the pill (no dead gap). */}
                 {expanded && (
                   <div
-                    onMouseEnter={cancelClose}
-                    onMouseLeave={scheduleClose}
-                    className={`absolute left-0 top-full z-20 mt-1.5 max-h-[70vh] w-80 overflow-y-auto rounded-xl border border-gray-100 bg-white shadow-lg ring-1 sm:w-96 ${cat.ring} max-sm:static max-sm:mt-2 max-sm:w-full`}
+                    onMouseEnter={handlePanelEnter}
+                    onMouseLeave={handleLeave}
+                    className="absolute left-0 top-full z-20 pt-2 max-sm:static"
                   >
-                    <div className="flex flex-col divide-y divide-gray-50 py-1">
-                      {cat.children.map((child) => (
-                        <NavLinkRow
-                          key={child.href}
-                          label={child.label}
-                          href={child.href}
-                          icon={child.icon}
-                          onNavigate={() => setOpenKey(null)}
-                        />
-                      ))}
+                    <div className={`max-h-[70vh] w-80 overflow-y-auto rounded-xl border border-gray-100 bg-white shadow-lg ring-1 sm:w-96 ${cat.ring} max-sm:w-full`}>
+                      <div className="flex flex-col divide-y divide-gray-50 py-1">
+                        {cat.children.map((child) => (
+                          <NavLinkRow
+                            key={child.href}
+                            label={child.label}
+                            href={child.href}
+                            icon={child.icon}
+                            onNavigate={() => setOpenKey(null)}
+                          />
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )}
