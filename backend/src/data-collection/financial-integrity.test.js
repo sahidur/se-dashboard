@@ -184,3 +184,94 @@ test('fee generation rolls back an individual insert conflict and continues the 
   assert.ok(queries.includes('ROLLBACK TO SAVEPOINT fee_generation_0'));
   assert.ok(queries.includes('RELEASE SAVEPOINT fee_generation_0'));
 });
+
+test('students info upsert revives a soft-deleted tombstone instead of a 500', async () => {
+  let saved = null;
+  let canEditCalled = false;
+  const tombstone = { id: 'row-1', month: 'March', grade: 'g3', deletedAt: new Date() };
+  const service = Object.create(DataCollectionService.prototype);
+  service.validateSchoolAccess = async () => ({ id: schoolId });
+  service.canEditSubmittedData = async () => {
+    canEditCalled = true;
+    return false;
+  };
+  service.studentsRepo = {
+    findOne: async () => tombstone,
+    create: (_entity, values) => values,
+    save: async (record) => {
+      saved = record;
+      return record;
+    },
+  };
+
+  const result = await service.upsertStudentsInfo(
+    { schoolId, academicYear: 2026, month: 'March', grade: 'g3', boys: 10, total: 10 },
+    'user-id',
+    [],
+  );
+
+  // The tombstone counts as a NEW submission — no edit-permission check ran.
+  assert.equal(canEditCalled, false);
+  // …and the revived row is un-deleted and carries the new values.
+  assert.equal(saved, tombstone);
+  assert.equal(result.deletedAt, null);
+  assert.equal(result.boys, 10);
+});
+
+test('students info upsert still blocks editing a live submitted record without permission', async () => {
+  const service = Object.create(DataCollectionService.prototype);
+  service.validateSchoolAccess = async () => ({ id: schoolId });
+  service.canEditSubmittedData = async () => false;
+  service.studentsRepo = {
+    findOne: async () => ({ id: 'row-2', month: 'March', grade: 'g3', deletedAt: null }),
+  };
+  await assert.rejects(
+    service.upsertStudentsInfo(
+      { schoolId, academicYear: 2026, month: 'March', grade: 'g3' },
+      'user-id',
+      [],
+    ),
+    /already been submitted/,
+  );
+});
+
+test('unique violation on concurrent submit becomes a conflict, not a 500', async () => {
+  const service = Object.create(DataCollectionService.prototype);
+  service.validateSchoolAccess = async () => ({ id: schoolId });
+  service.canEditSubmittedData = async () => true;
+  const failure = new Error('duplicate key value violates unique constraint');
+  failure.driverError = { code: '23505' };
+  service.studentsRepo = {
+    findOne: async () => null,
+    create: (_entity, values) => values,
+    save: async () => {
+      throw failure;
+    },
+  };
+  await assert.rejects(
+    service.upsertStudentsInfo(
+      { schoolId, academicYear: 2026, month: 'March', grade: 'g3' },
+      'user-id',
+      [],
+    ),
+    /already exists/,
+  );
+});
+
+test('monthly students-info month must be a canonical full month name', () => {
+  const { UpsertStudentsInfoDto } = require('./dto/index.ts');
+  const bad = plainToInstance(UpsertStudentsInfoDto, {
+    schoolId,
+    academicYear: 2026,
+    month: 'Sept',
+    grade: 'g3',
+  });
+  const good = plainToInstance(UpsertStudentsInfoDto, {
+    schoolId,
+    academicYear: 2026,
+    month: 'September',
+    grade: 'g3',
+  });
+  assert.ok(validateSync(bad).some((error) => error.property === 'month'));
+  assert.ok(!validateSync(good).some((error) => error.property === 'month'));
+});

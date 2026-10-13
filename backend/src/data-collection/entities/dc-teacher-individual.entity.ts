@@ -34,7 +34,7 @@ export class DcTeacherIndividual {
   @Column({ length: 200 })
   name: string;
 
-  /** Head Teacher | Assistant Teacher | Junior Teacher */
+  /** Head Teacher | Assistant Head Teacher | Assistant Teacher | Junior Teacher */
   @Column({ length: 60 })
   designation: string;
 

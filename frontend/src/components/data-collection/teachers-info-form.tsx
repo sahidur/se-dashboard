@@ -24,7 +24,7 @@ import type { DcSchool, DcTeacherIndividual } from '@/types';
 
 /* ─── Constants ────────────────────────────────────────── */
 
-const DESIGNATIONS = ['Head Teacher', 'Assistant Teacher', 'Junior Teacher'];
+const DESIGNATIONS = ['Head Teacher', 'Assistant Head Teacher', 'Assistant Teacher', 'Junior Teacher'];
 const GENDERS = ['Male', 'Female'];
 const QUALIFICATIONS = ['HSC', 'Hons', 'Masters'];
 
@@ -383,6 +383,7 @@ export function TeachersInfoForm({ schoolId }: Props) {
     { key: 'designation', header: 'Designation', render: (r) => (
       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
         r.designation === 'Head Teacher' ? 'bg-purple-100 text-purple-700'
+        : r.designation === 'Assistant Head Teacher' ? 'bg-indigo-100 text-indigo-700'
         : r.designation === 'Assistant Teacher' ? 'bg-blue-100 text-blue-700'
         : 'bg-gray-100 text-gray-700'
       }`}>{r.designation}</span>

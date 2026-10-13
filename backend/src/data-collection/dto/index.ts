@@ -22,6 +22,17 @@ import { PartialType } from '@nestjs/mapped-types';
 import { Transform, Type } from 'class-transformer';
 import { normalizeGradeValue } from '../../common/utils/grade.utils';
 
+/**
+ * Canonical month names for every month-keyed data-collection form. `month`
+ * is stored as a full name (varchar) and sorted chronologically in JS, so a
+ * non-canonical value ("Sept", lowercase, abbreviations) would both fork
+ * records and break month ordering — validate against this list.
+ */
+export const MONTH_NAMES: string[] = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
 // ===================== School DTOs =====================
 
 export class CreateDcSchoolDto {
@@ -182,7 +193,7 @@ export class UpsertStudentsInfoDto {
   @Type(() => Number) @IsNumber() @Min(1990) academicYear: number;
 
   /** Full month name: 'January' … 'December' */
-  @IsString() @IsNotEmpty() month: string;
+  @IsString() @IsIn(MONTH_NAMES) month: string;
 
   /**
    * Grade key: 'play_learn' | 'nursery' | 'g1' … 'g10'.
@@ -303,7 +314,7 @@ export class CreateTeacherIndividualDto {
   @IsString() @IsNotEmpty() name: string;
 
   @IsString()
-  @IsIn(['Head Teacher', 'Assistant Teacher', 'Junior Teacher'])
+  @IsIn(['Head Teacher', 'Assistant Head Teacher', 'Assistant Teacher', 'Junior Teacher'])
   designation: string;
 
   @IsString()
@@ -365,7 +376,7 @@ export class UpsertTeachersDevelopmentDto {
 
   @Type(() => Number) @IsNumber() @Min(1990) academicYear: number;
 
-  @IsString() @IsNotEmpty() month: string;
+  @IsString() @IsIn(MONTH_NAMES) month: string;
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) onlineRefresher?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) offlineRefresher?: number;
@@ -389,7 +400,7 @@ export class UpsertFeeStructureDto {
 
   @Type(() => Number) @IsNumber() @Min(1990) academicYear: number;
 
-  @IsString() @IsNotEmpty() month: string;
+  @IsString() @IsIn(MONTH_NAMES) month: string;
 
   @Transform(({ value }) => normalizeGradeValue(value, 'label'))
   @IsString()
@@ -455,10 +466,7 @@ export class UpsertRevenueBudgetTotalDto {
 
 // ===================== Revenue Budget Monthly =====================
 
-const REVENUE_MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
+const REVENUE_MONTHS = MONTH_NAMES;
 
 function IsRevenueAmount(): PropertyDecorator {
   return (target, propertyKey) => {
@@ -678,7 +686,7 @@ export class UpsertCocurricularDto {
 
   @Type(() => Number) @IsNumber() @Min(1990) academicYear: number;
 
-  @IsString() @IsNotEmpty() month: string;
+  @IsString() @IsIn(MONTH_NAMES) month: string;
 
   @Transform(({ value }) => normalizeGradeValue(value, 'label'))
   @IsString()
@@ -803,7 +811,7 @@ export class UpsertActivityParticipationDto {
 
   @Type(() => Number) @IsNumber() @Min(1990) year: number;
 
-  @IsString() @IsNotEmpty() month: string;
+  @IsString() @IsIn(MONTH_NAMES) month: string;
 
   @Transform(({ value }) => normalizeGradeValue(value, 'short'))
   @IsString()

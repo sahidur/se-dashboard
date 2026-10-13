@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, ILike, In, IsNull } from 'typeorm';
+import { Repository, ILike, In, IsNull, ObjectLiteral } from 'typeorm';
 import { DcSchool } from './entities/dc-school.entity';
 import { DcBasicInfo } from './entities/dc-basic-info.entity';
 import { DcInfrastructure } from './entities/dc-infrastructure.entity';
@@ -172,6 +172,43 @@ export class DataCollectionService {
     }
   }
 
+  /** PostgreSQL unique-violation (23505) surfaced by TypeORM save failures. */
+  private isUniqueViolation(error: unknown): boolean {
+    const err = error as { code?: string; driverError?: { code?: string } };
+    return (err.driverError?.code ?? err.code) === '23505';
+  }
+
+  /**
+   * Save with a clear 409 instead of an unhandled 500 when the unique index
+   * rejects the write (e.g. two concurrent submissions of the same form).
+   */
+  private async saveGuarded<T extends ObjectLiteral>(repo: Repository<T>, entity: T): Promise<T> {
+    try {
+      return await repo.save(entity);
+    } catch (error) {
+      if (this.isUniqueViolation(error)) {
+        throw new ConflictException(
+          'A record with the same identifying details already exists',
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Un-deletes a soft-deleted row found by an upsert lookup. Every upsert
+   * below is find-then-insert against a table whose unique index ALSO
+   * contains soft-deleted rows (they sit in the recycle bin), so a plain
+   * findOne misses those tombstones and re-submitting a deleted year/month/
+   * grade INSERTed over them — PostgreSQL 23505 → HTTP 500 "Internal server
+   * error" for exactly those months. Reviving the tombstone instead makes
+   * re-submission work; note the revived row carries the NEW values (the
+   * previous ones were already discarded by the delete).
+   */
+  private reviveIfDeleted(record: { deletedAt?: Date | null } | null | undefined): void {
+    if (record) record.deletedAt = null;
+  }
+
   /**
    * Chronological ordering for the month-keyed forms. `month` is stored as a
    * full month NAME (varchar), so a SQL `ORDER BY month ASC` sorts it
@@ -193,12 +230,19 @@ export class DataCollectionService {
   async createSchool(dto: CreateDcSchoolDto, userId: string): Promise<DcSchool> {
     // Auto-generate code if not provided
     const code = dto.code || `SCH-${Date.now().toString(36).toUpperCase()}`;
-    const existing = await this.schoolRepo.findOne({ where: { code } });
+    // withDeleted: soft-deleted schools keep occupying the app-level code
+    // namespace — without this the check misses them and reusing the code
+    // silently forks it (or 500s if a DB unique index ever backs it).
+    const existing = await this.schoolRepo.findOne({ where: { code }, withDeleted: true });
     if (existing) {
-      throw new ConflictException(`School code "${code}" already exists`);
+      throw new ConflictException(
+        existing.deletedAt
+          ? `School code "${code}" already exists (in the recycle bin)`
+          : `School code "${code}" already exists`,
+      );
     }
     const school = this.schoolRepo.create({ ...dto, code, createdById: userId });
-    return this.schoolRepo.save(school);
+    return this.saveGuarded(this.schoolRepo, school);
   }
 
   async findAllSchools(userId: string, roles: string[], search?: string): Promise<DcSchool[]> {
@@ -324,7 +368,7 @@ export class DataCollectionService {
     } else {
       record = this.basicInfoRepo.create({ ...dto, createdById: userId });
     }
-    return this.basicInfoRepo.save(record);
+    return this.saveGuarded(this.basicInfoRepo, record);
   }
 
   async getBasicInfo(
@@ -344,14 +388,18 @@ export class DataCollectionService {
 
   async upsertInfrastructure(dto: UpsertInfrastructureDto, userId: string, roles: string[]): Promise<DcInfrastructure> {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
-    let record = await this.infraRepo.findOne({ where: { schoolId: dto.schoolId, academicYear: dto.academicYear } });
-    await this.assertCanEditExisting(!!record, userId, roles);
+    let record = await this.infraRepo.findOne({
+      where: { schoolId: dto.schoolId, academicYear: dto.academicYear },
+      withDeleted: true,
+    });
+    await this.assertCanEditExisting(!!record && !record.deletedAt, userId, roles);
     if (record) {
+      this.reviveIfDeleted(record);
       Object.assign(record, dto);
     } else {
       record = this.infraRepo.create({ ...dto, createdById: userId });
     }
-    return this.infraRepo.save(record);
+    return this.saveGuarded(this.infraRepo, record);
   }
 
   async getInfrastructure(schoolId: string, userId: string, roles: string[], academicYear?: number): Promise<DcInfrastructure | null> {
@@ -380,14 +428,19 @@ export class DataCollectionService {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.studentsRepo.findOne({
       where: { schoolId: dto.schoolId, academicYear: dto.academicYear, month: dto.month, grade: dto.grade },
+      withDeleted: true,
     });
-    await this.assertCanEditExisting(!!record, userId, roles);
+    // A soft-deleted row for this key (record deleted → recycle bin) must not
+    // block re-submission: treat it as a NEW submission (no edit permission
+    // required) and revive it — see reviveIfDeleted.
+    await this.assertCanEditExisting(!!record && !record.deletedAt, userId, roles);
     if (record) {
+      this.reviveIfDeleted(record);
       Object.assign(record, dto);
     } else {
       record = this.studentsRepo.create({ ...dto, createdById: userId });
     }
-    return this.studentsRepo.save(record);
+    return this.saveGuarded(this.studentsRepo, record);
   }
 
   async getStudentsInfo(schoolId: string, userId: string, roles: string[]): Promise<DcStudentsInfo[]> {
@@ -422,7 +475,7 @@ export class DataCollectionService {
     } else {
       record = this.teachersRepo.create({ ...dto, createdById: userId });
     }
-    return this.teachersRepo.save(record);
+    return this.saveGuarded(this.teachersRepo, record);
   }
 
   async getTeachersInfo(schoolId: string, userId: string, roles: string[]): Promise<DcTeachersInfo | null> {
@@ -473,14 +526,16 @@ export class DataCollectionService {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.teachersDevRepo.findOne({
       where: { schoolId: dto.schoolId, academicYear: dto.academicYear, month: dto.month },
+      withDeleted: true,
     });
-    await this.assertCanEditExisting(!!record, userId, roles);
+    await this.assertCanEditExisting(!!record && !record.deletedAt, userId, roles);
     if (record) {
+      this.reviveIfDeleted(record);
       Object.assign(record, dto);
     } else {
       record = this.teachersDevRepo.create({ ...dto, createdById: userId });
     }
-    return this.teachersDevRepo.save(record);
+    return this.saveGuarded(this.teachersDevRepo, record);
   }
 
   async getTeachersDevelopment(schoolId: string, userId: string, roles: string[]): Promise<DcTeachersDevelopment[]> {
@@ -512,7 +567,7 @@ export class DataCollectionService {
     } else {
       record = this.revenueRepo.create({ ...dto, createdById: userId });
     }
-    return this.revenueRepo.save(record);
+    return this.saveGuarded(this.revenueRepo, record);
   }
 
   async getRevenue(
@@ -541,7 +596,7 @@ export class DataCollectionService {
     } else {
       record = this.performanceRepo.create({ ...dto, createdById: userId });
     }
-    return this.performanceRepo.save(record);
+    return this.saveGuarded(this.performanceRepo, record);
   }
 
   async getPerformance(
@@ -597,12 +652,14 @@ export class DataCollectionService {
     let record = await this.feeStructureRepo.findOne({
       where: { schoolId: dto.schoolId, academicYear: dto.academicYear, month: dto.month, grade: dto.grade },
       relations: ['createdBy', 'updatedBy'],
+      withDeleted: true,
     });
-    await this.assertCanEditExisting(!!record, userId, roles);
+    await this.assertCanEditExisting(!!record && !record.deletedAt, userId, roles);
     if (record) {
+      this.reviveIfDeleted(record);
       const prev = { ...record };
       Object.assign(record, dto, { updatedById: userId });
-      await this.feeStructureRepo.save(record);
+      await this.saveGuarded(this.feeStructureRepo, record);
       // Write audit log
       await this.feeStructureLogRepo.save(
         this.feeStructureLogRepo.create({
@@ -616,7 +673,7 @@ export class DataCollectionService {
       );
     } else {
       record = this.feeStructureRepo.create({ ...dto, createdById: userId });
-      await this.feeStructureRepo.save(record);
+      await this.saveGuarded(this.feeStructureRepo, record);
     }
     return record;
   }
@@ -653,14 +710,18 @@ export class DataCollectionService {
 
   async upsertRevenueBudgetTotal(dto: UpsertRevenueBudgetTotalDto, userId: string, roles: string[]): Promise<DcRevenueBudgetTotal> {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
-    let record = await this.revBudgetTotalRepo.findOne({ where: { schoolId: dto.schoolId, academicYear: dto.academicYear } });
-    await this.assertCanEditExisting(!!record, userId, roles);
+    let record = await this.revBudgetTotalRepo.findOne({
+      where: { schoolId: dto.schoolId, academicYear: dto.academicYear },
+      withDeleted: true,
+    });
+    await this.assertCanEditExisting(!!record && !record.deletedAt, userId, roles);
     if (record) {
+      this.reviveIfDeleted(record);
       Object.assign(record, dto, { updatedById: userId });
     } else {
       record = this.revBudgetTotalRepo.create({ ...dto, createdById: userId });
     }
-    return this.revBudgetTotalRepo.save(record);
+    return this.saveGuarded(this.revBudgetTotalRepo, record);
   }
 
   async getRevenueBudgetTotal(schoolId: string, userId: string, roles: string[], academicYear?: number): Promise<DcRevenueBudgetTotal | null> {
@@ -702,9 +763,13 @@ export class DataCollectionService {
 
   async upsertRevenueBudgetMonthly(dto: UpsertRevenueBudgetMonthlyDto, userId: string, roles: string[]): Promise<DcRevenueBudgetMonthly> {
     const school = await this.validateSchoolAccess(dto.schoolId, userId, roles);
-    let record = await this.revBudgetMonthlyRepo.findOne({ where: { schoolId: dto.schoolId, academicYear: dto.academicYear, month: dto.month } });
-    await this.assertCanEditExisting(!!record, userId, roles);
+    let record = await this.revBudgetMonthlyRepo.findOne({
+      where: { schoolId: dto.schoolId, academicYear: dto.academicYear, month: dto.month },
+      withDeleted: true,
+    });
+    await this.assertCanEditExisting(!!record && !record.deletedAt, userId, roles);
     if (record) {
+      this.reviveIfDeleted(record);
       Object.assign(record, dto, { updatedById: userId });
     } else {
       record = this.revBudgetMonthlyRepo.create({ ...dto, createdById: userId });
@@ -719,7 +784,7 @@ export class DataCollectionService {
     }
     const totals = this.monthlyTotals(record as unknown as Record<string, unknown>, feeKeys);
     record.collectionPct = this.calcPct(totals.target, totals.achievement);
-    return this.revBudgetMonthlyRepo.save(record);
+    return this.saveGuarded(this.revBudgetMonthlyRepo, record);
   }
 
   async getRevenueBudgetMonthly(schoolId: string, userId: string, roles: string[]): Promise<DcRevenueBudgetMonthly[]> {
@@ -739,14 +804,18 @@ export class DataCollectionService {
 
   async upsertRevenueActualTotal(dto: UpsertRevenueActualTotalDto, userId: string, roles: string[]): Promise<DcRevenueActualTotal> {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
-    let record = await this.revActualTotalRepo.findOne({ where: { schoolId: dto.schoolId, academicYear: dto.academicYear } });
-    await this.assertCanEditExisting(!!record, userId, roles);
+    let record = await this.revActualTotalRepo.findOne({
+      where: { schoolId: dto.schoolId, academicYear: dto.academicYear },
+      withDeleted: true,
+    });
+    await this.assertCanEditExisting(!!record && !record.deletedAt, userId, roles);
     if (record) {
+      this.reviveIfDeleted(record);
       Object.assign(record, dto, { updatedById: userId });
     } else {
       record = this.revActualTotalRepo.create({ ...dto, createdById: userId });
     }
-    return this.revActualTotalRepo.save(record);
+    return this.saveGuarded(this.revActualTotalRepo, record);
   }
 
   async getRevenueActualTotal(schoolId: string, userId: string, roles: string[], academicYear?: number): Promise<DcRevenueActualTotal | null> {
@@ -768,9 +837,13 @@ export class DataCollectionService {
 
   async upsertRevenueActualMonthly(dto: UpsertRevenueActualMonthlyDto, userId: string, roles: string[]): Promise<DcRevenueActualMonthly> {
     const school = await this.validateSchoolAccess(dto.schoolId, userId, roles);
-    let record = await this.revActualMonthlyRepo.findOne({ where: { schoolId: dto.schoolId, academicYear: dto.academicYear, month: dto.month } });
-    await this.assertCanEditExisting(!!record, userId, roles);
+    let record = await this.revActualMonthlyRepo.findOne({
+      where: { schoolId: dto.schoolId, academicYear: dto.academicYear, month: dto.month },
+      withDeleted: true,
+    });
+    await this.assertCanEditExisting(!!record && !record.deletedAt, userId, roles);
     if (record) {
+      this.reviveIfDeleted(record);
       Object.assign(record, dto, { updatedById: userId });
     } else {
       record = this.revActualMonthlyRepo.create({ ...dto, createdById: userId });
@@ -785,7 +858,7 @@ export class DataCollectionService {
     }
     const totals = this.monthlyTotals(record as unknown as Record<string, unknown>, feeKeys);
     record.collectionPct = this.calcPct(totals.target, totals.achievement);
-    return this.revActualMonthlyRepo.save(record);
+    return this.saveGuarded(this.revActualMonthlyRepo, record);
   }
 
   async getRevenueActualMonthly(schoolId: string, userId: string, roles: string[]): Promise<DcRevenueActualMonthly[]> {
@@ -805,14 +878,18 @@ export class DataCollectionService {
 
   async upsertPedagogicalAchievement(dto: UpsertPedagogicalAchievementDto, userId: string, roles: string[]): Promise<DcPedagogicalAchievement> {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
-    let record = await this.pedagAchievRepo.findOne({ where: { schoolId: dto.schoolId, year: dto.year } });
-    await this.assertCanEditExisting(!!record, userId, roles);
+    let record = await this.pedagAchievRepo.findOne({
+      where: { schoolId: dto.schoolId, year: dto.year },
+      withDeleted: true,
+    });
+    await this.assertCanEditExisting(!!record && !record.deletedAt, userId, roles);
     if (record) {
+      this.reviveIfDeleted(record);
       Object.assign(record, dto);
     } else {
       record = this.pedagAchievRepo.create({ ...dto, createdById: userId });
     }
-    return this.pedagAchievRepo.save(record);
+    return this.saveGuarded(this.pedagAchievRepo, record);
   }
 
   async getPedagogicalAchievements(schoolId: string, userId: string, roles: string[]): Promise<DcPedagogicalAchievement[]> {
@@ -833,14 +910,16 @@ export class DataCollectionService {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.cocurricularRepo.findOne({
       where: { schoolId: dto.schoolId, academicYear: dto.academicYear, month: dto.month, grade: dto.grade },
+      withDeleted: true,
     });
-    await this.assertCanEditExisting(!!record, userId, roles);
+    await this.assertCanEditExisting(!!record && !record.deletedAt, userId, roles);
     if (record) {
+      this.reviveIfDeleted(record);
       Object.assign(record, dto);
     } else {
       record = this.cocurricularRepo.create({ ...dto, createdById: userId });
     }
-    return this.cocurricularRepo.save(record);
+    return this.saveGuarded(this.cocurricularRepo, record);
   }
 
   async getCocurricular(schoolId: string, userId: string, roles: string[]): Promise<DcCocurricular[]> {
@@ -861,14 +940,16 @@ export class DataCollectionService {
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.studentsPerfRepo.findOne({
       where: { schoolId: dto.schoolId, academicYear: dto.academicYear, grade: dto.grade, examName: dto.examName },
+      withDeleted: true,
     });
-    await this.assertCanEditExisting(!!record, userId, roles);
+    await this.assertCanEditExisting(!!record && !record.deletedAt, userId, roles);
     if (record) {
+      this.reviveIfDeleted(record);
       Object.assign(record, dto);
     } else {
       record = this.studentsPerfRepo.create({ ...dto, createdById: userId });
     }
-    return this.studentsPerfRepo.save(record);
+    return this.saveGuarded(this.studentsPerfRepo, record);
   }
 
   async getStudentsPerformance(schoolId: string, userId: string, roles: string[]): Promise<DcStudentsPerformance[]> {
@@ -913,8 +994,9 @@ export class DataCollectionService {
         grade: dto.grade,
         evaluationPeriod: dto.evaluationPeriod,
       },
+      withDeleted: true,
     });
-    await this.assertCanEditExisting(!!record, userId, roles);
+    await this.assertCanEditExisting(!!record && !record.deletedAt, userId, roles);
 
     const rows = dto.rows.map((r) => ({
       code: r.code,
@@ -946,11 +1028,12 @@ export class DataCollectionService {
     }
 
     if (record) {
+      this.reviveIfDeleted(record);
       Object.assign(record, dto, { rows });
     } else {
       record = this.studentPerfRepo.create({ ...dto, rows, createdById: userId });
     }
-    return this.studentPerfRepo.save(record);
+    return this.saveGuarded(this.studentPerfRepo, record);
   }
 
   async getStudentPerformance(
@@ -1006,17 +1089,20 @@ export class DataCollectionService {
 
   // ===================== Activity Participation (Corner/Club/Library/Lab) =====================
 
-  async upsertActivityParticipation(dto: UpsertActivityParticipationDto, userId: string, roles: string[]): Promise<DcActivityParticipation> {    await this.validateSchoolAccess(dto.schoolId, userId, roles);
+  async upsertActivityParticipation(dto: UpsertActivityParticipationDto, userId: string, roles: string[]): Promise<DcActivityParticipation> {
+    await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let record = await this.activityPartRepo.findOne({
       where: { schoolId: dto.schoolId, item: dto.item, year: dto.year, month: dto.month, grade: dto.grade },
+      withDeleted: true,
     });
-    await this.assertCanEditExisting(!!record, userId, roles);
+    await this.assertCanEditExisting(!!record && !record.deletedAt, userId, roles);
     if (record) {
+      this.reviveIfDeleted(record);
       Object.assign(record, dto);
     } else {
       record = this.activityPartRepo.create({ ...dto, createdById: userId });
     }
-    return this.activityPartRepo.save(record);
+    return this.saveGuarded(this.activityPartRepo, record);
   }
 
   async getActivityParticipation(schoolId: string, userId: string, roles: string[]): Promise<DcActivityParticipation[]> {
