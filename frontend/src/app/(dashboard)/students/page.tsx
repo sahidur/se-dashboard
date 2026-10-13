@@ -62,6 +62,7 @@ interface ClassRow {
 interface StudentRow {
   id: string;
   admissionNumber: string;
+  referenceNumber: string | null;
   name: string;
   guardianName: string | null;
   guardianPhone: string | null;
@@ -474,7 +475,7 @@ export default function StudentsPage() {
                 <Search size={16} className="absolute left-3 top-3.5 text-gray-400" />
                 <Input
                   className="pl-9"
-                  placeholder="Search name / guardian / ID"
+                  placeholder="Search name / guardian / admission or reference no"
                   value={search}
                   onChange={(e) => {
                     setSearch(e.target.value);
@@ -498,6 +499,7 @@ export default function StudentsPage() {
                       onChange={(e) => setSelected(e.target.checked ? rows.map((r) => r.id) : [])}
                     /></th>
                     <th className="px-4 py-3">Admission No</th>
+                    <th className="px-4 py-3">Reference No</th>
                     <th className="px-4 py-3">Name</th>
                     <th className="px-4 py-3">Class</th>
                     <th className="px-4 py-3">Section</th>
@@ -510,10 +512,10 @@ export default function StudentsPage() {
                 </thead>
                 <tbody className="divide-y">
                   {loading ? (
-                    <tr><td colSpan={10} className="px-4 py-10 text-center text-gray-400">Loading…</td></tr>
+                    <tr><td colSpan={11} className="px-4 py-10 text-center text-gray-400">Loading…</td></tr>
                   ) : rows.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="px-4 py-16 text-center">
+                      <td colSpan={11} className="px-4 py-16 text-center">
                         <Users size={40} className="mx-auto mb-2 text-gray-300" />
                         <p className="text-gray-400">No students found</p>
                       </td>
@@ -538,6 +540,7 @@ export default function StudentsPage() {
                           />
                         </td>
                         <td className="px-4 py-3 font-mono text-xs">{row.admissionNumber}</td>
+                        <td className="px-4 py-3 font-mono text-xs">{row.referenceNumber ?? '-'}</td>
                         <td className="px-4 py-3 font-medium text-gray-800 transition-colors group-hover:text-indigo-700">{row.name}</td>
                         <td className="px-4 py-3">{row.schoolClass?.name ?? '-'}</td>
                         <td className="px-4 py-3">{row.section?.name ?? '-'}</td>

@@ -272,7 +272,7 @@ export class StudentsService {
     if (query.status) qb.andWhere('student.status = :status', { status: query.status });
     if (query.search) {
       qb.andWhere(
-        '(student.name ILIKE :search OR student.guardian_name ILIKE :search OR student.guardian_phone ILIKE :search OR student.admission_number ILIKE :search)',
+        '(student.name ILIKE :search OR student.guardian_name ILIKE :search OR student.guardian_phone ILIKE :search OR student.admission_number ILIKE :search OR student.reference_number ILIKE :search)',
         { search: `%${query.search}%` },
       );
     }
