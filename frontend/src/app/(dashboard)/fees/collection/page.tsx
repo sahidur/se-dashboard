@@ -297,17 +297,28 @@ export default function MonthlyCollectionPage() {
             disabled={!activeSchoolId || !activeYearId}
             onClick={async () => {
               try {
-                const { data } = await api.post('/fee-collection/generate', {
+                const body = {
                   schoolId: activeSchoolId,
                   academicYearId: activeYearId,
                   month: parseInt(month, 10),
                   classId: classId || undefined,
-                });
+                };
+                const { data } = await api.post('/fee-collection/generate', body);
+                // Generate skips months that already exist — the recalculate
+                // pass is what makes later discount/structure changes show up
+                // on unpaid rows of the already-generated months.
+                let refreshed = '';
+                try {
+                  const { data: recalc } = await api.post('/fee-collection/recalculate', body);
+                  if (recalc?.updated) refreshed = `, refreshed ${recalc.updated} unpaid record(s)`;
+                } catch {
+                  // recalculation is best-effort — generation result still stands
+                }
                 const failedCount = Array.isArray(data.failed) ? data.failed.length : 0;
                 const failedDetail = failedCount
                   ? ` — failed: ${data.failed.map((f: { admissionNumber: string; reason: string }) => `${f.admissionNumber} (${f.reason})`).join('; ')}`
                   : '';
-                setMessage(`Generated ${data.created} fee record(s) (${data.skipped} already existed).${failedDetail}`);
+                setMessage(`Generated ${data.created} fee record(s) (${data.skipped} already existed)${refreshed}.${failedDetail}`);
                 loadCollection();
               } catch (error) {
                 alert(getErrorMessage(error, 'Fee generation failed'));

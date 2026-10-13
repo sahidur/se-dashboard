@@ -25,14 +25,13 @@ import { AppModule } from './app.module';
 import { FeeHead, FeeSchedule } from './fee-management/entities/fee-head.entity';
 import { AcademicYear } from './fee-management/entities/academic-year.entity';
 import { FeeStructure } from './fee-management/entities/fee-structure.entity';
-import { StudentDiscount, DiscountType } from './fee-management/entities/student-discount.entity';
+import { StudentDiscount } from './fee-management/entities/student-discount.entity';
 import { Student, StudentStatus } from './students/entities/student.entity';
 import { StudentFee, StudentFeeStatus } from './fee-collection/entities/student-fee.entity';
 import { Payment, PaymentMethod, PaymentStatus } from './fee-collection/entities/payment.entity';
 import { Receipt, ReceiptStatus } from './fee-collection/entities/receipt.entity';
 import { SchoolClass } from './students/entities/school-class.entity';
-
-const toMoney = (v: number) => Math.round(v * 100) / 100;
+import { toMoney, computeDiscount } from './fee-management/fee-calculation';
 
 /** Deterministic PRNG so re-running produces the same demo dataset. */
 function mulberry32(seed: number) {
@@ -347,37 +346,6 @@ async function run(): Promise<void> {
   } finally {
     await app.close();
   }
-}
-
-/** Mirrors FeeCollectionService.computeDiscount. */
-function computeDiscount(
-  discounts: StudentDiscount[],
-  studentId: string,
-  feeHeadId: string,
-  headBase: number,
-  month: number,
-  allHeadBases: number[],
-): number {
-  let discount = 0;
-  let totalDiscount = 0;
-  const totalBase = allHeadBases.reduce((s, v) => s + v, 0);
-  if (totalBase <= 0) return 0;
-  for (const d of discounts) {
-    if (d.studentId !== studentId) continue;
-    const applicable = d.isRecurring
-      ? true
-      : month >= (d.effectiveFromMonth ?? 1) && month <= (d.effectiveToMonth ?? 12);
-    if (!applicable) continue;
-    const value = parseFloat(d.value);
-    if (d.feeHeadId === feeHeadId) {
-      discount += d.type === DiscountType.PERCENTAGE ? (headBase * value) / 100 : value;
-    } else if (d.feeHeadId === null) {
-      const share = headBase / totalBase;
-      const amount = d.type === DiscountType.PERCENTAGE ? (totalBase * value) / 100 : value;
-      totalDiscount += amount * share;
-    }
-  }
-  return toMoney(discount + totalDiscount);
 }
 
 run()

@@ -1,4 +1,4 @@
-import { toMoney } from '../fee-management/fee-management.service';
+import { toMoney } from '../fee-management/fee-calculation';
 import { Payment } from './entities/payment.entity';
 import { StudentFee } from './entities/student-fee.entity';
 

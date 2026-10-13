@@ -6,7 +6,7 @@ import { Payment, PaymentStatus } from './entities/payment.entity';
 import { Student, StudentStatus } from '../students/entities/student.entity';
 import { SchoolClass } from '../students/entities/school-class.entity';
 import { SchoolSection } from '../students/entities/section.entity';
-import { toMoney } from '../fee-management/fee-management.service';
+import { toMoney } from '../fee-management/fee-calculation';
 import { computeHeadWisePaid } from './head-wise-paid';
 import { AopTarget } from '../fee-management/entities/aop-target.entity';
 import { FeeStructure } from '../fee-management/entities/fee-structure.entity';

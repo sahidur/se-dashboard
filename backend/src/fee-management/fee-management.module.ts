@@ -10,6 +10,7 @@ import { Student } from '../students/entities/student.entity';
 import { SchoolClass } from '../students/entities/school-class.entity';
 import { DcSchool } from '../data-collection/entities/dc-school.entity';
 import { UsersModule } from '../users/users.module';
+import { FeeCollectionModule } from '../fee-collection/fee-collection.module';
 import { SchoolScopeGuard } from '../students/school-scope.guard';
 
 @Module({
@@ -24,6 +25,7 @@ import { SchoolScopeGuard } from '../students/school-scope.guard';
       DcSchool,
     ]),
     UsersModule,
+    FeeCollectionModule,
   ],
   controllers: [FeeManagementController],
   providers: [FeeManagementService, SchoolScopeGuard],

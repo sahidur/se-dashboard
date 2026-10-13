@@ -16,21 +16,22 @@ import { Payment, PaymentStatus } from './entities/payment.entity';
 import { Receipt, ReceiptStatus } from './entities/receipt.entity';
 import { Student, StudentStatus } from '../students/entities/student.entity';
 import { FeeStructure } from '../fee-management/entities/fee-structure.entity';
-import {
-  StudentDiscount,
-  DiscountType,
-} from '../fee-management/entities/student-discount.entity';
-import { FeeHead, FeeSchedule } from '../fee-management/entities/fee-head.entity';
+import { StudentDiscount } from '../fee-management/entities/student-discount.entity';
+import { FeeHead } from '../fee-management/entities/fee-head.entity';
 import {
   GenerateFeesDto,
   CollectPaymentDto,
   PaymentAllocationDto,
   ListPaymentsQueryDto,
 } from './dto/fee-collection.dto';
-import { toMoney } from '../fee-management/fee-management.service';
+import {
+  toMoney,
+  scheduleApplies,
+  buildBreakdown,
+  computeFeeTotals,
+  breakdownEquals,
+} from '../fee-management/fee-calculation';
 import { computeHeadWisePaid } from './head-wise-paid';
-
-const MONTHS_IN_YEAR = 12;
 
 @Injectable()
 export class FeeCollectionService {
@@ -119,16 +120,10 @@ export class FeeCollectionService {
         // whole batch — the failure is reported, the rest still generate.
         try {
           const rows = structures.filter(
-            (f) => f.classId === student.classId && this.scheduleApplies(f, dto.month),
+            (f) => f.classId === student.classId && scheduleApplies(f, dto.month),
           );
-          const breakdown = this.buildBreakdown(rows, discounts, student.id, dto.month);
-
-          const baseAmount = toMoney(breakdown.reduce((sum, b) => sum + b.base, 0));
-          const discountAmount = toMoney(breakdown.reduce((sum, b) => sum + b.discount, 0));
-          // Derived from the breakdown lines so the stored total always
-          // equals the sum of the per-head figures — rounding drift between
-          // the two would make head-wise dues disagree with the month total.
-          const payableAmount = toMoney(breakdown.reduce((sum, b) => sum + b.payable, 0));
+          const breakdown = buildBreakdown(rows, discounts, student.id, dto.month);
+          const { baseAmount, discountAmount, payableAmount } = computeFeeTotals(breakdown);
           if (payableAmount < 0) {
             throw new BadRequestException(
               `Discount exceeds fee for student ${student.admissionNumber}`,
@@ -180,39 +175,6 @@ export class FeeCollectionService {
     });
   }
 
-  private scheduleApplies(row: FeeStructure, month: number): boolean {
-    if (row.feeHead?.feeSchedule === FeeSchedule.YEARLY) return month === 1;
-    if (row.feeHead?.feeSchedule === FeeSchedule.HALF_YEARLY) return month === 7;
-    return true;
-  }
-
-  private buildBreakdown(
-    rows: FeeStructure[],
-    discounts: StudentDiscount[],
-    studentId: string,
-    month: number,
-  ): StudentFee['breakdown'] {
-    const headBases = rows.map((r) => parseFloat(r.amount));
-    return rows.map((row) => {
-      const base = parseFloat(row.amount);
-      const discount = this.computeDiscount(
-        discounts,
-        studentId,
-        row.feeHeadId,
-        base,
-        month,
-        headBases,
-      );
-      return {
-        feeHeadId: row.feeHeadId,
-        feeHeadName: row.feeHead.name,
-        base: toMoney(base),
-        discount: toMoney(discount),
-        payable: toMoney(base - discount),
-      };
-    });
-  }
-
   /**
    * Recalculates unpaid fee snapshots (status DUE, nothing collected) for a
    * month against the CURRENT fee structure and discounts. Intentionally
@@ -221,107 +183,155 @@ export class FeeCollectionService {
    * money already collected. Partial/paid/cancelled rows are never touched.
    */
   async recalculateFees(dto: GenerateFeesDto): Promise<{ updated: number; skipped: number }> {
-    return this.dataSource.transaction(async (manager) => {
-      const fees = await manager.find(StudentFee, {
-        where: {
-          schoolId: dto.schoolId,
-          academicYearId: dto.academicYearId,
-          month: dto.month,
-          paidAmount: '0.00',
-          status: StudentFeeStatus.DUE,
-          ...(dto.classId ? { classId: dto.classId } : {}),
-        },
-      });
-      if (fees.length === 0) return { updated: 0, skipped: 0 };
+    return this.dataSource.transaction((manager) =>
+      this.recalculateMonthInManager(manager, dto),
+    );
+  }
 
-      const classIds = [...new Set(fees.map((f) => f.classId).filter(Boolean))];
-      const structures = classIds.length
-        ? await manager.find(FeeStructure, {
-            where: {
-              schoolId: dto.schoolId,
-              academicYearId: dto.academicYearId,
-              classId: In(classIds),
-              month: dto.month,
-            },
-            relations: ['feeHead'],
-          })
-        : [];
-      const discounts = await manager.find(StudentDiscount, {
-        where: { academicYearId: dto.academicYearId, studentId: In(fees.map((f) => f.studentId)), isActive: true },
-      });
-
-      let updated = 0;
-      let skipped = 0;
-      for (const fee of fees) {
-        const rows = structures.filter(
-          (f) => f.classId === fee.classId && this.scheduleApplies(f, dto.month),
-        );
-        if (rows.length === 0) {
-          skipped++;
-          continue;
-        }
-        const breakdown = this.buildBreakdown(rows, discounts, fee.studentId, dto.month);
-        const baseAmount = toMoney(breakdown.reduce((sum, b) => sum + b.base, 0));
-        const discountAmount = toMoney(breakdown.reduce((sum, b) => sum + b.discount, 0));
-        if (
-          baseAmount === toMoney(parseFloat(fee.baseAmount)) &&
-          discountAmount === toMoney(parseFloat(fee.discountAmount))
-        ) {
-          skipped++;
-          continue;
-        }
-        fee.breakdown = breakdown;
-        fee.baseAmount = baseAmount.toFixed(2);
-        fee.discountAmount = discountAmount.toFixed(2);
-        fee.payableAmount = toMoney(breakdown.reduce((sum, b) => sum + b.payable, 0)).toFixed(2);
-        await manager.save(fee);
-        updated++;
-      }
-
-      return { updated, skipped };
-    });
+  /** Same as recalculateFees, but joins the caller's transaction. */
+  async recalculateFeesWith(
+    manager: EntityManager,
+    dto: GenerateFeesDto,
+  ): Promise<{ updated: number; skipped: number }> {
+    return this.recalculateMonthInManager(manager, dto);
   }
 
   /**
-   * Applies the student's active discounts for the given month to one fee
-   * head's base amount. Head-level discounts apply to that head only;
-   * total-level discounts distribute proportionally over the head amounts.
-   * The head's discount is clamped to its base — a payable of zero is the
-   * floor, so a mis-keyed discount can never push a breakdown line negative
-   * (a negative line would poison head-wise allocation and dues totals).
+   * Recalculates one student's unpaid fee snapshots — every month of the
+   * academic year (or of one specific year) — against the current fee
+   * structure and discounts. Runs inside the discount create/update/remove
+   * transaction so a discount added under the Student Discounts tab is
+   * reflected in Monthly Collection immediately: generated snapshots are
+   * otherwise never rewritten, because generateFees skips existing months.
+   * Partial/paid/cancelled rows are never touched.
    */
-  private computeDiscount(
-    discounts: StudentDiscount[],
+  async recalculateStudentFees(
     studentId: string,
-    feeHeadId: string,
-    headBase: number,
-    month: number,
-    allHeadBases: number[],
-  ): number {
-    const totalBase = allHeadBases.reduce((s, v) => s + v, 0);
-    if (totalBase <= 0) return 0;
+    academicYearId?: string,
+    manager?: EntityManager,
+  ): Promise<{ updated: number; skipped: number }> {
+    const run = (m: EntityManager) =>
+      this.recalculateStudentInManager(m, studentId, academicYearId);
+    return manager ? run(manager) : this.dataSource.transaction(run);
+  }
 
-    let headLevel = 0;
-    let totalLevel = 0;
+  private async recalculateMonthInManager(
+    manager: EntityManager,
+    dto: GenerateFeesDto,
+  ): Promise<{ updated: number; skipped: number }> {
+    const fees = await manager.find(StudentFee, {
+      where: {
+        schoolId: dto.schoolId,
+        academicYearId: dto.academicYearId,
+        month: dto.month,
+        paidAmount: '0.00',
+        status: StudentFeeStatus.DUE,
+        ...(dto.classId ? { classId: dto.classId } : {}),
+      },
+    });
+    if (fees.length === 0) return { updated: 0, skipped: 0 };
 
-    for (const d of discounts) {
-      if (d.studentId !== studentId) continue;
-      const applicable = d.isRecurring
-        ? true
-        : month >= (d.effectiveFromMonth ?? 1) && month <= (d.effectiveToMonth ?? MONTHS_IN_YEAR);
-      if (!applicable) continue;
+    const discounts = await manager.find(StudentDiscount, {
+      where: {
+        academicYearId: dto.academicYearId,
+        studentId: In(fees.map((f) => f.studentId)),
+        isActive: true,
+      },
+    });
+    const structures = await this.loadStructures(manager, fees);
+    return this.recalculateRows(manager, fees, structures, discounts);
+  }
 
-      const value = parseFloat(d.value);
-      if (d.feeHeadId === feeHeadId) {
-        headLevel += d.type === DiscountType.PERCENTAGE ? (headBase * value) / 100 : value;
-      } else if (d.feeHeadId === null) {
-        const amount =
-          d.type === DiscountType.PERCENTAGE ? (totalBase * value) / 100 : value;
-        totalLevel += amount * (headBase / totalBase);
+  private async recalculateStudentInManager(
+    manager: EntityManager,
+    studentId: string,
+    academicYearId?: string,
+  ): Promise<{ updated: number; skipped: number }> {
+    const fees = await manager.find(StudentFee, {
+      where: {
+        studentId,
+        paidAmount: '0.00',
+        status: StudentFeeStatus.DUE,
+        ...(academicYearId ? { academicYearId } : {}),
+      },
+    });
+    if (fees.length === 0) return { updated: 0, skipped: 0 };
+
+    // A student can carry fee rows across academic years (e.g. after a
+    // promotion) while discounts are year-scoped — filter per row below.
+    const discounts = await manager.find(StudentDiscount, {
+      where: { studentId, isActive: true },
+    });
+    const structures = await this.loadStructures(manager, fees);
+    return this.recalculateRows(manager, fees, structures, discounts);
+  }
+
+  private async loadStructures(
+    manager: EntityManager,
+    fees: StudentFee[],
+  ): Promise<FeeStructure[]> {
+    const schoolIds = [...new Set(fees.map((f) => f.schoolId))];
+    const yearIds = [...new Set(fees.map((f) => f.academicYearId))];
+    const months = [...new Set(fees.map((f) => f.month))];
+    const classIds = [...new Set(fees.map((f) => f.classId).filter(Boolean))] as string[];
+    if (!schoolIds.length || !yearIds.length || !months.length) return [];
+    return manager.find(FeeStructure, {
+      where: {
+        schoolId: In(schoolIds),
+        academicYearId: In(yearIds),
+        month: In(months),
+        ...(classIds.length ? { classId: In(classIds) } : {}),
+      },
+      relations: ['feeHead'],
+    });
+  }
+
+  private async recalculateRows(
+    manager: EntityManager,
+    fees: StudentFee[],
+    structures: FeeStructure[],
+    discounts: StudentDiscount[],
+  ): Promise<{ updated: number; skipped: number }> {
+    let updated = 0;
+    let skipped = 0;
+    for (const fee of fees) {
+      // classId/year/month come from the fee row itself — the snapshot
+      // belongs to the class at generation time, not the student's current one.
+      const rows = structures.filter(
+        (s) =>
+          s.classId === fee.classId &&
+          s.academicYearId === fee.academicYearId &&
+          s.month === fee.month &&
+          scheduleApplies(s, fee.month),
+      );
+      const applicableDiscounts = discounts.filter(
+        (d) => d.academicYearId === fee.academicYearId,
+      );
+
+      // No (schedule-applicable) structure row left for this month means the
+      // current structure no longer charges anything — clear the unpaid row.
+      const breakdown = rows.length
+        ? buildBreakdown(rows, applicableDiscounts, fee.studentId, fee.month)
+        : [];
+      const totals = computeFeeTotals(breakdown);
+
+      const unchanged =
+        breakdownEquals(breakdown, fee.breakdown ?? []) &&
+        totals.baseAmount === toMoney(parseFloat(fee.baseAmount)) &&
+        totals.discountAmount === toMoney(parseFloat(fee.discountAmount)) &&
+        totals.payableAmount === toMoney(parseFloat(fee.payableAmount));
+      if (unchanged) {
+        skipped++;
+        continue;
       }
+      fee.breakdown = breakdown;
+      fee.baseAmount = totals.baseAmount.toFixed(2);
+      fee.discountAmount = totals.discountAmount.toFixed(2);
+      fee.payableAmount = totals.payableAmount.toFixed(2);
+      await manager.save(fee);
+      updated++;
     }
-
-    return toMoney(Math.min(headLevel + totalLevel, headBase));
+    return { updated, skipped };
   }
 
   // ---------- Monthly collection ----------

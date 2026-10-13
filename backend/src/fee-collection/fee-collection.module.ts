@@ -39,6 +39,6 @@ import { SchoolScopeGuard } from '../students/school-scope.guard';
   ],
   controllers: [FeeCollectionController, FinanceReportsController],
   providers: [FeeCollectionService, FinanceReportsService, SchoolScopeGuard],
-  exports: [FinanceReportsService],
+  exports: [FinanceReportsService, FeeCollectionService],
 })
 export class FeeCollectionModule {}

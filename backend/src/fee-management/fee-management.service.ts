@@ -12,6 +12,8 @@ import { FeeStructure } from './entities/fee-structure.entity';
 import { StudentDiscount, DiscountType } from './entities/student-discount.entity';
 import { SchoolClass } from '../students/entities/school-class.entity';
 import { Student } from '../students/entities/student.entity';
+import { FeeCollectionService } from '../fee-collection/fee-collection.service';
+import { toMoney } from './fee-calculation';
 import {
   CreateAcademicYearDto,
   UpdateAcademicYearDto,
@@ -21,12 +23,6 @@ import {
   CreateStudentDiscountDto,
   UpdateStudentDiscountDto,
 } from './dto/fee-management.dto';
-
-const MONTHS_IN_YEAR = 12;
-
-export function toMoney(value: number): number {
-  return Math.round(value * 100) / 100;
-}
 
 @Injectable()
 export class FeeManagementService {
@@ -40,6 +36,7 @@ export class FeeManagementService {
     @InjectRepository(StudentDiscount)
     private readonly discountsRepo: Repository<StudentDiscount>,
     private readonly dataSource: DataSource,
+    private readonly feeCollection: FeeCollectionService,
   ) {}
 
   // ---------- Academic Years ----------
@@ -235,6 +232,18 @@ export class FeeManagementService {
       if (toSave.length) await manager.save(toSave);
       if (toRemove.length) await manager.remove(toRemove);
 
+      // The structure changed → re-apply the unpaid snapshots of this
+      // class/month against it (paid months stay untouched), so Monthly
+      // Collection follows the grid without a manual regenerate.
+      if (toSave.length || toRemove.length) {
+        await this.feeCollection.recalculateFeesWith(manager, {
+          schoolId: dto.schoolId,
+          academicYearId: dto.academicYearId,
+          month: dto.month,
+          classId: dto.classId,
+        });
+      }
+
       return manager.find(FeeStructure, {
         where: {
           schoolId: dto.schoolId,
@@ -295,14 +304,22 @@ export class FeeManagementService {
       });
       if (!head) throw new NotFoundException('Fee head not found');
     }
-    return this.discountsRepo.save(
-      this.discountsRepo.create({
-        ...dto,
-        value: dto.value.toFixed(2),
-        isRecurring: dto.isRecurring ?? true,
-        createdById: userId,
-      }),
-    );
+    // Save and re-apply the student's unpaid fee snapshots in ONE transaction,
+    // so the discount is reflected in Monthly Collection immediately —
+    // generated snapshots are otherwise never rewritten (generateFees skips
+    // existing months), which used to leave the discount invisible there.
+    return this.dataSource.transaction(async (manager) => {
+      const discount = await manager.save(
+        manager.create(StudentDiscount, {
+          ...dto,
+          value: dto.value.toFixed(2),
+          isRecurring: dto.isRecurring ?? true,
+          createdById: userId,
+        }),
+      );
+      await this.feeCollection.recalculateStudentFees(dto.studentId, dto.academicYearId, manager);
+      return discount;
+    });
   }
 
   findStudentDiscounts(studentId: string): Promise<StudentDiscount[]> {
@@ -339,14 +356,29 @@ export class FeeManagementService {
         throw new BadRequestException('Invalid effective month range');
       }
     }
-    Object.assign(discount, dto);
-    if (dto.value !== undefined) discount.value = dto.value.toFixed(2);
-    return this.discountsRepo.save(discount);
+    return this.dataSource.transaction(async (manager) => {
+      Object.assign(discount, dto);
+      if (dto.value !== undefined) discount.value = dto.value.toFixed(2);
+      const saved = await manager.save(discount);
+      await this.feeCollection.recalculateStudentFees(
+        saved.studentId,
+        saved.academicYearId,
+        manager,
+      );
+      return saved;
+    });
   }
 
   async removeStudentDiscount(id: string): Promise<void> {
     const discount = await this.discountsRepo.findOne({ where: { id } });
     if (!discount) throw new NotFoundException('Discount not found');
-    await this.discountsRepo.softRemove(discount);
+    await this.dataSource.transaction(async (manager) => {
+      await manager.softRemove(discount);
+      await this.feeCollection.recalculateStudentFees(
+        discount.studentId,
+        discount.academicYearId,
+        manager,
+      );
+    });
   }
 }
