@@ -120,7 +120,12 @@ test('school scope blocks foreign student IDs and unscoped payment lists', async
   });
   await assert.rejects(guard.canActivate(context('StudentsController', '/api/students/:id', { id: b })), /access denied/);
   await assert.rejects(guard.canActivate(context('FeeCollectionController', '/api/fee-collection/payments')), /access denied/);
-  await assert.rejects(guard.canActivate(context('FinanceReportsController', '/api/finance-reports/planned-revenue')), /access denied/);
+  // planned-revenue is no longer blanket-denied in the guard — the service
+  // scopes it to the caller's assigned/created schools instead.
+  assert.equal(
+    await guard.canActivate(context('FinanceReportsController', '/api/finance-reports/planned-revenue', {}, { academicYearId: b })),
+    true,
+  );
   records.set(c, { id: c, createdById: a });
   assert.equal(await guard.canActivate(context('StudentsController', '/api/students/:id', { id: b })), true);
 });

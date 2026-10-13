@@ -115,10 +115,14 @@ export class FinanceReportsController {
   @Permissions({ module: 'finance-reports', action: 'read' })
   @ApiOperation({
     summary:
-      'Planned Revenue Target (AOP) — all three school categories: AOP target students × fee structure, no discounts, independent of enrolled students',
+      'Planned Revenue Target (AOP) — admins see all school categories; other users see their assigned/created schools. AOP target students × fee structure, no discounts, independent of enrolled students',
   })
-  plannedRevenue(@Query('academicYearId', ParseUUIDPipe) academicYearId: string) {
-    return this.service.plannedRevenueReport(academicYearId);
+  plannedRevenue(
+    @Query('academicYearId', ParseUUIDPipe) academicYearId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    return this.service.plannedRevenueReport(academicYearId, userId, roles);
   }
 
   @Get('aop-targets')

@@ -13,6 +13,7 @@ import { FeeStructure } from '../fee-management/entities/fee-structure.entity';
 import { FeeHead, FeeSchedule } from '../fee-management/entities/fee-head.entity';
 import { AcademicYear } from '../fee-management/entities/academic-year.entity';
 import { DcSchool } from '../data-collection/entities/dc-school.entity';
+import { UsersService } from '../users/users.service';
 import { SaveAopTargetsDto } from './dto/aop-target.dto';
 
 export interface RevenueHeadCell {
@@ -79,7 +80,30 @@ export class FinanceReportsService {
     private readonly schoolsRepo: Repository<DcSchool>,
     @InjectRepository(AcademicYear)
     private readonly yearsRepo: Repository<AcademicYear>,
+    private readonly usersService: UsersService,
   ) {}
+
+  private isAdminRole(roles?: string[]): boolean {
+    return !!roles && (roles.includes('Super Admin') || roles.includes('Admin'));
+  }
+
+  /**
+   * Schools whose finance data the user may see: admins see every school;
+   * everyone else only schools they created or were explicitly assigned
+   * (same access model as the data-collection school lists).
+   */
+  private async visibleSchoolIds(userId: string | undefined, roles?: string[]): Promise<string[] | null> {
+    if (!userId || this.isAdminRole(roles)) return null; // null = no scoping
+    const assigned = await this.usersService.getSchools(userId);
+    const schools = await this.schoolsRepo.find({
+      where: [
+        { createdById: userId, deletedAt: IsNull() },
+        ...(assigned.length ? [{ id: In(assigned.map((s) => s.id)), deletedAt: IsNull() }] : []),
+      ],
+      select: ['id'],
+    });
+    return schools.map((s) => s.id);
+  }
 
   private activeFees(schoolId: string, academicYearId: string, month?: number) {
     return this.feesRepo.find({
@@ -535,15 +559,25 @@ feeStatus: row ? [...row.status].join(', ') : 'no fees generated',
    * school categories. Pure plan arithmetic — AOP target students × the
    * category fee structure, no discounts, no relation to enrolled students.
    */
-  async plannedRevenueReport(academicYearId: string): Promise<{
+  async plannedRevenueReport(
+    academicYearId: string,
+    userId?: string,
+    roles?: string[],
+  ): Promise<{
     academicYear: { id: string; name: string } | null;
     categories: AopCategoryRow[];
   }> {
     const year = await this.yearsRepo.findOne({ where: { id: academicYearId } });
     if (!year) throw new NotFoundException('Academic year not found');
 
+    // Non-admins see the plan for their own schools only (an empty result is
+    // normal for an unassigned user — it is their plan, not a denial).
+    const scopeIds = await this.visibleSchoolIds(userId, roles);
+    if (scopeIds && scopeIds.length === 0) {
+      return { academicYear: { id: year.id, name: year.name }, categories: [] };
+    }
     const schools = await this.schoolsRepo.find({
-      where: { deletedAt: IsNull() },
+      where: { deletedAt: IsNull(), ...(scopeIds ? { id: In(scopeIds) } : {}) },
       order: { name: 'ASC' },
     });
     if (schools.length === 0) return { academicYear: { id: year.id, name: year.name }, categories: [] };

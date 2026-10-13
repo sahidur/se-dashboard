@@ -85,9 +85,11 @@ export class SchoolScopeGuard implements CanActivate {
       const fees = await this.db.getRepository(StudentFee).find({ where: { studentId }, select: ['schoolId'] });
       fees.forEach((fee) => add(fee.schoolId));
     }
-    if (controller === 'FinanceReportsController' && path === '/planned-revenue') {
-      throw new NotFoundException('Report not found or access denied');
-    }
+    // NOTE: GET /finance-reports/planned-revenue has no schoolId query — its
+    // data is scoped to the caller's assigned/created schools inside
+    // FinanceReportsService.plannedRevenueReport instead of here, so users
+    // with the finance-reports read grant get their own plan rather than a
+    // blanket denial.
 
     // A missing scope on a list endpoint must not turn into an all-schools query.
     // NOTE: the /payments rule must NOT require query.schoolId outright — the
