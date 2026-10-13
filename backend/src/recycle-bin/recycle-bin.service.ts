@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not, IsNull, In } from 'typeorm';
+import { Repository, Not, IsNull, In, DataSource } from 'typeorm';
 import { Survey } from '../surveys/entities/survey.entity';
 import { User } from '../users/entities/user.entity';
 import { SurveyCategory } from '../surveys/entities/survey-category.entity';
@@ -124,6 +124,7 @@ export class RecycleBinService {
     private dcRevenueActualMonthlyRepo: Repository<DcRevenueActualMonthly>,
     @InjectRepository(DcSchool)
     private dcSchoolsRepo: Repository<DcSchool>,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -435,8 +436,44 @@ export class RecycleBinService {
       await this.assertCanManageDeletedUser(id, actorId);
     }
     (entity as any).deletedAt = null;
-    await repo.save(entity as any);
+    // If a live record was re-created for the same key after the delete,
+    // the unique index rejects the restore — report a clear 409 instead of
+    // bubbling the driver error as a 500.
+    try {
+      await repo.save(entity as any);
+    } catch (error) {
+      const err = error as { code?: string; driverError?: { code?: string } };
+      if ((err.driverError?.code ?? err.code) === '23505') {
+        throw new ConflictException(
+          'A live record with the same details already exists — delete it first or keep it instead of restoring',
+        );
+      }
+      throw error;
+    }
     return { message: `${entityType} restored successfully` };
+  }
+
+  /**
+   * Every many-to-one column in the schema that references users and is
+   * nullable — the references that can be cleared before a hard delete.
+   * Derived from entity metadata (audit_logs.user_id, students.created_by_id,
+   * DC/fee created_by_id…) so new tables are covered automatically; NOT NULL
+   * columns (surveys.created_by, payments.collected_by_id, receipts.
+   * issued_by_id…) are deliberately left to block the delete with a clear
+   * message instead of being silently rewritten.
+   */
+  private nullableUserForeignKeyColumns(): { tablePath: string; column: string }[] {
+    const columns: { tablePath: string; column: string }[] = [];
+    for (const meta of this.dataSource.entityMetadatas) {
+      for (const rel of meta.relations) {
+        if (rel.relationType !== 'many-to-one') continue;
+        if (rel.inverseEntityMetadata.target !== User) continue;
+        const col = rel.joinColumns[0];
+        if (!col || !col.isNullable) continue;
+        columns.push({ tablePath: meta.tablePath, column: col.databaseName });
+      }
+    }
+    return columns;
   }
 
   async permanentDelete(entityType: RecycleBinEntityType, id: string, actorId?: string) {
@@ -453,7 +490,36 @@ export class RecycleBinService {
     if (entityType === 'user') {
       await this.assertCanManageDeletedUser(id, actorId);
     }
-    await repo.remove(entity as any);
+
+    // Atomic: either the row is fully removed, or nothing changes.
+    await this.dataSource.transaction(async (manager) => {
+      if (entityType === 'user') {
+        // A hard DELETE of a user is rejected by every table referencing them
+        // (audit logs, created data, collected payments…), which surfaced as a
+        // 500. Nullable references are cleared first so users without
+        // hard-linked data can be fully removed — history rows survive with
+        // unknown attribution.
+        for (const { tablePath, column } of this.nullableUserForeignKeyColumns()) {
+          await manager.query(
+            `UPDATE ${tablePath} SET ${column} = NULL WHERE ${column} = $1`,
+            [id],
+          );
+        }
+      }
+      try {
+        await manager.remove(repo.target as any, entity as any);
+      } catch (error) {
+        const err = error as { code?: string; driverError?: { code?: string } };
+        if ((err.driverError?.code ?? err.code) === '23503') {
+          throw new ConflictException(
+            entityType === 'user'
+              ? 'This user still has records that keep them — e.g. surveys, schools or form data they created, payments they collected, or receipts they issued. Users with such data cannot be permanently deleted; deactivate the user instead or keep them in the recycle bin.'
+              : 'This item is still referenced by other records and cannot be permanently deleted.',
+          );
+        }
+        throw error;
+      }
+    });
     return { message: `${entityType} permanently deleted` };
   }
 
