@@ -83,9 +83,10 @@ export default function StudentProfilePage() {
   const [discounts, setDiscounts] = useState<DiscountRow[]>([]);
   const [feeHeads, setFeeHeads] = useState<{ id: string; name: string; category: string | null }[]>([]);
   // Heads actually charged to this student's class in the selected academic
-  // year — identical head names exist per category (brac_academy/primary/
-  // secondary), and a discount on the wrong copy silently does nothing.
-  const [structureHeadIds, setStructureHeadIds] = useState<Set<string>>(new Set());
+  // year, taken from the class fee structure itself. Identical head names
+  // exist per category (brac_academy/primary/secondary) — the structure rows
+  // carry the copy that applies to this student, anything else is a no-op.
+  const [structureHeads, setStructureHeads] = useState<Map<string, { name: string; category: string | null }>>(new Map());
   const [loading, setLoading] = useState(true);
 
   const [showModal, setShowModal] = useState(false);
@@ -119,16 +120,20 @@ export default function StudentProfilePage() {
   const loadStructureHeads = useCallback(
     async (yearId: string) => {
       if (!yearId || !student?.school?.id || !student?.schoolClass?.id) {
-        setStructureHeadIds(new Set());
+        setStructureHeads(new Map());
         return;
       }
       try {
         const { data } = await api.get(
           `/fee-structures?schoolId=${student.school.id}&academicYearId=${yearId}&classId=${student.schoolClass.id}`,
         );
-        setStructureHeadIds(new Set((data as { feeHeadId: string }[]).map((r) => r.feeHeadId)));
+        const heads = new Map<string, { name: string; category: string | null }>();
+        for (const r of data as { feeHead?: { id: string; name: string; category?: string | null } | null }[]) {
+          if (r.feeHead) heads.set(r.feeHead.id, { name: r.feeHead.name, category: r.feeHead.category ?? null });
+        }
+        setStructureHeads(heads);
       } catch {
-        setStructureHeadIds(new Set());
+        setStructureHeads(new Map());
       }
     },
     [student],
@@ -162,16 +167,30 @@ export default function StudentProfilePage() {
     setShowModal(true);
   };
 
+  // Scope list = only the heads the student's class actually charges, so the
+  // dropdown stays short and every pick is guaranteed to apply.
   const headOptions = useMemo(() => {
-    const label = (h: { name: string; category: string | null }) =>
-      h.category ? `${h.name} (${h.category.replaceAll('_', ' ')})` : h.name;
-    const used = feeHeads.filter((h) => structureHeadIds.has(h.id));
-    const unused = feeHeads.filter((h) => !structureHeadIds.has(h.id));
-    return [
-      ...used.map((h) => ({ value: h.id, label: label(h) })),
-      ...unused.map((h) => ({ value: h.id, label: `${label(h)} — not in fee structure` })),
-    ];
-  }, [feeHeads, structureHeadIds]);
+    const label = (name: string, category: string | null) =>
+      category ? `${name} (${category.replaceAll('_', ' ')})` : name;
+    const options = [...structureHeads.entries()]
+      .sort(([, a], [, b]) =>
+        (a.category ?? '').localeCompare(b.category ?? '') || a.name.localeCompare(b.name),
+      )
+      .map(([id, h]) => ({ value: id, label: label(h.name, h.category) }));
+    // While editing a discount whose head is not charged to this class (e.g.
+    // rows saved before the structure check existed), keep that value visible
+    // so the operator knows it must be re-picked.
+    if (editingId && form.feeHeadId && !structureHeads.has(form.feeHeadId)) {
+      const current = feeHeads.find((h) => h.id === form.feeHeadId);
+      if (current) {
+        options.unshift({
+          value: current.id,
+          label: `${label(current.name, current.category)} — not charged to this class`,
+        });
+      }
+    }
+    return options;
+  }, [structureHeads, editingId, form.feeHeadId, feeHeads]);
 
   const handleSave = async () => {
     if (!form.value || parseFloat(form.value) <= 0) {
@@ -461,6 +480,12 @@ export default function StudentProfilePage() {
             placeholder="Total eligible fee"
             options={headOptions}
           />
+          {structureHeads.size === 0 && (
+            <p className="text-xs text-amber-600">
+              This class has no fee structure for the selected year — only a total-fee
+              discount can apply. Set up the class fee structure to discount a specific head.
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <Select
               label="Discount Type"
