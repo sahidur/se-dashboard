@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
@@ -50,7 +50,7 @@ interface FeeSummary {
 
 interface DiscountRow {
   id: string;
-  feeHead: { id: string; name: string } | null;
+  feeHead: { id: string; name: string; category?: string | null } | null;
   type: string;
   value: string;
   isRecurring: boolean;
@@ -81,7 +81,11 @@ export default function StudentProfilePage() {
   const [student, setStudent] = useState<StudentDetail | null>(null);
   const [summary, setSummary] = useState<FeeSummary | null>(null);
   const [discounts, setDiscounts] = useState<DiscountRow[]>([]);
-  const [feeHeads, setFeeHeads] = useState<{ id: string; name: string }[]>([]);
+  const [feeHeads, setFeeHeads] = useState<{ id: string; name: string; category: string | null }[]>([]);
+  // Heads actually charged to this student's class in the selected academic
+  // year — identical head names exist per category (brac_academy/primary/
+  // secondary), and a discount on the wrong copy silently does nothing.
+  const [structureHeadIds, setStructureHeadIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
 
   const [showModal, setShowModal] = useState(false);
@@ -96,7 +100,7 @@ export default function StudentProfilePage() {
         api.get(`/students/${id}`),
         api.get(`/fee-collection/students/${id}/fee-summary`).catch(() => ({ data: null })),
         api.get(`/student-discounts/student/${id}`).catch(() => ({ data: [] })),
-        api.get('/fee-heads').catch(() => ({ data: [] })),
+        api.get('/fee-heads?activeOnly=true').catch(() => ({ data: [] })),
       ]);
       setStudent(s.data);
       setSummary(sum.data);
@@ -111,19 +115,41 @@ export default function StudentProfilePage() {
     load();
   }, [load]);
 
+  // Heads charged to this student's class under the given academic year.
+  const loadStructureHeads = useCallback(
+    async (yearId: string) => {
+      if (!yearId || !student?.school?.id || !student?.schoolClass?.id) {
+        setStructureHeadIds(new Set());
+        return;
+      }
+      try {
+        const { data } = await api.get(
+          `/fee-structures?schoolId=${student.school.id}&academicYearId=${yearId}&classId=${student.schoolClass.id}`,
+        );
+        setStructureHeadIds(new Set((data as { feeHeadId: string }[]).map((r) => r.feeHeadId)));
+      } catch {
+        setStructureHeadIds(new Set());
+      }
+    },
+    [student],
+  );
+
   const openCreate = () => {
     setEditingId(null);
+    const yearId = student?.academicYear?.id ?? years[0]?.id ?? '';
     setForm({
       ...emptyDiscount,
-      academicYearId: student?.academicYear?.id ?? years[0]?.id ?? '',
+      academicYearId: yearId,
     });
+    void loadStructureHeads(yearId);
     setShowModal(true);
   };
 
   const openEdit = (d: DiscountRow) => {
     setEditingId(d.id);
+    const yearId = d.academicYear?.id ?? '';
     setForm({
-      academicYearId: d.academicYear?.id ?? '',
+      academicYearId: yearId,
       feeHeadId: d.feeHead?.id ?? '',
       type: d.type,
       value: String(parseFloat(d.value)),
@@ -132,8 +158,20 @@ export default function StudentProfilePage() {
       effectiveToMonth: d.effectiveToMonth ? String(d.effectiveToMonth) : '',
       reason: d.reason ?? '',
     });
+    void loadStructureHeads(yearId);
     setShowModal(true);
   };
+
+  const headOptions = useMemo(() => {
+    const label = (h: { name: string; category: string | null }) =>
+      h.category ? `${h.name} (${h.category.replaceAll('_', ' ')})` : h.name;
+    const used = feeHeads.filter((h) => structureHeadIds.has(h.id));
+    const unused = feeHeads.filter((h) => !structureHeadIds.has(h.id));
+    return [
+      ...used.map((h) => ({ value: h.id, label: label(h) })),
+      ...unused.map((h) => ({ value: h.id, label: `${label(h)} — not in fee structure` })),
+    ];
+  }, [feeHeads, structureHeadIds]);
 
   const handleSave = async () => {
     if (!form.value || parseFloat(form.value) <= 0) {
@@ -146,14 +184,17 @@ export default function StudentProfilePage() {
     }
     setSaving(true);
     try {
+      // academicYearId is only accepted on create — UpdateStudentDiscountDto has
+      // no such property and forbidNonWhitelisted rejects it ("property
+      // academicYearId should not exist"). A discount's year never changes.
       const payload: Record<string, unknown> = {
-        academicYearId: form.academicYearId,
         feeHeadId: form.feeHeadId || undefined,
         type: form.type,
         value: parseFloat(form.value),
         isRecurring: form.isRecurring === 'true',
         reason: form.reason || undefined,
       };
+      if (!editingId) payload.academicYearId = form.academicYearId;
       if (form.isRecurring === 'false') {
         if (form.effectiveFromMonth) payload.effectiveFromMonth = parseInt(form.effectiveFromMonth, 10);
         if (form.effectiveToMonth) payload.effectiveToMonth = parseInt(form.effectiveToMonth, 10);
@@ -364,7 +405,13 @@ export default function StudentProfilePage() {
                     {discounts.map((d) => (
                       <tr key={d.id} className={d.isActive ? '' : 'opacity-50'}>
                         <td className="px-3 py-2">{d.academicYear?.name ?? '-'}</td>
-                        <td className="px-3 py-2">{d.feeHead?.name ?? 'Total eligible fee'}</td>
+                        <td className="px-3 py-2">
+                          {d.feeHead
+                            ? d.feeHead.category
+                              ? `${d.feeHead.name} (${d.feeHead.category.replaceAll('_', ' ')})`
+                              : d.feeHead.name
+                            : 'Total eligible fee'}
+                        </td>
                         <td className="px-3 py-2 capitalize">{d.type}</td>
                         <td className="px-3 py-2">{d.type === 'percentage' ? `${parseFloat(d.value)}%` : formatBDT(d.value)}</td>
                         <td className="px-3 py-2">
@@ -399,8 +446,12 @@ export default function StudentProfilePage() {
           <Select
             label="Academic Year *"
             value={form.academicYearId}
-            onChange={(v) => setForm({ ...form, academicYearId: v })}
+            onChange={(v) => {
+              setForm({ ...form, academicYearId: v });
+              void loadStructureHeads(v);
+            }}
             placeholder="Select year"
+            disabled={!!editingId}
             options={years.map((y) => ({ value: y.id, label: y.name }))}
           />
           <Select
@@ -408,7 +459,7 @@ export default function StudentProfilePage() {
             value={form.feeHeadId}
             onChange={(v) => setForm({ ...form, feeHeadId: v })}
             placeholder="Total eligible fee"
-            options={feeHeads.map((h) => ({ value: h.id, label: h.name }))}
+            options={headOptions}
           />
           <div className="grid grid-cols-2 gap-3">
             <Select

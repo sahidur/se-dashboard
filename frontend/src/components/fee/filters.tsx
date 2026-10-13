@@ -14,6 +14,7 @@ export function Select({
   label,
   className,
   id,
+  disabled,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -22,6 +23,7 @@ export function Select({
   label?: string;
   className?: string;
   id?: string;
+  disabled?: boolean;
 }) {
   return (
     <UISelect
@@ -31,6 +33,7 @@ export function Select({
       value={value}
       options={options}
       placeholder={placeholder}
+      disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
     />
   );

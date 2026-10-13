@@ -303,6 +303,23 @@ export class FeeManagementService {
         where: { id: dto.feeHeadId },
       });
       if (!head) throw new NotFoundException('Fee head not found');
+      // A head-level discount only bites when the head is actually charged to
+      // the student's class in this academic year. Identical head names exist
+      // per category (brac_academy/primary/secondary) and picking the wrong
+      // copy used to save fine yet apply to nothing — reject it instead.
+      const inStructure = await this.dataSource.manager.findOne(FeeStructure, {
+        where: {
+          classId: student.classId,
+          academicYearId: dto.academicYearId,
+          feeHeadId: dto.feeHeadId,
+        },
+      });
+      if (!inStructure) {
+        throw new BadRequestException(
+          `"${head.name}" is not charged to this student's class in the selected academic year — ` +
+            'the discount would never apply. Add the head to the class fee structure or pick a head that is.',
+        );
+      }
     }
     // Save and re-apply the student's unpaid fee snapshots in ONE transaction,
     // so the discount is reflected in Monthly Collection immediately —
@@ -343,6 +360,26 @@ export class FeeManagementService {
     if (dto.feeHeadId) {
       const head = await this.headsRepo.findOne({ where: { id: dto.feeHeadId } });
       if (!head) throw new NotFoundException('Fee head not found');
+      // Same structure check as on create — the student's class must actually
+      // charge this head in the discount's academic year.
+      const student = await this.dataSource.manager.findOne(Student, {
+        where: { id: discount.studentId },
+      });
+      const inStructure = student?.classId
+        ? await this.dataSource.manager.findOne(FeeStructure, {
+            where: {
+              classId: student.classId,
+              academicYearId: discount.academicYearId,
+              feeHeadId: dto.feeHeadId,
+            },
+          })
+        : null;
+      if (!inStructure) {
+        throw new BadRequestException(
+          `"${head.name}" is not charged to this student's class in the discount's academic year — ` +
+            'the discount would never apply. Add the head to the class fee structure or pick a head that is.',
+        );
+      }
     }
     if (!(dto.isRecurring ?? discount.isRecurring)) {
       const from = dto.effectiveFromMonth ?? discount.effectiveFromMonth;
