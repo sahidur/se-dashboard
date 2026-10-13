@@ -255,7 +255,12 @@ export class StudentsService {
       .where('student.deleted_at IS NULL')
       .skip((page - 1) * limit)
       .take(limit)
-      .orderBy('student.createdAt', 'DESC');
+      // Class lists read top-to-bottom by roll: 1, 2, 3… Students without a
+      // roll go last (name-ordered); the id tiebreaker keeps pagination
+      // stable when rolls repeat or are missing.
+      .orderBy('student.roll_number', 'ASC', 'NULLS LAST')
+      .addOrderBy('student.name', 'ASC')
+      .addOrderBy('student.id', 'ASC');
 
     if (query.schoolId) qb.andWhere('student.school_id = :schoolId', { schoolId: query.schoolId });
     if (query.classId) qb.andWhere('student.class_id = :classId', { classId: query.classId });
