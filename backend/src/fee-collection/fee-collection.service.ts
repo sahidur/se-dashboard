@@ -339,6 +339,15 @@ export class FeeCollectionService {
   /**
    * The main collection view: lists students of a class/section with their
    * fee snapshot for the month, their previous arrear and payment status.
+   *
+   * Snapshots are generated once and never rewritten, so rows created before
+   * a structure grid was saved or edited (Nursery students whose month-1 fees
+   * were generated before their structure existed showed no heads at all)
+   * would render stale head lists and amounts forever. Reconcile the unpaid
+   * rows of exactly this view's scope (school + year + month + class) before
+   * reading: DUE rows are rebuilt from the current structure/discounts;
+   * partial/paid rows are never touched. Best-effort — a sync failure must
+   * never blank the collection grid.
    */
   async monthlyCollection(
     schoolId: string,
@@ -347,6 +356,16 @@ export class FeeCollectionService {
     classId?: string,
     sectionId?: string,
   ) {
+    try {
+      await this.recalculateFees({
+        schoolId,
+        academicYearId,
+        month,
+        ...(classId ? { classId } : {}),
+      });
+    } catch {
+      // sync is best-effort — the read below still returns the stored rows
+    }
     const students = await this.studentsRepo.find({
       where: {
         schoolId,
@@ -777,8 +796,29 @@ export class FeeCollectionService {
 
   // ---------- Student dues ----------
 
+  /**
+   * Reconciles a student's unpaid snapshots for every academic year present
+   * in their fee rows. Year-scoped so rows of one year are never recomputed
+   * against another year's structure. Best-effort — callers render the stored
+   * rows if the sync fails.
+   */
+  private async syncStudentFeeSnapshots(studentId: string): Promise<void> {
+    try {
+      const rows = await this.feesRepo.find({
+        where: { studentId },
+        select: ['academicYearId'],
+      });
+      for (const yearId of [...new Set(rows.map((r) => r.academicYearId))]) {
+        await this.recalculateStudentFees(studentId, yearId);
+      }
+    } catch {
+      // sync is best-effort — the reads below still return the stored rows
+    }
+  }
+
   /** All month rows for a student (paid and unpaid) — preserves the origin month of each due. */
   async studentDues(studentId: string) {
+    await this.syncStudentFeeSnapshots(studentId);
     const fees = await this.feesRepo.find({
       where: { studentId },
       order: { month: 'ASC' },
@@ -799,6 +839,7 @@ export class FeeCollectionService {
   }
 
   async studentFeeSummary(studentId: string) {
+    await this.syncStudentFeeSnapshots(studentId);
     const fees = await this.feesRepo.find({
       where: { studentId, deletedAt: IsNull() },
     });
@@ -834,6 +875,7 @@ export class FeeCollectionService {
    * due amount (installment-friendly partial payments included).
    */
   async studentDuesByHead(studentId: string, academicYearId?: string) {
+    await this.syncStudentFeeSnapshots(studentId);
     const fees = await this.feesRepo.find({
       where: {
         studentId,
