@@ -114,13 +114,37 @@ test('school scope blocks foreign student IDs and unscoped payment lists', async
   const db = { getRepository: () => ({ findOne: async ({ where }) => records.get(where.id) }) };
   const users = { findOneById: async () => ({ schools: [] }) };
   const guard = new SchoolScopeGuard(db, users);
-  const context = (controller, path, params = {}, query = {}) => ({
+  const context = (controller, path, params = {}, query = {}, body = {}) => ({
     getClass: () => ({ name: controller }),
-    switchToHttp: () => ({ getRequest: () => ({ route: { path }, params, query, body: {}, user: { id: a, roles: [] } }) }),
+    switchToHttp: () => ({ getRequest: () => ({ route: { path }, params, query, body, user: { id: a, roles: [] } }) }),
   });
   await assert.rejects(guard.canActivate(context('StudentsController', '/api/students/:id', { id: b })), /access denied/);
   await assert.rejects(guard.canActivate(context('FeeCollectionController', '/api/fee-collection/payments')), /access denied/);
   await assert.rejects(guard.canActivate(context('FinanceReportsController', '/api/finance-reports/planned-revenue')), /access denied/);
   records.set(c, { id: c, createdById: a });
   assert.equal(await guard.canActivate(context('StudentsController', '/api/students/:id', { id: b })), true);
+});
+
+test('collecting a payment passes for an assigned user without query.schoolId', async () => {
+  // regression: POST /fee-collection/payments resolves its school from
+  // body.studentFeeId — demanding query.schoolId rejected every collect by
+  // a non-admin regardless of their school assignment.
+  const records = new Map([
+    [b, { id: b, schoolId: c }],
+    [c, { id: c }],
+  ]);
+  const db = { getRepository: () => ({ findOne: async ({ where }) => records.get(where.id) }) };
+  const guard = new SchoolScopeGuard(db, { findOneById: async () => ({ schools: [{ id: c }] }) });
+  const context = {
+    getClass: () => ({ name: 'FeeCollectionController' }),
+    switchToHttp: () => ({
+      getRequest: () => ({
+        route: { path: '/api/fee-collection/payments' },
+        params: {}, query: {},
+        body: { studentFeeId: b, amount: 1, paymentMethod: 'cash' },
+        user: { id: a, roles: [] },
+      }),
+    }),
+  };
+  assert.equal(await guard.canActivate(context), true);
 });

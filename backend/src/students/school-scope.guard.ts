@@ -90,9 +90,12 @@ export class SchoolScopeGuard implements CanActivate {
     }
 
     // A missing scope on a list endpoint must not turn into an all-schools query.
-    if (controller === 'FeeCollectionController' && path === '/payments' && !query.schoolId) {
-      throw new NotFoundException('School not found or access denied');
-    }
+    // NOTE: the /payments rule must NOT require query.schoolId outright — the
+    // same route path also serves POST (collect a payment), where the school
+    // is resolved from body.studentFeeId instead. Demanding query.schoolId
+    // there rejected EVERY collect by a non-admin ("School not found or
+    // access denied") even for correctly assigned users; the empty-scope
+    // check below still refuses scope-less payment lists.
     if (!schoolIds.size && (
       (controller === 'StudentsController' && ['/', '/classes', '/sections'].includes(path)) ||
       (controller === 'FeeCollectionController' && path === '/payments')
