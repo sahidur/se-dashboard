@@ -24,9 +24,14 @@ export class RecycleBinController {
 
   @Get()
   @Permissions({ module: 'recycle-bin', action: 'read' })
-  @ApiOperation({ summary: 'Get all soft-deleted items' })
-  async findAll() {
-    return this.recycleBinService.findAllDeleted();
+  @ApiOperation({ summary: 'Get all soft-deleted items you may manage' })
+  async findAll(
+    @CurrentUser('id') actorId: string,
+    @CurrentUser('roles') roles: string[],
+  ) {
+    // Actor context scopes the listing: admin-tier roles see every tenant,
+    // everyone else only items of schools they manage / records they created.
+    return this.recycleBinService.findAllDeleted(actorId, roles);
   }
 
   @Patch(':entityType/:id/restore')
@@ -36,9 +41,10 @@ export class RecycleBinController {
     @Param('entityType', new ParseEnumPipe(RECYCLE_BIN_ENTITY_TYPES)) entityType: RecycleBinEntityType,
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser('id') actorId: string,
+    @CurrentUser('roles') roles: string[],
   ) {
-    // actorId enables the privilege-hierarchy guard for user entities.
-    return this.recycleBinService.restore(entityType, id, actorId);
+    // actorId + roles enable the per-entity tenant/privilege guards in the service.
+    return this.recycleBinService.restore(entityType, id, actorId, roles);
   }
 
   @Delete(':entityType/:id')
@@ -48,7 +54,8 @@ export class RecycleBinController {
     @Param('entityType', new ParseEnumPipe(RECYCLE_BIN_ENTITY_TYPES)) entityType: RecycleBinEntityType,
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser('id') actorId: string,
+    @CurrentUser('roles') roles: string[],
   ) {
-    return this.recycleBinService.permanentDelete(entityType, id, actorId);
+    return this.recycleBinService.permanentDelete(entityType, id, actorId, roles);
   }
 }

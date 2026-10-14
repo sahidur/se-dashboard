@@ -146,7 +146,78 @@ export class RecycleBinService {
     return map;
   }
 
-  async findAllDeleted() {
+  // ===================== Tenant scoping =====================
+
+  private isAdminRole(roles?: string[]): boolean {
+    return !!roles?.includes('Super Admin') || !!roles?.includes('Admin');
+  }
+
+  /**
+   * Schools (dc_schools registry) a non-admin user may manage: ones they
+   * created plus ones assigned to them via Users > Assign Schools. Mirrors
+   * the rules used by DataCollectionService.validateSchoolAccess and
+   * SchoolScopeGuard.
+   */
+  private async accessibleSchoolIds(userId: string): Promise<string[]> {
+    const [user, created] = await Promise.all([
+      this.usersRepo.findOne({
+        where: { id: userId },
+        relations: ['schools'],
+      }),
+      this.dcSchoolsRepo.find({
+        where: { createdById: userId },
+        select: ['id'],
+      }),
+    ]);
+    return [
+      ...new Set([
+        ...(user?.schools || []).map((s) => s.id),
+        ...created.map((s) => s.id),
+      ]),
+    ];
+  }
+
+  /**
+   * List every soft-deleted item the calling actor may manage. Admin-tier
+   * roles see all tenants; anyone else is scoped to their own created/assigned
+   * schools and their own surveys/records, so a leaked or over-granted
+   * `recycle-bin:read` permission cannot dump other tenants' deleted data
+   * (including other users' email addresses). Global reference data (deleted
+   * users, survey categories, geo-locations) is admin-only, since it has no
+   * tenant linkage that could be filtered on.
+   */
+  async findAllDeleted(actorId: string, roles: string[]) {
+    const isAdmin = this.isAdminRole(roles);
+    const accessible = isAdmin ? null : await this.accessibleSchoolIds(actorId);
+    const hasSchools = isAdmin || (accessible?.length ?? 0) > 0;
+
+    /** DC rows: every school the actor manages (null group = skip query). */
+    const dcWhere = (): Record<string, unknown> | null =>
+      isAdmin
+        ? { deletedAt: Not(IsNull()) }
+        : hasSchools
+          ? { deletedAt: Not(IsNull()), schoolId: In(accessible!) }
+          : null;
+
+    /** Created-by-me items (surveys, school records). */
+    const createdByMe = (): Record<string, unknown> | null =>
+      isAdmin
+        ? { deletedAt: Not(IsNull()) }
+        : { deletedAt: Not(IsNull()), createdById: actorId };
+
+    /** Items with no tenant linkage — admin-tier only. */
+    const adminOnly = (): Record<string, unknown> | null =>
+      isAdmin ? { deletedAt: Not(IsNull()) } : null;
+
+    const run = async (
+      repo: Repository<any>,
+      where: Record<string, unknown> | null,
+      select?: string[],
+    ): Promise<any[]> =>
+      where
+        ? repo.find({ withDeleted: true, where: where as any, select })
+        : [];
+
     const [
       surveys,
       users,
@@ -171,116 +242,73 @@ export class RecycleBinService {
       revenueActualTotals,
       revenueActualMonthlies,
     ] = await Promise.all([
-        this.surveysRepo.find({
-          withDeleted: true,
-          where: { deletedAt: Not(IsNull()) },
-          select: ['id', 'title', 'category', 'status', 'deletedAt', 'createdAt'],
-        }),
-        this.usersRepo.find({
-          withDeleted: true,
-          where: { deletedAt: Not(IsNull()) },
-          select: ['id', 'firstName', 'lastName', 'email', 'deletedAt', 'createdAt'],
-        }),
-        this.categoriesRepo.find({
-          withDeleted: true,
-          where: { deletedAt: Not(IsNull()) },
-        }),
-        this.schoolRecordsRepo.find({
-          withDeleted: true,
-          where: { deletedAt: Not(IsNull()) },
-          select: ['id', 'name', 'deletedAt', 'createdAt'],
-        }),
-        this.schoolsRepo.find({
-          withDeleted: true,
-          where: { deletedAt: Not(IsNull()) },
-          select: ['id', 'name', 'code', 'deletedAt', 'createdAt'],
-        }),
-        this.geoLocationsRepo.find({
-          withDeleted: true,
-          where: { deletedAt: Not(IsNull()) },
-          select: ['id', 'name', 'type', 'deletedAt', 'createdAt'],
-        }),
-        this.dcTeacherIndividualsRepo.find({
-          withDeleted: true,
-          where: { deletedAt: Not(IsNull()) },
-          select: ['id', 'schoolId', 'academicYear', 'name', 'designation', 'deletedAt', 'createdAt'],
-        }),
-        this.dcAlumniRepo.find({
-          withDeleted: true,
-          where: { deletedAt: Not(IsNull()) },
-          select: ['id', 'schoolId', 'academicYear', 'alumniName', 'graduationYear', 'deletedAt', 'createdAt'],
-        }),
-        this.dcPedagogicalAchievementsRepo.find({
-          withDeleted: true,
-          where: { deletedAt: Not(IsNull()) },
-          select: ['id', 'schoolId', 'year', 'kgScholarship', 'primaryScholarship', 'jrScholarship', 'sscScholarship', 'othersScholarship', 'deletedAt', 'createdAt'],
-        }),
-        this.dcCocurricularRepo.find({
-          withDeleted: true,
-          where: { deletedAt: Not(IsNull()) },
-          select: ['id', 'schoolId', 'academicYear', 'month', 'grade', 'deletedAt', 'createdAt'],
-        }),
-        this.dcStudentsPerformanceRepo.find({
-          withDeleted: true,
-          where: { deletedAt: Not(IsNull()) },
-          select: ['id', 'schoolId', 'academicYear', 'grade', 'examName', 'numberOfStudents', 'deletedAt', 'createdAt'],
-        }),
-        this.dcStudentPerformanceRepo.find({
-          withDeleted: true,
-          where: { deletedAt: Not(IsNull()) },
-          select: ['id', 'schoolId', 'academicYear', 'formKey', 'grade', 'evaluationPeriod', 'numberOfStudents', 'appearedPercent', 'deletedAt', 'createdAt'],
-        }),
-        this.dcActivityParticipationRepo.find({
-          withDeleted: true,
-          where: { deletedAt: Not(IsNull()) },
-          select: ['id', 'schoolId', 'item', 'year', 'month', 'grade', 'activityName', 'conductedCount', 'participationRate', 'deletedAt', 'createdAt'],
-        }),
-        this.dcEventParticipationRepo.find({
-          withDeleted: true,
-          where: { deletedAt: Not(IsNull()) },
-          select: ['id', 'schoolId', 'academicYear', 'eventName', 'awardLevel', 'totalAwarded', 'deletedAt', 'createdAt'],
-        }),
-        this.dcFeeStructureRepo.find({
-          withDeleted: true,
-          where: { deletedAt: Not(IsNull()) },
-          select: ['id', 'schoolId', 'academicYear', 'month', 'grade', 'admissionFee', 'tuitionFee', 'sessionFee', 'assessmentFee', 'sportsFee', 'syllabusFee', 'admissionForm', 'testimonialFee', 'othersFee', 'transportFee', 'deletedAt', 'createdAt'],
-        }),
-        this.dcInfrastructureRepo.find({
-          withDeleted: true,
-          where: { deletedAt: Not(IsNull()) },
-          select: ['id', 'schoolId', 'academicYear', 'campusStatus', 'roomTotal', 'deletedAt', 'createdAt'],
-        }),
-        this.dcStudentsInfoRepo.find({
-          withDeleted: true,
-          where: { deletedAt: Not(IsNull()) },
-          select: ['id', 'schoolId', 'academicYear', 'month', 'grade', 'total', 'deletedAt', 'createdAt'],
-        }),
-        this.dcTeachersDevelopmentRepo.find({
-          withDeleted: true,
-          where: { deletedAt: Not(IsNull()) },
-          select: ['id', 'schoolId', 'academicYear', 'month', 'deletedAt', 'createdAt'],
-        }),
-        this.dcRevenueBudgetTotalRepo.find({
-          withDeleted: true,
-          where: { deletedAt: Not(IsNull()) },
-          select: ['id', 'schoolId', 'academicYear', 'deletedAt', 'createdAt'],
-        }),
-        this.dcRevenueBudgetMonthlyRepo.find({
-          withDeleted: true,
-          where: { deletedAt: Not(IsNull()) },
-          select: ['id', 'schoolId', 'academicYear', 'month', 'collectionPct', 'deletedAt', 'createdAt'],
-        }),
-        this.dcRevenueActualTotalRepo.find({
-          withDeleted: true,
-          where: { deletedAt: Not(IsNull()) },
-          select: ['id', 'schoolId', 'academicYear', 'deletedAt', 'createdAt'],
-        }),
-        this.dcRevenueActualMonthlyRepo.find({
-          withDeleted: true,
-          where: { deletedAt: Not(IsNull()) },
-          select: ['id', 'schoolId', 'academicYear', 'month', 'collectionPct', 'deletedAt', 'createdAt'],
-        }),
-      ]);
+      run(this.surveysRepo, createdByMe(), [
+        'id', 'title', 'category', 'status', 'deletedAt', 'createdAt',
+      ]),
+      run(this.usersRepo, adminOnly(), [
+        'id', 'firstName', 'lastName', 'email', 'deletedAt', 'createdAt',
+      ]),
+      run(this.categoriesRepo, adminOnly()),
+      run(this.schoolRecordsRepo, createdByMe(), [
+        'id', 'name', 'deletedAt', 'createdAt',
+      ]),
+      // School rows (students-module registry) carry no tenant linkage —
+      // admin-tier only, like categories/geo-locations.
+      run(this.schoolsRepo, adminOnly(), [
+        'id', 'name', 'code', 'deletedAt', 'createdAt',
+      ]),
+      run(this.geoLocationsRepo, adminOnly(), [
+        'id', 'name', 'type', 'deletedAt', 'createdAt',
+      ]),
+      run(this.dcTeacherIndividualsRepo, dcWhere(), [
+        'id', 'schoolId', 'academicYear', 'name', 'designation', 'deletedAt', 'createdAt',
+      ]),
+      run(this.dcAlumniRepo, dcWhere(), [
+        'id', 'schoolId', 'academicYear', 'alumniName', 'graduationYear', 'deletedAt', 'createdAt',
+      ]),
+      run(this.dcPedagogicalAchievementsRepo, dcWhere(), [
+        'id', 'schoolId', 'year', 'kgScholarship', 'primaryScholarship', 'jrScholarship', 'sscScholarship', 'othersScholarship', 'deletedAt', 'createdAt',
+      ]),
+      run(this.dcCocurricularRepo, dcWhere(), [
+        'id', 'schoolId', 'academicYear', 'month', 'grade', 'deletedAt', 'createdAt',
+      ]),
+      run(this.dcStudentsPerformanceRepo, dcWhere(), [
+        'id', 'schoolId', 'academicYear', 'grade', 'examName', 'numberOfStudents', 'deletedAt', 'createdAt',
+      ]),
+      run(this.dcStudentPerformanceRepo, dcWhere(), [
+        'id', 'schoolId', 'academicYear', 'formKey', 'grade', 'evaluationPeriod', 'numberOfStudents', 'appearedPercent', 'deletedAt', 'createdAt',
+      ]),
+      run(this.dcActivityParticipationRepo, dcWhere(), [
+        'id', 'schoolId', 'item', 'year', 'month', 'grade', 'activityName', 'conductedCount', 'participationRate', 'deletedAt', 'createdAt',
+      ]),
+      run(this.dcEventParticipationRepo, dcWhere(), [
+        'id', 'schoolId', 'academicYear', 'eventName', 'awardLevel', 'totalAwarded', 'deletedAt', 'createdAt',
+      ]),
+      run(this.dcFeeStructureRepo, dcWhere(), [
+        'id', 'schoolId', 'academicYear', 'month', 'grade', 'admissionFee', 'tuitionFee', 'sessionFee', 'assessmentFee', 'sportsFee', 'syllabusFee', 'admissionForm', 'testimonialFee', 'othersFee', 'transportFee', 'deletedAt', 'createdAt',
+      ]),
+      run(this.dcInfrastructureRepo, dcWhere(), [
+        'id', 'schoolId', 'academicYear', 'campusStatus', 'roomTotal', 'deletedAt', 'createdAt',
+      ]),
+      run(this.dcStudentsInfoRepo, dcWhere(), [
+        'id', 'schoolId', 'academicYear', 'month', 'grade', 'total', 'deletedAt', 'createdAt',
+      ]),
+      run(this.dcTeachersDevelopmentRepo, dcWhere(), [
+        'id', 'schoolId', 'academicYear', 'month', 'deletedAt', 'createdAt',
+      ]),
+      run(this.dcRevenueBudgetTotalRepo, dcWhere(), [
+        'id', 'schoolId', 'academicYear', 'deletedAt', 'createdAt',
+      ]),
+      run(this.dcRevenueBudgetMonthlyRepo, dcWhere(), [
+        'id', 'schoolId', 'academicYear', 'month', 'collectionPct', 'deletedAt', 'createdAt',
+      ]),
+      run(this.dcRevenueActualTotalRepo, dcWhere(), [
+        'id', 'schoolId', 'academicYear', 'deletedAt', 'createdAt',
+      ]),
+      run(this.dcRevenueActualMonthlyRepo, dcWhere(), [
+        'id', 'schoolId', 'academicYear', 'month', 'collectionPct', 'deletedAt', 'createdAt',
+      ]),
+    ]);
 
     // Batch-resolve school names for all DC record types.
     const schoolNames = new Map<string, string>();
@@ -421,7 +449,12 @@ export class RecycleBinService {
     };
   }
 
-  async restore(entityType: RecycleBinEntityType, id: string, actorId?: string) {
+  async restore(
+    entityType: RecycleBinEntityType,
+    id: string,
+    actorId: string,
+    roles: string[],
+  ) {
     const repo = this.getRepository(entityType);
     const entity = await repo.findOne({
       withDeleted: true,
@@ -430,11 +463,10 @@ export class RecycleBinService {
     if (!entity || !(entity as any).deletedAt) {
       throw new NotFoundException('Deleted item not found');
     }
-    // Restoring a soft-deleted account resurrects it — same takeover risk as
-    // editing a live user, so the privilege-hierarchy rule applies.
-    if (entityType === 'user') {
-      await this.assertCanManageDeletedUser(id, actorId);
-    }
+    // Restore only items the actor may manage — a raw UUID lookup must not
+    // resurrect another tenant's deleted data (or a user above the actor's
+    // privilege level).
+    await this.assertCanManageRecycleBinItem(entityType, entity, actorId, roles);
     (entity as any).deletedAt = null;
     // If a live record was re-created for the same key after the delete,
     // the unique index rejects the restore — report a clear 409 instead of
@@ -476,7 +508,12 @@ export class RecycleBinService {
     return columns;
   }
 
-  async permanentDelete(entityType: RecycleBinEntityType, id: string, actorId?: string) {
+  async permanentDelete(
+    entityType: RecycleBinEntityType,
+    id: string,
+    actorId: string,
+    roles: string[],
+  ) {
     const repo = this.getRepository(entityType);
     const entity = await repo.findOne({
       withDeleted: true,
@@ -487,9 +524,10 @@ export class RecycleBinService {
         'Item not found in recycle bin. Only soft-deleted items can be permanently removed.',
       );
     }
-    if (entityType === 'user') {
-      await this.assertCanManageDeletedUser(id, actorId);
-    }
+    // Hard-deleting another tenant's soft-deleted rows (fee structures,
+    // revenue records, schools…) is as destructive as restoring them — apply
+    // the same per-entity manage guard.
+    await this.assertCanManageRecycleBinItem(entityType, entity, actorId, roles);
 
     // Atomic: either the row is fully removed, or nothing changes.
     await this.dataSource.transaction(async (manager) => {
@@ -521,6 +559,45 @@ export class RecycleBinService {
       }
     });
     return { message: `${entityType} permanently deleted` };
+  }
+
+  /**
+   * Per-entity ownership/tenant guard for restore and permanent delete.
+   * Admin-tier roles manage everything. Everyone else:
+   *  - user        → privilege-hierarchy rule (assertCanManageDeletedUser)
+   *  - survey /
+   *    school-record → own records only
+   *  - dc-*        → rows belonging to schools they manage
+   *  - school /
+   *    category /
+   *    geo-location → no tenant linkage (global registries) → admins only
+   * Denials throw the same 404 as a missing item so probing other tenants'
+   * UUIDs does not disclose which soft-deleted rows exist.
+   */
+  private async assertCanManageRecycleBinItem(
+    entityType: RecycleBinEntityType,
+    entity: any,
+    actorId: string,
+    roles: string[],
+  ): Promise<void> {
+    if (this.isAdminRole(roles)) return;
+    if (entityType === 'user') {
+      await this.assertCanManageDeletedUser(entity.id, actorId);
+      return;
+    }
+    if (entityType === 'survey' || entityType === 'school-record') {
+      if (entity.createdById !== actorId) {
+        throw new NotFoundException('Deleted item not found');
+      }
+      return;
+    }
+    if (entityType.startsWith('dc-')) {
+      const accessible = await this.accessibleSchoolIds(actorId);
+      if (accessible.includes(entity.schoolId)) return;
+      throw new NotFoundException('Deleted item not found');
+    }
+    // 'school', 'category' and 'geo-location': no tenant linkage → admins only.
+    throw new NotFoundException('Deleted item not found');
   }
 
   /**

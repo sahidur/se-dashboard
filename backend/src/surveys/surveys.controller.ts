@@ -217,16 +217,24 @@ export class SurveysController {
 
   @Get(':id/stats')
   @Permissions({ module: 'surveys', action: 'read' })
-  @ApiOperation({ summary: 'Get survey statistics' })
-  async getStats(@Param('id', ParseUUIDPipe) id: string) {
-    return this.surveysService.getSurveyStats(id);
+  @ApiOperation({ summary: 'Get survey statistics (creator/admin only)' })
+  async getStats(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    // Ownership guard in the service: creator or admin-tier roles only.
+    return this.surveysService.getSurveyStats(id, userId);
   }
 
   @Get(':id/status-logs')
   @Permissions({ module: 'surveys', action: 'read' })
-  @ApiOperation({ summary: 'Get status change history for a survey' })
-  async getStatusLogs(@Param('id', ParseUUIDPipe) id: string) {
-    return this.surveysService.getStatusLogs(id);
+  @ApiOperation({ summary: 'Get status change history for a survey (creator/admin only)' })
+  async getStatusLogs(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    // Ownership guard in the service: creator or admin-tier roles only.
+    return this.surveysService.getStatusLogs(id, userId);
   }
 
   @Get(':id/draft')

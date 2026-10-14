@@ -617,7 +617,16 @@ export class SurveysService {
     return this.findOne(id);
   }
 
-  async getStatusLogs(surveyId: string): Promise<SurveyStatusLog[]> {
+  async getStatusLogs(surveyId: string, userId?: string): Promise<SurveyStatusLog[]> {
+    const survey = await this.surveysRepository.findOne({ where: { id: surveyId } });
+    if (!survey) {
+      throw new NotFoundException('Survey not found');
+    }
+    // Status logs disclose the identities of whoever managed the survey —
+    // gate them like the status-change endpoint itself (creator/admin-tier).
+    if (userId) {
+      await this.assertSurveyWriteAccess(survey, userId);
+    }
     return this.statusLogRepository.find({
       where: { surveyId },
       relations: ['changedBy'],
@@ -1294,12 +1303,23 @@ export class SurveysService {
 
   // ===================== Stats =====================
 
-  async getSurveyStats(surveyId: string) {
+  async getSurveyStats(surveyId: string, userId?: string) {
+    const survey = await this.surveysRepository.findOne({
+      where: { id: surveyId },
+      relations: ['fields', 'sections'],
+    });
+    if (!survey) {
+      throw new NotFoundException('Survey not found');
+    }
+    // Response counts of a draft reveal its activity — restrict to the same
+    // viewers as the management endpoints (creator/admin-tier).
+    if (userId) {
+      await this.assertSurveyWriteAccess(survey, userId);
+    }
+
     const totalResponses = await this.responsesRepository.count({
       where: { surveyId, isComplete: true },
     });
-
-    const survey = await this.findOne(surveyId);
 
     return {
       surveyId,

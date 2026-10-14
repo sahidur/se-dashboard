@@ -145,11 +145,15 @@ export function PasskeyManager() {
     if (!confirm(`Remove "${pk.name || 'this passkey'}"? You will no longer be able to sign in with it.`)) {
       return;
     }
+    // Step-up auth: removing an MFA factor requires the account password so a
+    // hijacked session cannot silently strip it (same rule as enrolment).
+    const password = window.prompt('Confirm your account password to remove this passkey');
+    if (password === null || !password) return; // cancelled
     try {
-      await removePasskey(pk.id);
+      await removePasskey(pk.id, password);
       await load();
-    } catch {
-      setError('Failed to remove passkey');
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Failed to remove passkey');
     }
   };
 

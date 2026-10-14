@@ -66,7 +66,7 @@ test('permanent delete of a user clears nullable user references, then hard-dele
     findOneImpl: stubFindOne(),
   });
 
-  const result = await service.permanentDelete('user', userId, actorId);
+  const result = await service.permanentDelete('user', userId, actorId, ['Teacher']);
 
   assert.equal(result.message, 'user permanently deleted');
   assert.equal(queries.length, 1);
@@ -87,7 +87,7 @@ test('permanent delete of a user blocked by NOT NULL references returns a confli
   });
 
   await assert.rejects(
-    service.permanentDelete('user', userId, actorId),
+    service.permanentDelete('user', userId, actorId, ['Teacher']),
     /cannot be permanently deleted/,
   );
 });
@@ -111,7 +111,21 @@ test('permanent delete of any type maps foreign-key violations to a conflict', a
   };
 
   await assert.rejects(
-    service.permanentDelete('survey', 'survey-1', actorId),
+    // Admin-tier roles pass the new tenant/ownership guard, so the request
+    // still reaches the FK-violation → Conflict mapping this test targets.
+    service.permanentDelete('survey', 'survey-1', actorId, ['Super Admin']),
     /still referenced by other records/,
+  );
+});
+
+test('restore/permanent delete of another tenant item is denied with a 404', async () => {
+  const service = Object.create(RecycleBinService.prototype);
+  service.surveysRepo = {
+    findOne: async () => ({ id: 'survey-1', deletedAt: new Date(), createdById: 'someone-else' }),
+  };
+  // Non-admin actor with no school access helpers needed for surveys.
+  await assert.rejects(
+    service.restore('survey', 'survey-1', actorId, ['Teacher']),
+    /Deleted item not found/,
   );
 });

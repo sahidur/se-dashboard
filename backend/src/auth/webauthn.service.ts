@@ -305,6 +305,23 @@ export class WebAuthnService {
       throw new UnauthorizedException('Passkey login failed verification');
     }
 
+    // Clone detection: a real authenticator only ever increments its signature
+    // counter. A non-zero counter that does not advance past the stored value
+    // means this credential's key material exists on a second device — reject
+    // instead of silently updating. (Synced passkeys keep counter 0 forever,
+    // which this check tolerates on both sides.)
+    if (
+      authenticationInfo.newCounter > 0 &&
+      passkey.counter > 0 &&
+      authenticationInfo.newCounter <= passkey.counter
+    ) {
+      this.logger.warn(
+        `Passkey ${passkey.id} signature counter regressed ` +
+          `(${passkey.counter} -> ${authenticationInfo.newCounter}) — possible cloned authenticator`,
+      );
+      throw new UnauthorizedException('Passkey login could not be verified');
+    }
+
     const user = await this.usersService.findOneById(passkey.userId);
     if (!user) throw new UnauthorizedException('User not found');
     if (!user.isActive) throw new UnauthorizedException('Account is deactivated');

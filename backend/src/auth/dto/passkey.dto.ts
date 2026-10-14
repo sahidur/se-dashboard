@@ -49,3 +49,15 @@ export class RenamePasskeyDto {
   @MaxLength(100)
   name: string;
 }
+
+/** Step-up auth for removing a passkey. */
+export class DeletePasskeyDto {
+  @ApiProperty({
+    description:
+      'Current account password — re-verification so a hijacked session ' +
+      'cannot silently strip the account of its MFA factors',
+  })
+  @IsString()
+  @MinLength(1)
+  password: string;
+}

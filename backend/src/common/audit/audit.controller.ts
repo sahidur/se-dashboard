@@ -11,6 +11,7 @@ import { AuditService } from './audit.service';
 import { QueryAuditLogDto } from './dto/query-audit-log.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { AccessGuard } from '../../auth/guards/access.guard';
+import { GlobalAdminGuard } from '../../auth/guards/global-admin.guard';
 import { Permissions } from '../decorators/permissions.decorator';
 import { CurrentUser } from '../decorators/current-user.decorator';
 
@@ -26,6 +27,7 @@ export class AuditController {
     { module: 'admin-tools', action: 'read' },
     { module: 'activity-logs', action: 'read' },
   )
+  @UseGuards(GlobalAdminGuard)
   @ApiOperation({ summary: 'System-wide activity log (admin)' })
   findAll(
     @Query() query: QueryAuditLogDto,
@@ -55,6 +57,7 @@ export class AuditController {
     { module: 'admin-tools', action: 'read' },
     { module: 'activity-logs', action: 'read' },
   )
+  @UseGuards(GlobalAdminGuard)
   @ApiOperation({ summary: 'Distinct activity categories (admin)' })
   categories(@CurrentUser('id') actorId: string) {
     return this.auditService.getCategories(actorId);
@@ -65,6 +68,7 @@ export class AuditController {
     { module: 'admin-tools', action: 'read' },
     { module: 'activity-logs', action: 'read' },
   )
+  @UseGuards(GlobalAdminGuard)
   @ApiOperation({ summary: 'System-wide activity stats (admin)' })
   stats(@CurrentUser('id') actorId: string) {
     return this.auditService.getStats(actorId);
@@ -75,6 +79,7 @@ export class AuditController {
     { module: 'admin-tools', action: 'read' },
     { module: 'activity-logs', action: 'read' },
   )
+  @UseGuards(GlobalAdminGuard)
   @ApiOperation({ summary: "A specific user's activity history (admin)" })
   findForUser(
     @Param('id', ParseUUIDPipe) id: string,

@@ -1,7 +1,7 @@
 import { Repository, In, ILike, Brackets } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
-import { randomBytes } from 'crypto';
+import { randomInt } from 'crypto';
 import {
   Injectable,
   NotFoundException,
@@ -161,6 +161,47 @@ export class UsersService {
     });
   }
 
+  /**
+   * School assignments widen a user's data-collection / monitoring / finance
+   * visibility, so "you cannot give what you don't have" applies to schools
+   * too: a non-admin holder of `users:update` may only assign schools they can
+   * access themself (created or assigned). Without this, such a user could
+   * self-assign any school UUID and immediately read/write that school's data.
+   * Admin-tier roles are global administrators by design and may assign any
+   * school. System callers (no actorId) are treated as trusted.
+   */
+  private async assertCanGrantSchoolAccess(
+    actorId: string | undefined,
+    schoolIds: string[],
+  ): Promise<void> {
+    if (!actorId || !schoolIds?.length) return;
+    const actor = await this.usersRepository.findOne({
+      where: { id: actorId },
+      relations: ['roles', 'schools'],
+    });
+    if (!actor) throw new ForbiddenException('Actor not found');
+    if (
+      (actor.roles || []).some(
+        (r) => r.name === 'Super Admin' || r.name === 'Admin',
+      )
+    ) {
+      return;
+    }
+    const created = await this.schoolsRepository.find({
+      where: { createdById: actor.id },
+      select: ['id'],
+    });
+    const accessible = new Set<string>([
+      ...(actor.schools || []).map((s) => s.id),
+      ...created.map((s) => s.id),
+    ]);
+    if (!schoolIds.every((id) => accessible.has(id))) {
+      throw new ForbiddenException(
+        'You can only assign schools you have access to yourself',
+      );
+    }
+  }
+
   async logActivity(params: {
     action: string;
     module: string;
@@ -228,6 +269,11 @@ export class UsersService {
     searchPhone?: string,
     searchEmail?: string,
   ) {
+    // Clamp paging inputs: an unbounded `limit` turns this heavy multi-join
+    // query into a cheap DoS, and a zero/negative page yields a negative skip.
+    const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
+    const safeLimit =
+      Number.isFinite(limit) && limit > 0 ? Math.min(Math.floor(limit), 200) : 20;
     const query = this.usersRepository
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.roles', 'role')
@@ -294,16 +340,16 @@ export class UsersService {
     }
 
     query.orderBy('user.createdAt', 'DESC');
-    query.skip((page - 1) * limit).take(limit);
+    query.skip((safePage - 1) * safeLimit).take(safeLimit);
 
     const [data, total] = await query.getManyAndCount();
     return {
       data,
       meta: {
         total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        page: safePage,
+        limit: safeLimit,
+        totalPages: Math.ceil(total / safeLimit),
       },
     };
   }
@@ -465,6 +511,9 @@ export class UsersService {
     }
 
     if (updateUserDto.schoolIds) {
+      // Assigning schools is a privilege grant, not a profile edit: the actor
+      // must hold access to every school in the new list (admins exempt).
+      await this.assertCanGrantSchoolAccess(actorId, updateUserDto.schoolIds);
       user.schools = await this.schoolsRepository.findBy({ id: In(updateUserDto.schoolIds) });
     }
 
@@ -489,13 +538,19 @@ export class UsersService {
     return saved;
   }
 
-  async getSchools(userId: string): Promise<DcSchool[]> {
+  async getSchools(userId: string, actorId?: string): Promise<DcSchool[]> {
     const user = await this.usersRepository.findOne({
       where: { id: userId },
-      relations: ['schools'],
+      relations: ['schools', 'roles'],
     });
     if (!user) {
       throw new NotFoundException('User not found');
+    }
+    // A user's school list is their tenant footprint. When an HTTP actor is
+    // given, apply the same hierarchy rule as mutations; internal callers
+    // (no actorId) and self-views pass through.
+    if (actorId) {
+      this.assertCanManageTarget(await this.actorPower(actorId), user.roles);
     }
     return user.schools || [];
   }
@@ -548,8 +603,10 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
     // School access widens data-collection/monitoring visibility, so treat it
-    // like any other target-user mutation: hierarchy guard applies.
+    // like any other target-user mutation: hierarchy guard applies, and the
+    // actor may only grant schools they can access themself (admins exempt).
     this.assertCanManageTarget(await this.actorPower(actorId), user.roles);
+    await this.assertCanGrantSchoolAccess(actorId, schoolIds);
     const newSchools = await this.schoolsRepository.findBy({ id: In(schoolIds) });
     const existingIds = new Set((user.schools || []).map((s) => s.id));
     const merged = [...(user.schools || [])];
@@ -619,22 +676,22 @@ export class UsersService {
     // Privilege escalation guard: resetting a more powerful user's password
     // would hand their account to the caller.
     this.assertCanManageTarget(await this.actorPower(actorId), user.roles);
-    // Use cryptographically secure random bytes
+    // Use cryptographically secure random bytes; `randomInt` draws uniformly
+    // (byte % n is subtly biased when 256 is not divisible by n).
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
     const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
     const specials = '@#$!';
     const allChars = chars + upper + specials;
-    const randomValues = randomBytes(12);
     let newPassword = '';
     for (let i = 0; i < 12; i++) {
-      newPassword += allChars[randomValues[i] % allChars.length];
+      newPassword += allChars[randomInt(allChars.length)];
     }
     // Ensure at least one uppercase and one special
-    const upIdx = randomBytes(1)[0] % 12;
-    const spIdx = randomBytes(1)[0] % 12;
+    const upIdx = randomInt(12);
+    const spIdx = randomInt(12);
     const pwArr = newPassword.split('');
-    pwArr[upIdx] = upper[randomBytes(1)[0] % upper.length];
-    pwArr[spIdx] = specials[randomBytes(1)[0] % specials.length];
+    pwArr[upIdx] = upper[randomInt(upper.length)];
+    pwArr[spIdx] = specials[randomInt(specials.length)];
     newPassword = pwArr.join('');
     const hashedPassword = await bcrypt.hash(newPassword, 12);
     const changedAt = new Date();

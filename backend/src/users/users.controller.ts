@@ -161,8 +161,13 @@ export class UsersController {
   @Get(':id/schools')
   @Permissions({ module: 'users', action: 'read' })
   @ApiOperation({ summary: 'Get schools a user has access to' })
-  async getSchools(@Param('id', ParseUUIDPipe) id: string) {
-    return this.usersService.getSchools(id);
+  async getSchools(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') actorId: string,
+  ) {
+    // actorId applies the privilege-hierarchy guard — a user's school list is
+    // their cross-tenant footprint, not plain profile data.
+    return this.usersService.getSchools(id, actorId);
   }
 
   @Post(':id/schools')

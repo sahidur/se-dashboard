@@ -24,6 +24,7 @@ import {
 } from './dto/fee-management.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AccessGuard } from '../auth/guards/access.guard';
+import { GlobalAdminGuard } from '../auth/guards/global-admin.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { SchoolScopeGuard } from '../students/school-scope.guard';
@@ -36,10 +37,15 @@ export class FeeManagementController {
   constructor(private readonly service: FeeManagementService) {}
 
   // ----- Academic Years -----
+  // Academic years are ONE global row set shared by every school: mutating
+  // them (or the global fee heads below) from a school-level account would
+  // flip/rename billing for all tenants, so mutations require an admin-tier
+  // role. Reads stay open to every fee-management reader.
 
   @Post('academic-years')
   @Permissions({ module: 'fee-management', action: 'create' })
-  @ApiOperation({ summary: 'Create an academic year' })
+  @UseGuards(GlobalAdminGuard)
+  @ApiOperation({ summary: 'Create an academic year (admin)' })
   createYear(@Body() dto: CreateAcademicYearDto) {
     return this.service.createAcademicYear(dto);
   }
@@ -60,14 +66,16 @@ export class FeeManagementController {
 
   @Patch('academic-years/:id')
   @Permissions({ module: 'fee-management', action: 'update' })
-  @ApiOperation({ summary: 'Update an academic year' })
+  @UseGuards(GlobalAdminGuard)
+  @ApiOperation({ summary: 'Update an academic year (admin)' })
   updateYear(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateAcademicYearDto) {
     return this.service.updateAcademicYear(id, dto);
   }
 
   @Delete('academic-years/:id')
   @Permissions({ module: 'fee-management', action: 'delete' })
-  @ApiOperation({ summary: 'Delete an academic year (soft delete, blocked while in use)' })
+  @UseGuards(GlobalAdminGuard)
+  @ApiOperation({ summary: 'Delete an academic year (soft delete, blocked while in use, admin)' })
   removeYear(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.removeAcademicYear(id);
   }
@@ -76,7 +84,8 @@ export class FeeManagementController {
 
   @Post('fee-heads')
   @Permissions({ module: 'fee-management', action: 'create' })
-  @ApiOperation({ summary: 'Create a fee head' })
+  @UseGuards(GlobalAdminGuard)
+  @ApiOperation({ summary: 'Create a fee head (admin)' })
   createHead(@Body() dto: CreateFeeHeadDto) {
     return this.service.createFeeHead(dto);
   }
@@ -90,14 +99,16 @@ export class FeeManagementController {
 
   @Patch('fee-heads/:id')
   @Permissions({ module: 'fee-management', action: 'update' })
-  @ApiOperation({ summary: 'Update a fee head' })
+  @UseGuards(GlobalAdminGuard)
+  @ApiOperation({ summary: 'Update a fee head (admin)' })
   updateHead(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateFeeHeadDto) {
     return this.service.updateFeeHead(id, dto);
   }
 
   @Delete('fee-heads/:id')
   @Permissions({ module: 'fee-management', action: 'delete' })
-  @ApiOperation({ summary: 'Delete a fee head (soft delete, blocked while in use)' })
+  @UseGuards(GlobalAdminGuard)
+  @ApiOperation({ summary: 'Delete a fee head (soft delete, blocked while in use, admin)' })
   removeHead(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.removeFeeHead(id);
   }

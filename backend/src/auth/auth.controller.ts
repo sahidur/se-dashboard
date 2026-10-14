@@ -27,6 +27,7 @@ import {
   PasskeyLoginOptionsDto,
   VerifyAuthenticationDto,
   RenamePasskeyDto,
+  DeletePasskeyDto,
 } from './dto/passkey.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Public } from './decorators/public.decorator';
@@ -173,12 +174,17 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Delete('passkey/:id')
+  @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Remove a passkey' })
   async removePasskey(
     @CurrentUser('id') userId: string,
     @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: DeletePasskeyDto,
   ) {
+    // Step-up auth: same rule as enrolment — a hijacked access token must not
+    // be able to strip the account of its MFA factors.
+    await this.authService.verifyUserPassword(userId, body.password);
     return this.webAuthnService.remove(userId, id);
   }
 

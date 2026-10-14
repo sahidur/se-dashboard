@@ -50,9 +50,12 @@ export async function renamePasskey(id: string, name: string): Promise<Passkey> 
   return data;
 }
 
-/** Remove a passkey. */
-export async function removePasskey(id: string): Promise<void> {
-  await api.delete(`/auth/passkey/${id}`);
+/**
+ * Remove a passkey. `password` is required: the server re-verifies the account
+ * password so a hijacked session cannot silently strip an MFA factor.
+ */
+export async function removePasskey(id: string, password: string): Promise<void> {
+  await api.delete(`/auth/passkey/${id}`, { data: { password } });
 }
 
 /**
