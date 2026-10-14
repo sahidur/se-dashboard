@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +40,11 @@ const OCCUPATION_OPTIONS = [
   'Agriculturist',
   'Others',
 ];
+
+const ALUMNI_ACADEMIC_YEAR_OPTIONS = Array.from(
+  { length: 2030 - 1990 + 1 },
+  (_, i) => ({ value: String(1990 + i), label: String(1990 + i) }),
+);
 
 
 interface AlumniFormState {
@@ -369,17 +375,15 @@ export function AlumniForm({ schoolId }: Props) {
                   <Label className="mb-1.5 block text-xs font-medium text-gray-600">
                     Academic Year <span className="text-red-500">*</span>
                   </Label>
-                  <div className="relative">
-                    <select
-                      value={form.academicYear}
-                      onChange={(e) => setField('academicYear', e.target.value)}
-                      className={`w-full appearance-none rounded-lg border bg-white px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 ${fieldErrors.academicYear ? 'border-red-400' : 'border-gray-200'}`}
-                    >
-                      <option value="">Select academic year...</option>
-                      {YEAR_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
-                    </select>
-                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-3 text-gray-400" />
-                  </div>
+                  <SearchableSelect
+                    value={form.academicYear}
+                    onChange={(v) => setField('academicYear', v)}
+                    options={ALUMNI_ACADEMIC_YEAR_OPTIONS}
+                    placeholder="Select academic year..."
+                    searchPlaceholder="Search year..."
+                    emptyMessage="No year found"
+                    invalid={!!fieldErrors.academicYear}
+                  />
                   {fieldErrors.academicYear && <p className="mt-1 text-xs text-red-500">{fieldErrors.academicYear}</p>}
                 </div>
                 <div>
