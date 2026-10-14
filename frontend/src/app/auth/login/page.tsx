@@ -112,7 +112,6 @@ export default function LoginPage() {
       logout();
       // The bounce can only be detected from sessionStorage after mount, so
       // surfacing it has to happen here; it runs at most once per page load.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setError('Your session has expired. Please sign in again.');
       setLoading(false);
       setPasskeyLoading(false);

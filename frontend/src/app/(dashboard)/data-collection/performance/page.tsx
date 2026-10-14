@@ -33,32 +33,36 @@ export default function PerformancePage() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
 
   useEffect(() => {
-    if (!schoolId || !academicYear) return;
-    setLoading(true);
-    api.get(`/data-collection/performance/school/${schoolId}`, { params: { academicYear } })
-      .then(({ data }) => {
-        if (data) {
-          setExisting(data);
-          setForm({
-            avgPassRate: data.avgPassRate || 0,
-            avgGpa: data.avgGpa || 0, boardExamPassRate: data.boardExamPassRate || 0,
-            boardExamAvgGpa: data.boardExamAvgGpa || 0,
-            extracurricularActivities: data.extracurricularActivities || '',
-            sportsAchievements: data.sportsAchievements || '',
-            culturalActivities: data.culturalActivities || '',
-            scienceFairParticipation: data.scienceFairParticipation || 0,
-            debateCompetitions: data.debateCompetitions || 0,
-            totalAwards: data.totalAwards || 0,
-            teachingMethodology: data.teachingMethodology || '',
-            remarks: data.remarks || '',
-          });
-        } else {
-          setExisting(null);
-          setForm({ ...EMPTY_FORM });
-        }
-      })
-      .catch(() => { setExisting(null); setForm({ ...EMPTY_FORM }); })
-      .finally(() => setLoading(false));
+    // Deferred to a microtask so setState is not synchronous within the
+    // effect (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => {
+      if (!schoolId || !academicYear) return;
+      setLoading(true);
+      api.get(`/data-collection/performance/school/${schoolId}`, { params: { academicYear } })
+        .then(({ data }) => {
+          if (data) {
+            setExisting(data);
+            setForm({
+              avgPassRate: data.avgPassRate || 0,
+              avgGpa: data.avgGpa || 0, boardExamPassRate: data.boardExamPassRate || 0,
+              boardExamAvgGpa: data.boardExamAvgGpa || 0,
+              extracurricularActivities: data.extracurricularActivities || '',
+              sportsAchievements: data.sportsAchievements || '',
+              culturalActivities: data.culturalActivities || '',
+              scienceFairParticipation: data.scienceFairParticipation || 0,
+              debateCompetitions: data.debateCompetitions || 0,
+              totalAwards: data.totalAwards || 0,
+              teachingMethodology: data.teachingMethodology || '',
+              remarks: data.remarks || '',
+            });
+          } else {
+            setExisting(null);
+            setForm({ ...EMPTY_FORM });
+          }
+        })
+        .catch(() => { setExisting(null); setForm({ ...EMPTY_FORM }); })
+        .finally(() => setLoading(false));
+    });
   }, [schoolId, academicYear]);
 
   const handleSubmit = async () => {

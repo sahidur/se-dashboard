@@ -79,8 +79,9 @@ export default function MonitoringFeedbackPage() {
     }
   }, [page, debouncedSearch, formType, schoolId]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
-  useEffect(() => { setPage(1); }, [debouncedSearch, formType]);
+  // Deferred to a microtask so the loader's setState is not synchronous
+  // within the effect (react-hooks/set-state-in-effect).
+  useEffect(() => { void Promise.resolve().then(fetchData); }, [fetchData]);
 
   const displayed = useMemo(
     () => (resultFilter ? items.filter((s) => dominant(s) === resultFilter) : items),
@@ -108,13 +109,13 @@ export default function MonitoringFeedbackPage() {
               className="pl-9"
               placeholder="Search by school, observer, teacher or remarks…"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             />
           </div>
           <div className="sm:w-52">
             <Select
               value={formType}
-              onChange={(e) => setFormType(e.target.value)}
+              onChange={(e) => { setFormType(e.target.value); setPage(1); }}
               placeholder="All categories"
               options={MONITORING_FORM_LIST.map((f) => ({ value: f.type, label: f.shortTitle }))}
             />

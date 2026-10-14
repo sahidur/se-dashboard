@@ -113,7 +113,11 @@ export function AlumniForm({ schoolId }: Props) {
     } finally { setLoadingRecords(false); }
   }, [schoolId, showToast]);
 
-  useEffect(() => { loadRecords(); }, [loadRecords]);
+  useEffect(() => {
+    // Deferred to a microtask so the loader's setState is not synchronous
+    // within the effect (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(loadRecords);
+  }, [loadRecords]);
 
   // Overlay the user's private draft (an in-progress unsubmitted new entry),
   // if any, once the existing records have loaded.

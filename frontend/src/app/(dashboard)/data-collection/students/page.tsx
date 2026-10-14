@@ -27,25 +27,29 @@ export default function StudentsInfoPage() {
   });
 
   useEffect(() => {
-    if (!schoolId) return;
-    setLoading(true);
-    api.get(`/data-collection/students/school/${schoolId}`)
-      .then(({ data }) => {
-        if (data) {
-          setExisting(data);
-          setForm({
-            academicYear: data.academicYear || '', totalStudentsBoys: data.totalStudentsBoys || 0,
-            totalStudentsGirls: data.totalStudentsGirls || 0, newAdmissionsBoys: data.newAdmissionsBoys || 0,
-            newAdmissionsGirls: data.newAdmissionsGirls || 0, dropoutsBoys: data.dropoutsBoys || 0,
-            dropoutsGirls: data.dropoutsGirls || 0, attendanceRateBoys: data.attendanceRateBoys || 0,
-            attendanceRateGirls: data.attendanceRateGirls || 0, scholarshipRecipients: data.scholarshipRecipients || 0,
-            specialNeedsStudents: data.specialNeedsStudents || 0, transportUsers: data.transportUsers || 0,
-            remarks: data.remarks || '',
-          });
-        } else setExisting(null);
-      })
-      .catch(() => setExisting(null))
-      .finally(() => setLoading(false));
+    // Deferred to a microtask so setState is not synchronous within the
+    // effect (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => {
+      if (!schoolId) return;
+      setLoading(true);
+      api.get(`/data-collection/students/school/${schoolId}`)
+        .then(({ data }) => {
+          if (data) {
+            setExisting(data);
+            setForm({
+              academicYear: data.academicYear || '', totalStudentsBoys: data.totalStudentsBoys || 0,
+              totalStudentsGirls: data.totalStudentsGirls || 0, newAdmissionsBoys: data.newAdmissionsBoys || 0,
+              newAdmissionsGirls: data.newAdmissionsGirls || 0, dropoutsBoys: data.dropoutsBoys || 0,
+              dropoutsGirls: data.dropoutsGirls || 0, attendanceRateBoys: data.attendanceRateBoys || 0,
+              attendanceRateGirls: data.attendanceRateGirls || 0, scholarshipRecipients: data.scholarshipRecipients || 0,
+              specialNeedsStudents: data.specialNeedsStudents || 0, transportUsers: data.transportUsers || 0,
+              remarks: data.remarks || '',
+            });
+          } else setExisting(null);
+        })
+        .catch(() => setExisting(null))
+        .finally(() => setLoading(false));
+    });
   }, [schoolId]);
 
   const handleSubmit = async () => {

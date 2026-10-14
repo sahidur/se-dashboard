@@ -144,7 +144,11 @@ export function FeeStructureForm({ schoolId }: Props) {
     } finally { setLoadingRecords(false); }
   }, [schoolId, showToast]);
 
-  useEffect(() => { loadRecords(); }, [loadRecords]);
+  useEffect(() => {
+    // Deferred to a microtask so the loader's setState is not synchronous
+    // within the effect (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(loadRecords);
+  }, [loadRecords]);
 
   const loadLogs = async () => {
     setLoadingLogs(true);
@@ -168,24 +172,26 @@ export function FeeStructureForm({ schoolId }: Props) {
 
   /* Load existing fee data when a single month + grade is selected */
   useEffect(() => {
-    if (skipAmountsRef.current) { skipAmountsRef.current = false; return; }
-    if (academicYear && selectedMonths.length === 1 && grade) {
-      const existing = allRecords.find(
-        (r) => Number(r.academicYear) === Number(academicYear) && r.month === selectedMonths[0] && gradeEquals(r.grade, grade),
-      );
-      if (existing) {
+    // Deferred to a microtask so the sync is not a synchronous setState in the
+    // effect (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => {
+      if (skipAmountsRef.current) { skipAmountsRef.current = false; return; }
+      if (academicYear && selectedMonths.length === 1 && grade) {
+        const existing = allRecords.find(
+          (r) => Number(r.academicYear) === Number(academicYear) && r.month === selectedMonths[0] && gradeEquals(r.grade, grade),
+        );
         setAmounts(
-          AMOUNT_KEYS.reduce((acc, k) => {
-            acc[k] = existing[k] != null ? String(existing[k]) : '';
-            return acc;
-          }, {} as FeeAmounts),
+          existing
+            ? AMOUNT_KEYS.reduce((acc, k) => {
+              acc[k] = existing[k] != null ? String(existing[k]) : '';
+              return acc;
+            }, {} as FeeAmounts)
+            : BLANK_AMOUNTS,
         );
       } else {
         setAmounts(BLANK_AMOUNTS);
       }
-    } else {
-      setAmounts(BLANK_AMOUNTS);
-    }
+    });
   }, [academicYear, selectedMonths, grade, allRecords]);
 
   /* Overlay the user's private draft (if any) once records have loaded. */

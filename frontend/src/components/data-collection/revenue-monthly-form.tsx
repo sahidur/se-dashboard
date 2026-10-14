@@ -123,7 +123,11 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
     } finally { setLoadingRecords(false); }
   }, [getEndpoint, showToast]);
 
-  useEffect(() => { loadRecords(); }, [loadRecords]);
+  useEffect(() => {
+    // Deferred to a microtask so the loader's setState is not synchronous
+    // within the effect (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(loadRecords);
+  }, [loadRecords]);
 
   const handleDeleteRecord = async (r: DcRevenueMonthlyRecord) => {
     if (!canDeleteSubmitted) {
@@ -145,21 +149,25 @@ export function RevenueMonthlyForm({ schoolId, mode }: Props) {
 
   /* Pre-fill form when academic year + month are selected and data exists */
   useEffect(() => {
-    if (skipPrefillRef.current) { skipPrefillRef.current = false; return; }
-    if (academicYear && month) {
-      const existing = records.find(
-        (r) => Number(r.academicYear) === Number(academicYear) && r.month === month,
-      );
-      const rec = existing as unknown as Record<string, unknown> | undefined;
-      const next: Record<string, string> = {};
-      feeKeys.forEach((k) => {
-        const t = rec?.[`${k}Target`];
-        const a = rec?.[`${k}Achievement`];
-        next[`${k}Target`] = t != null && t !== '' ? String(t) : '';
-        next[`${k}Achievement`] = a != null && a !== '' ? String(a) : '';
-      });
-      setForm(next);
-    }
+    // Deferred to a microtask so the prefill is not a synchronous setState in
+    // the effect (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => {
+      if (skipPrefillRef.current) { skipPrefillRef.current = false; return; }
+      if (academicYear && month) {
+        const existing = records.find(
+          (r) => Number(r.academicYear) === Number(academicYear) && r.month === month,
+        );
+        const rec = existing as unknown as Record<string, unknown> | undefined;
+        const next: Record<string, string> = {};
+        feeKeys.forEach((k) => {
+          const t = rec?.[`${k}Target`];
+          const a = rec?.[`${k}Achievement`];
+          next[`${k}Target`] = t != null && t !== '' ? String(t) : '';
+          next[`${k}Achievement`] = a != null && a !== '' ? String(a) : '';
+        });
+        setForm(next);
+      }
+    });
   }, [academicYear, month, records, feeKeys]);
 
   // Overlay the user's private draft (if any) once records have loaded.

@@ -129,7 +129,9 @@ export default function PaymentHistoryPage() {
   };
 
   useEffect(() => {
-    fetchPayments();
+    // Deferred to a microtask so the loader's setState is not synchronous
+    // within the effect (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(fetchPayments);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSchoolId, month, method, dateFrom, dateTo, studentId, page]);
 

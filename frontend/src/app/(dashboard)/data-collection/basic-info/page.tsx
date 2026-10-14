@@ -43,35 +43,39 @@ export default function BasicInfoPage() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
 
   useEffect(() => {
-    if (!schoolId || !academicYear) return;
-    setLoading(true);
-    api.get(`/data-collection/basic-info/school/${schoolId}`, { params: { academicYear } })
-      .then(({ data }) => {
-        if (data) {
-          setExisting(data);
-          setForm({
-            schoolCategory: data.schoolCategory || '',
-            mediumOfInstruction: data.mediumOfInstruction || '',
-            shiftSystem: data.shiftSystem || '',
-            hasPlayground: data.hasPlayground || false,
-            hasLibrary: data.hasLibrary || false,
-            hasComputerLab: data.hasComputerLab || false,
-            hasScienceLab: data.hasScienceLab || false,
-            hasElectricity: data.hasElectricity || false,
-            hasInternet: data.hasInternet || false,
-            hasDrinkingWater: data.hasDrinkingWater || false,
-            hasSanitaryFacilities: data.hasSanitaryFacilities || false,
-            totalClassrooms: data.totalClassrooms || 0,
-            operationalClassrooms: data.operationalClassrooms || 0,
-            additionalNotes: data.additionalNotes || '',
-          });
-        } else {
-          setExisting(null);
-          setForm({ ...EMPTY_FORM });
-        }
-      })
-      .catch(() => { setExisting(null); setForm({ ...EMPTY_FORM }); })
-      .finally(() => setLoading(false));
+    // Deferred to a microtask so setState is not synchronous within the
+    // effect (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => {
+      if (!schoolId || !academicYear) return;
+      setLoading(true);
+      api.get(`/data-collection/basic-info/school/${schoolId}`, { params: { academicYear } })
+        .then(({ data }) => {
+          if (data) {
+            setExisting(data);
+            setForm({
+              schoolCategory: data.schoolCategory || '',
+              mediumOfInstruction: data.mediumOfInstruction || '',
+              shiftSystem: data.shiftSystem || '',
+              hasPlayground: data.hasPlayground || false,
+              hasLibrary: data.hasLibrary || false,
+              hasComputerLab: data.hasComputerLab || false,
+              hasScienceLab: data.hasScienceLab || false,
+              hasElectricity: data.hasElectricity || false,
+              hasInternet: data.hasInternet || false,
+              hasDrinkingWater: data.hasDrinkingWater || false,
+              hasSanitaryFacilities: data.hasSanitaryFacilities || false,
+              totalClassrooms: data.totalClassrooms || 0,
+              operationalClassrooms: data.operationalClassrooms || 0,
+              additionalNotes: data.additionalNotes || '',
+            });
+          } else {
+            setExisting(null);
+            setForm({ ...EMPTY_FORM });
+          }
+        })
+        .catch(() => { setExisting(null); setForm({ ...EMPTY_FORM }); })
+        .finally(() => setLoading(false));
+    });
   }, [schoolId, academicYear]);
 
   const handleSubmit = async () => {

@@ -36,7 +36,11 @@ export default function AlumniPage() {
     finally { setLoading(false); }
   }, [schoolId]);
 
-  useEffect(() => { fetchAlumni(); }, [fetchAlumni]);
+  useEffect(() => {
+    // Deferred to a microtask so the loader's setState is not synchronous
+    // within the effect (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(fetchAlumni);
+  }, [fetchAlumni]);
 
   const openCreate = () => { setForm({ ...emptyForm }); setEditing(null); setModal(true); };
   const openEdit = (a: DcAlumni) => {

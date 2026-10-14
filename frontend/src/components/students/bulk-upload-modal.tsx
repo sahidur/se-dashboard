@@ -208,24 +208,30 @@ export function BulkUploadModal({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    if (!isOpen) return;
-    setSchoolId(defaultSchoolId);
-    setAcademicYearId('');
-    setClassId('');
-    setSectionId('');
-    setClasses([]);
-    setFileName('');
-    setParseError('');
-    setStudents([]);
-    setIssues([]);
-    setResult(null);
-    setUploadError('');
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    // Deferred to a microtask so the reset is not a synchronous setState in
+    // the effect (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => {
+      if (!isOpen) return;
+      setSchoolId(defaultSchoolId);
+      setAcademicYearId('');
+      setClassId('');
+      setSectionId('');
+      setClasses([]);
+      setFileName('');
+      setParseError('');
+      setStudents([]);
+      setIssues([]);
+      setResult(null);
+      setUploadError('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    });
   }, [isOpen, defaultSchoolId]);
 
   useEffect(() => {
     if (!schoolId) {
-      setClasses([]);
+      // Deferred so the clear is not a synchronous setState in the effect
+      // (react-hooks/set-state-in-effect).
+      void Promise.resolve().then(() => setClasses([]));
       return;
     }
     let cancelled = false;

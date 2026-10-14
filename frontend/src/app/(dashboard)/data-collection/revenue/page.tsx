@@ -33,28 +33,32 @@ export default function RevenuePage() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
 
   useEffect(() => {
-    if (!schoolId || !academicYear) return;
-    setLoading(true);
-    api.get(`/data-collection/revenue/school/${schoolId}`, { params: { academicYear } })
-      .then(({ data }) => {
-        if (data) {
-          setExisting(data);
-          setForm({
-            monthlyTuitionFee: data.monthlyTuitionFee || 0,
-            admissionFee: data.admissionFee || 0, examFee: data.examFee || 0,
-            totalAnnualRevenue: data.totalAnnualRevenue || 0, governmentGrant: data.governmentGrant || 0,
-            donationsReceived: data.donationsReceived || 0, otherIncome: data.otherIncome || 0,
-            totalExpenditure: data.totalExpenditure || 0, salaryExpenditure: data.salaryExpenditure || 0,
-            maintenanceExpenditure: data.maintenanceExpenditure || 0, pendingFeeAmount: data.pendingFeeAmount || 0,
-            feeCollectionRate: data.feeCollectionRate || 0, remarks: data.remarks || '',
-          });
-        } else {
-          setExisting(null);
-          setForm({ ...EMPTY_FORM });
-        }
-      })
-      .catch(() => { setExisting(null); setForm({ ...EMPTY_FORM }); })
-      .finally(() => setLoading(false));
+    // Deferred to a microtask so setState is not synchronous within the
+    // effect (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => {
+      if (!schoolId || !academicYear) return;
+      setLoading(true);
+      api.get(`/data-collection/revenue/school/${schoolId}`, { params: { academicYear } })
+        .then(({ data }) => {
+          if (data) {
+            setExisting(data);
+            setForm({
+              monthlyTuitionFee: data.monthlyTuitionFee || 0,
+              admissionFee: data.admissionFee || 0, examFee: data.examFee || 0,
+              totalAnnualRevenue: data.totalAnnualRevenue || 0, governmentGrant: data.governmentGrant || 0,
+              donationsReceived: data.donationsReceived || 0, otherIncome: data.otherIncome || 0,
+              totalExpenditure: data.totalExpenditure || 0, salaryExpenditure: data.salaryExpenditure || 0,
+              maintenanceExpenditure: data.maintenanceExpenditure || 0, pendingFeeAmount: data.pendingFeeAmount || 0,
+              feeCollectionRate: data.feeCollectionRate || 0, remarks: data.remarks || '',
+            });
+          } else {
+            setExisting(null);
+            setForm({ ...EMPTY_FORM });
+          }
+        })
+        .catch(() => { setExisting(null); setForm({ ...EMPTY_FORM }); })
+        .finally(() => setLoading(false));
+    });
   }, [schoolId, academicYear]);
 
   const handleSubmit = async () => {

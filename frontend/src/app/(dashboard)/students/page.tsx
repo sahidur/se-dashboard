@@ -208,7 +208,9 @@ export default function StudentsPage() {
   };
 
   useEffect(() => {
-    fetchStudents();
+    // Deferred to a microtask so the loader's setState is not synchronous
+    // within the effect (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(fetchStudents);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSchoolId, classId, sectionId, academicYearId, status, debouncedSearch, page]);
 

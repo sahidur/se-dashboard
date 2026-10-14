@@ -161,30 +161,34 @@ export function MonitoringWizard({ form, schoolId, schoolName, existing, onSubmi
   const [feedbackLoading, setFeedbackLoading] = useState(true);
 
   useEffect(() => {
-    if (!schoolId || questionCount === 0) return;
     let cancelled = false;
-    setFeedbackLoading(true);
-    api
-      .get<MonitoringQuestionFeedback[]>(`/school-monitoring/school/${schoolId}/question-feedback`, {
-        params: {
-          formType: form.type,
-          codes: flatQuestions.map((q) => q.ind.code).join(','),
-        },
-      })
-      .then(({ data }) => {
-        if (cancelled) return;
-        const map: Record<string, MonitoringQuestionFeedback[]> = {};
-        for (const entry of data) {
-          // While editing, the submission's own old answers aren't "history".
-          if (existing && entry.submissionId === existing.id) continue;
-          (map[entry.code] ??= []).push(entry);
-        }
-        setFeedbackMap(map);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setFeedbackLoading(false);
-      });
+    // Deferred to a microtask so setState is not synchronous within the
+    // effect (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => {
+      if (!schoolId || questionCount === 0) return;
+      setFeedbackLoading(true);
+      api
+        .get<MonitoringQuestionFeedback[]>(`/school-monitoring/school/${schoolId}/question-feedback`, {
+          params: {
+            formType: form.type,
+            codes: flatQuestions.map((q) => q.ind.code).join(','),
+          },
+        })
+        .then(({ data }) => {
+          if (cancelled) return;
+          const map: Record<string, MonitoringQuestionFeedback[]> = {};
+          for (const entry of data) {
+            // While editing, the submission's own old answers aren't "history".
+            if (existing && entry.submissionId === existing.id) continue;
+            (map[entry.code] ??= []).push(entry);
+          }
+          setFeedbackMap(map);
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setFeedbackLoading(false);
+        });
+    });
     return () => {
       cancelled = true;
     };

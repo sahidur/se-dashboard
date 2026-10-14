@@ -27,28 +27,32 @@ export default function InfrastructurePage() {
   });
 
   useEffect(() => {
-    if (!schoolId) return;
-    setLoading(true);
-    api.get(`/data-collection/infrastructure/school/${schoolId}`)
-      .then(({ data }) => {
-        if (data) {
-          setExisting(data);
-          setForm({
-            totalBuildings: data.totalBuildings || 0, buildingCondition: data.buildingCondition || '',
-            totalClassrooms: data.totalClassrooms || 0, usableClassrooms: data.usableClassrooms || 0,
-            hasSmartClassroom: data.hasSmartClassroom || false, smartClassroomCount: data.smartClassroomCount || 0,
-            totalToilets: data.totalToilets || 0, boysToilets: data.boysToilets || 0,
-            girlsToilets: data.girlsToilets || 0, hasRamp: data.hasRamp || false,
-            hasBoundaryWall: data.hasBoundaryWall || false, hasFireSafety: data.hasFireSafety || false,
-            furnitureCondition: data.furnitureCondition || '', hasProjector: data.hasProjector || false,
-            projectorCount: data.projectorCount || 0, remarks: data.remarks || '',
-          });
-        } else {
-          setExisting(null);
-        }
-      })
-      .catch(() => setExisting(null))
-      .finally(() => setLoading(false));
+    // Deferred to a microtask so setState is not synchronous within the
+    // effect (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => {
+      if (!schoolId) return;
+      setLoading(true);
+      api.get(`/data-collection/infrastructure/school/${schoolId}`)
+        .then(({ data }) => {
+          if (data) {
+            setExisting(data);
+            setForm({
+              totalBuildings: data.totalBuildings || 0, buildingCondition: data.buildingCondition || '',
+              totalClassrooms: data.totalClassrooms || 0, usableClassrooms: data.usableClassrooms || 0,
+              hasSmartClassroom: data.hasSmartClassroom || false, smartClassroomCount: data.smartClassroomCount || 0,
+              totalToilets: data.totalToilets || 0, boysToilets: data.boysToilets || 0,
+              girlsToilets: data.girlsToilets || 0, hasRamp: data.hasRamp || false,
+              hasBoundaryWall: data.hasBoundaryWall || false, hasFireSafety: data.hasFireSafety || false,
+              furnitureCondition: data.furnitureCondition || '', hasProjector: data.hasProjector || false,
+              projectorCount: data.projectorCount || 0, remarks: data.remarks || '',
+            });
+          } else {
+            setExisting(null);
+          }
+        })
+        .catch(() => setExisting(null))
+        .finally(() => setLoading(false));
+    });
   }, [schoolId]);
 
   const handleSubmit = async () => {

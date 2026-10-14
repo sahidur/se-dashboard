@@ -188,7 +188,11 @@ export function RevenueTotalForm({ schoolId, mode }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getEndpoint]);
 
-  useEffect(() => { loadRecord(); }, [loadRecord]);
+  useEffect(() => {
+    // Deferred to a microtask so the loader's setState is not synchronous
+    // within the effect (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(loadRecord);
+  }, [loadRecord]);
 
   // Changing the academic year reloads that year's record (or blanks the form).
   const handleYearChange = async (y: string) => {

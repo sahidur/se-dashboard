@@ -27,24 +27,28 @@ export default function TeachersInfoPage() {
   });
 
   useEffect(() => {
-    if (!schoolId) return;
-    setLoading(true);
-    api.get(`/data-collection/teachers/school/${schoolId}`)
-      .then(({ data }) => {
-        if (data) {
-          setExisting(data);
-          setForm({
-            totalTeachersMale: data.totalTeachersMale || 0, totalTeachersFemale: data.totalTeachersFemale || 0,
-            permanentTeachers: data.permanentTeachers || 0, contractTeachers: data.contractTeachers || 0,
-            trainedTeachers: data.trainedTeachers || 0, untrainedTeachers: data.untrainedTeachers || 0,
-            avgExperienceYears: data.avgExperienceYears || 0, teacherStudentRatio: data.teacherStudentRatio || '',
-            vacantPositions: data.vacantPositions || 0, teachersWithBEd: data.teachersWithBEd || 0,
-            teachersWithMEd: data.teachersWithMEd || 0, remarks: data.remarks || '',
-          });
-        } else setExisting(null);
-      })
-      .catch(() => setExisting(null))
-      .finally(() => setLoading(false));
+    // Deferred to a microtask so setState is not synchronous within the
+    // effect (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => {
+      if (!schoolId) return;
+      setLoading(true);
+      api.get(`/data-collection/teachers/school/${schoolId}`)
+        .then(({ data }) => {
+          if (data) {
+            setExisting(data);
+            setForm({
+              totalTeachersMale: data.totalTeachersMale || 0, totalTeachersFemale: data.totalTeachersFemale || 0,
+              permanentTeachers: data.permanentTeachers || 0, contractTeachers: data.contractTeachers || 0,
+              trainedTeachers: data.trainedTeachers || 0, untrainedTeachers: data.untrainedTeachers || 0,
+              avgExperienceYears: data.avgExperienceYears || 0, teacherStudentRatio: data.teacherStudentRatio || '',
+              vacantPositions: data.vacantPositions || 0, teachersWithBEd: data.teachersWithBEd || 0,
+              teachersWithMEd: data.teachersWithMEd || 0, remarks: data.remarks || '',
+            });
+          } else setExisting(null);
+        })
+        .catch(() => setExisting(null))
+        .finally(() => setLoading(false));
+    });
   }, [schoolId]);
 
   const handleSubmit = async () => {

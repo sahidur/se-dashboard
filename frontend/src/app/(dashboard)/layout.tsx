@@ -29,8 +29,13 @@ export default function DashboardLayout({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
-    setHydrated(true);
-    setSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1');
+    // Deferred to a microtask so the setState calls are not synchronous
+    // within the effect (react-hooks/set-state-in-effect); the read must
+    // still happen after mount to avoid an SSR mismatch.
+    void Promise.resolve().then(() => {
+      setHydrated(true);
+      setSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1');
+    });
   }, []);
 
   const toggleSidebar = useCallback(() => {

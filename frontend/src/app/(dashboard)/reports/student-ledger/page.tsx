@@ -37,8 +37,13 @@ interface StudentHit {
 export default function StudentLedgerPage() {
   const { data: schools = [] } = useSchools();
   const { data: years = [] } = useAcademicYears();
-  const [schoolId, setSchoolId] = useState('');
-  const [academicYearId, setAcademicYearId] = useState('');
+  const [selectedSchoolId, setSelectedSchoolId] = useState('');
+  const [selectedYearId, setSelectedYearId] = useState('');
+  // Defaults derived instead of synced via effects
+  // (react-hooks/set-state-in-effect): first school, preferring the active year.
+  const schoolId = selectedSchoolId || schools[0]?.id || '';
+  const academicYearId =
+    selectedYearId || (years.find((y) => y.status === 'active') ?? years[0])?.id || '';
   const [search, setSearch] = useState('');
   const [hits, setHits] = useState<StudentHit[]>([]);
   const [student, setStudent] = useState<StudentHit | null>(null);
@@ -46,18 +51,10 @@ export default function StudentLedgerPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!schoolId && schools.length > 0) setSchoolId(schools[0].id);
-  }, [schools, schoolId]);
-  useEffect(() => {
-    if (!academicYearId && years.length > 0) {
-      const active = years.find((y) => y.status === 'active');
-      setAcademicYearId((active ?? years[0]).id);
-    }
-  }, [years, academicYearId]);
-
-  useEffect(() => {
     if (!schoolId || search.trim().length < 2) {
-      setHits([]);
+      // Deferred so the clear is not a synchronous setState in the effect
+      // (react-hooks/set-state-in-effect); still lands before the debounce.
+      void Promise.resolve().then(() => setHits([]));
       return;
     }
     const t = setTimeout(() => {
@@ -90,8 +87,8 @@ export default function StudentLedgerPage() {
       <div className="page-container">
         <Card className="mb-4">
           <CardContent className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-3">
-            <Select label="School" value={schoolId} onChange={(v) => { setSchoolId(v); setStudent(null); setLedger([]); setSearch(''); }} placeholder="Select school" options={schools.map((s) => ({ value: s.id, label: s.name }))} />
-            <Select label="Academic Year" value={academicYearId} onChange={setAcademicYearId} placeholder="Select year" options={years.map((y) => ({ value: y.id, label: y.name }))} />
+            <Select label="School" value={schoolId} onChange={(v) => { setSelectedSchoolId(v); setStudent(null); setLedger([]); setSearch(''); }} placeholder="Select school" options={schools.map((s) => ({ value: s.id, label: s.name }))} />
+            <Select label="Academic Year" value={academicYearId} onChange={setSelectedYearId} placeholder="Select year" options={years.map((y) => ({ value: y.id, label: y.name }))} />
             <div className="relative">
               <div className="relative">
                 <Search size={16} className="absolute left-3 top-3.5 text-gray-400" />

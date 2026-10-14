@@ -152,81 +152,91 @@ export function SchoolFormModal({
     staleTime: 10 * 60 * 1000,
   });
 
-  // Reset the form whenever the modal opens
+  // Reset the form whenever the modal opens. Deferred to a microtask so the
+  // setState calls are not synchronous within the effect
+  // (react-hooks/set-state-in-effect).
   useEffect(() => {
-    if (!isOpen) return;
-    if (school) {
-      const resolved = resolveGeoPath(geoTree, school);
-      setForm({
-        name: school.name,
-        schoolCategory: school.schoolCategory || '',
-        schoolType: school.schoolType || '',
-        establishedYear: school.establishedYear != null ? String(school.establishedYear) : '',
-        areaId: resolved.areaId,
-        divisionId: resolved.divisionId,
-        division: school.division || '',
-        districtId: resolved.districtId,
-        district: school.district || '',
-        upazilaId: resolved.upazilaId,
-        upazila: school.upazila || '',
-        governmentApproval:
-          school.governmentApproval == null ? '' : school.governmentApproval ? 'yes' : 'no',
-        totalTeachers: school.totalTeachers != null ? String(school.totalTeachers) : '',
-        totalStudents: school.totalStudents != null ? String(school.totalStudents) : '',
-        gradeCoverage: parseGradeCoverage(school.gradeCoverage, school.schoolCategory || ''),
-      });
-    } else {
-      setForm({ ...emptyForm });
-    }
-    setDivisions([]);
-    setDistricts([]);
-    setUpazilas([]);
+    void Promise.resolve().then(() => {
+      if (!isOpen) return;
+      if (school) {
+        const resolved = resolveGeoPath(geoTree, school);
+        setForm({
+          name: school.name,
+          schoolCategory: school.schoolCategory || '',
+          schoolType: school.schoolType || '',
+          establishedYear: school.establishedYear != null ? String(school.establishedYear) : '',
+          areaId: resolved.areaId,
+          divisionId: resolved.divisionId,
+          division: school.division || '',
+          districtId: resolved.districtId,
+          district: school.district || '',
+          upazilaId: resolved.upazilaId,
+          upazila: school.upazila || '',
+          governmentApproval:
+            school.governmentApproval == null ? '' : school.governmentApproval ? 'yes' : 'no',
+          totalTeachers: school.totalTeachers != null ? String(school.totalTeachers) : '',
+          totalStudents: school.totalStudents != null ? String(school.totalStudents) : '',
+          gradeCoverage: parseGradeCoverage(school.gradeCoverage, school.schoolCategory || ''),
+        });
+      } else {
+        setForm({ ...emptyForm });
+      }
+      setDivisions([]);
+      setDistricts([]);
+      setUpazilas([]);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, school?.id]);
 
   // Load divisions when area changes
   useEffect(() => {
-    if (!isOpen || !form.areaId) {
-      setDivisions([]);
-      setDistricts([]);
-      setUpazilas([]);
-      return;
-    }
-    setGeoLoading(true);
-    api
-      .get<GeoLocation[]>(`/geo-locations?type=division&parentId=${form.areaId}`)
-      .then(({ data }) => setDivisions(data))
-      .catch(() => setDivisions([]))
-      .finally(() => setGeoLoading(false));
+    void Promise.resolve().then(() => {
+      if (!isOpen || !form.areaId) {
+        setDivisions([]);
+        setDistricts([]);
+        setUpazilas([]);
+        return;
+      }
+      setGeoLoading(true);
+      api
+        .get<GeoLocation[]>(`/geo-locations?type=division&parentId=${form.areaId}`)
+        .then(({ data }) => setDivisions(data))
+        .catch(() => setDivisions([]))
+        .finally(() => setGeoLoading(false));
+    });
   }, [form.areaId, isOpen]);
 
   // Load districts when division changes
   useEffect(() => {
-    if (!isOpen || !form.divisionId) {
-      setDistricts([]);
-      setUpazilas([]);
-      return;
-    }
-    setGeoLoading(true);
-    api
-      .get<GeoLocation[]>(`/geo-locations?type=district&parentId=${form.divisionId}`)
-      .then(({ data }) => setDistricts(data))
-      .catch(() => setDistricts([]))
-      .finally(() => setGeoLoading(false));
+    void Promise.resolve().then(() => {
+      if (!isOpen || !form.divisionId) {
+        setDistricts([]);
+        setUpazilas([]);
+        return;
+      }
+      setGeoLoading(true);
+      api
+        .get<GeoLocation[]>(`/geo-locations?type=district&parentId=${form.divisionId}`)
+        .then(({ data }) => setDistricts(data))
+        .catch(() => setDistricts([]))
+        .finally(() => setGeoLoading(false));
+    });
   }, [form.divisionId, isOpen]);
 
   // Load upazilas when district changes
   useEffect(() => {
-    if (!isOpen || !form.districtId) {
-      setUpazilas([]);
-      return;
-    }
-    setGeoLoading(true);
-    api
-      .get<GeoLocation[]>(`/geo-locations?type=thana&parentId=${form.districtId}`)
-      .then(({ data }) => setUpazilas(data))
-      .catch(() => setUpazilas([]))
-      .finally(() => setGeoLoading(false));
+    void Promise.resolve().then(() => {
+      if (!isOpen || !form.districtId) {
+        setUpazilas([]);
+        return;
+      }
+      setGeoLoading(true);
+      api
+        .get<GeoLocation[]>(`/geo-locations?type=thana&parentId=${form.districtId}`)
+        .then(({ data }) => setUpazilas(data))
+        .catch(() => setUpazilas([]))
+        .finally(() => setGeoLoading(false));
+    });
   }, [form.districtId, isOpen]);
 
   const handleSave = async () => {

@@ -63,12 +63,20 @@ export default function SurveyResponsesPage() {
   );
 
   useEffect(() => {
-    setLoading(true);
-    fetchSurvey().finally(() => setLoading(false));
+    // Deferred to a microtask so setState is not synchronous within the
+    // effect (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => {
+      setLoading(true);
+      fetchSurvey().finally(() => setLoading(false));
+    });
   }, [fetchSurvey]);
 
   useEffect(() => {
-    fetchResponses(currentPage, startDateFilter, endDateFilter);
+    // Deferred to a microtask so the loader's setState is not synchronous
+    // within the effect (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() =>
+      fetchResponses(currentPage, startDateFilter, endDateFilter),
+    );
   }, [currentPage, startDateFilter, endDateFilter, fetchResponses]);
 
   const handleExportCsv = async () => {

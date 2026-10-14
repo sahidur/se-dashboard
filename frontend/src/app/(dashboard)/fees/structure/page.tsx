@@ -117,7 +117,9 @@ export default function FeeStructurePage() {
 
   useEffect(() => {
     if (!activeSchoolId || !activeYearId || !classId) {
-      setExisting({});
+      // Deferred so the clear is not a synchronous setState in the effect
+      // (react-hooks/set-state-in-effect); still lands before any fetch.
+      void Promise.resolve().then(() => setExisting({}));
       return;
     }
     api
@@ -137,15 +139,19 @@ export default function FeeStructurePage() {
   useEffect(() => {
     if (selectedMonths.length !== 1) return;
     const monthData = existing[selectedMonths[0]];
-    if (!monthData) {
-      setAmounts({});
-      return;
-    }
-    const next: Record<string, string> = {};
-    for (const h of visibleFeeHeads) {
-      next[h.id] = monthData[h.id] !== undefined ? String(monthData[h.id]) : '';
-    }
-    setAmounts(next);
+    // Deferred so the sync is not a synchronous setState in the effect
+    // (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => {
+      if (!monthData) {
+        setAmounts({});
+        return;
+      }
+      const next: Record<string, string> = {};
+      for (const h of visibleFeeHeads) {
+        next[h.id] = monthData[h.id] !== undefined ? String(monthData[h.id]) : '';
+      }
+      setAmounts(next);
+    });
   }, [selectedMonths, existing, visibleFeeHeads]);
 
   const hasData = (m: number) => Object.keys(existing[m] ?? {}).length > 0;

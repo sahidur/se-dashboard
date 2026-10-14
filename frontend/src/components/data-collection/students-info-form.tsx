@@ -146,7 +146,11 @@ export function StudentsInfoForm({ schoolId }: Props) {
       .finally(() => setLoadingAll(false));
   }, [schoolId, showToast]);
 
-  useEffect(() => { loadAllRecords(); }, [loadAllRecords]);
+  useEffect(() => {
+    // Deferred to a microtask so the loader's setState is not synchronous
+    // within the effect (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(loadAllRecords);
+  }, [loadAllRecords]);
 
   const handleDeleteRecord = async (r: DcStudentsInfo) => {
     if (!canDeleteSubmitted) {

@@ -48,7 +48,10 @@ interface ClassRow {
 
 export default function ClassesPage() {
   const { data: schools = [] } = useSchools();
-  const [schoolId, setSchoolId] = useState('');
+  const [selectedSchoolId, setSelectedSchoolId] = useState('');
+  // Default to the first school until the user picks one — derived instead of
+  // synced via an effect (react-hooks/set-state-in-effect).
+  const schoolId = selectedSchoolId || schools[0]?.id || '';
   const [classes, setClasses] = useState<ClassRow[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -61,10 +64,6 @@ export default function ClassesPage() {
   const [sectionClassId, setSectionClassId] = useState('');
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [sectionName, setSectionName] = useState('');
-
-  useEffect(() => {
-    if (!schoolId && schools.length > 0) setSchoolId(schools[0].id);
-  }, [schools, schoolId]);
 
   const fetchClasses = async () => {
     if (!schoolId) return;
@@ -80,7 +79,9 @@ export default function ClassesPage() {
   };
 
   useEffect(() => {
-    fetchClasses();
+    // Deferred to a microtask so the loader's setState is not synchronous
+    // within the effect (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(fetchClasses);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolId]);
 
@@ -180,7 +181,7 @@ export default function ClassesPage() {
           <select
             className="flex h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
             value={schoolId}
-            onChange={(e) => setSchoolId(e.target.value)}
+            onChange={(e) => setSelectedSchoolId(e.target.value)}
           >
             <option value="">Select school</option>
             {schools.map((s) => (

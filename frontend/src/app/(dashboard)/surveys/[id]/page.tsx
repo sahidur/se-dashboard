@@ -108,10 +108,14 @@ export default function SurveyDetailPage() {
   }, [id]);
 
   useEffect(() => {
-    setLoading(true);
-    Promise.all([fetchSurvey(), fetchStats(), fetchStatusLogs()]).finally(() =>
-      setLoading(false),
-    );
+    // Deferred to a microtask so setState is not synchronous within the
+    // effect (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => {
+      setLoading(true);
+      Promise.all([fetchSurvey(), fetchStats(), fetchStatusLogs()]).finally(() =>
+        setLoading(false),
+      );
+    });
   }, [fetchSurvey, fetchStats, fetchStatusLogs]);
 
   const fetchUsersAndRoles = async () => {

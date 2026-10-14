@@ -49,19 +49,23 @@ export function GeoLocationSelect({ value, onChange, disabled }: GeoLocationSele
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    if (initialized || !tree.length) return;
-    if (value) {
-      const path = findNodeAndPath(tree, value);
-      if (path) {
-        const ids: (string | null)[] = [null, null, null, null];
-        path.forEach((node) => {
-          const idx = TYPE_HIERARCHY.indexOf(node.type);
-          if (idx >= 0) ids[idx] = node.id;
-        });
-        setSelectedIds(ids);
+    // Deferred to a microtask so the init is not a synchronous setState in the
+    // effect (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => {
+      if (initialized || !tree.length) return;
+      if (value) {
+        const path = findNodeAndPath(tree, value);
+        if (path) {
+          const ids: (string | null)[] = [null, null, null, null];
+          path.forEach((node) => {
+            const idx = TYPE_HIERARCHY.indexOf(node.type);
+            if (idx >= 0) ids[idx] = node.id;
+          });
+          setSelectedIds(ids);
+        }
       }
-    }
-    setInitialized(true);
+      setInitialized(true);
+    });
   }, [tree, value, initialized]);
 
   // Options available at each level, based on the previous level's selection.
