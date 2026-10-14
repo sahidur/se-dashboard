@@ -132,7 +132,7 @@ export class AuthService {
     }
   }
 
-  private recordFailedLogin(key: string): void {
+  private recordFailedLogin(key: string): boolean {
     // Bound memory usage under identity-spraying attacks.
     if (
       !this.failedLogins.has(key) &&
@@ -157,10 +157,14 @@ export class AuthService {
       entry.lockedUntil = 0;
     }
     entry.count += 1;
+    let justLocked = false;
     if (entry.count >= AuthService.MAX_FAILED_ATTEMPTS) {
+      // Only report the transition into lockout (not every later attempt).
+      justLocked = !entry.lockedUntil;
       entry.lockedUntil = Date.now() + AuthService.LOCKOUT_MS;
     }
     this.failedLogins.set(key, entry);
+    return justLocked;
   }
 
   private clearFailedLogins(key: string): void {
@@ -169,14 +173,34 @@ export class AuthService {
 
   async login(loginDto: LoginDto) {
     const key = this.normalizeEmailKey(loginDto.email);
+    const loginCtx = getAuditContext();
 
     await this.enforceLockout(key, loginDto.password);
+
+    // Failed authentications must leave a persistent trail (OWASP A09):
+    // the in-memory lockout counter alone disappears on restart and gives
+    // operators no visibility into credential attacks. Never log passwords.
+    const logLoginFailure = async (
+      userId: string | undefined,
+      reason: string,
+    ): Promise<void> => {
+      await this.usersService.logActivity({
+        action: 'LOGIN_FAILED',
+        module: 'auth',
+        entityId: userId,
+        userId,
+        ipAddress: loginCtx.ipAddress,
+        userAgent: loginCtx.userAgent,
+        newData: { email: loginDto.email, reason },
+      });
+    };
 
     const user = await this.usersService.findOneByEmail(loginDto.email);
     if (!user) {
       // Unknown email: burn the same bcrypt time as a real compare so
       // response latency doesn't disclose whether the account exists.
       await this.timingSafeDummyCompare(loginDto.password);
+      await logLoginFailure(undefined, 'unknown_account');
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -185,7 +209,23 @@ export class AuthService {
       user.password,
     );
     if (!isPasswordValid) {
-      this.recordFailedLogin(key);
+      const justLocked = this.recordFailedLogin(key);
+      await logLoginFailure(user.id, 'invalid_password');
+      if (justLocked) {
+        await this.usersService.logActivity({
+          action: 'ACCOUNT_LOCKED',
+          module: 'auth',
+          entityId: user.id,
+          userId: user.id,
+          ipAddress: loginCtx.ipAddress,
+          userAgent: loginCtx.userAgent,
+          newData: {
+            email: loginDto.email,
+            reason: 'failed_login_threshold',
+            lockoutMinutes: AuthService.LOCKOUT_MS / 60_000,
+          },
+        });
+      }
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -353,16 +393,58 @@ export class AuthService {
    * Step-up verification for sensitive account actions (passkey enrolment):
    * proves the session holder still knows the account password, so a stolen
    * access token alone cannot add a persistence credential.
+   *
+   * Failures feed the same lockout machinery as login (keyed per user, not
+   * per email) so a stolen access token cannot be used to brute-force the
+   * account password through these endpoints at the global throttle rate.
    */
   async verifyUserPassword(userId: string, password: string): Promise<void> {
+    const key = `stepup:${userId}`;
+    await this.enforceLockout(key, password);
+
     const user = await this.usersService.findOneById(userId);
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
+      await this.recordStepUpFailure(userId, 'step_up_verification');
       // Same message class as login to avoid confirming the account state.
       throw new UnauthorizedException('Password verification failed');
+    }
+    this.clearFailedLogins(key);
+  }
+
+  /**
+   * Persistent audit + lockout for failed step-up password checks (change
+   * password / passkey management). Never logs the attempted password.
+   */
+  private async recordStepUpFailure(userId: string, reason: string): Promise<void> {
+    const justLocked = this.recordFailedLogin(`stepup:${userId}`);
+    const ctx = getAuditContext();
+    await this.usersService.logActivity({
+      action: 'PASSWORD_VERIFY_FAILED',
+      module: 'auth',
+      entityId: userId,
+      userId,
+      ipAddress: ctx.ipAddress,
+      userAgent: ctx.userAgent,
+      newData: { reason },
+    });
+    if (justLocked) {
+      await this.usersService.logActivity({
+        action: 'ACCOUNT_LOCKED',
+        module: 'auth',
+        entityId: userId,
+        userId,
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        newData: {
+          reason: 'step_up_threshold',
+          scope: 'password-verification',
+          lockoutMinutes: AuthService.LOCKOUT_MS / 60_000,
+        },
+      });
     }
   }
 
@@ -371,6 +453,11 @@ export class AuthService {
     currentPassword: string,
     newPassword: string,
   ) {
+    // Same step-up lockout as verifyUserPassword: the current-password check
+    // must not be a lockout-free oracle for brute-forcing the password.
+    const stepUpKey = `stepup:${userId}`;
+    await this.enforceLockout(stepUpKey, currentPassword);
+
     const user = await this.usersService.findOneById(userId);
     if (!user) {
       throw new UnauthorizedException('User not found');
@@ -381,8 +468,10 @@ export class AuthService {
       user.password,
     );
     if (!isPasswordValid) {
+      await this.recordStepUpFailure(userId, 'change_password');
       throw new UnauthorizedException('Current password is incorrect');
     }
+    this.clearFailedLogins(stepUpKey);
 
     const hashedPassword = await bcrypt.hash(newPassword, 12);
     // Single source of truth for the new token version: updatePassword

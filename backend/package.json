@@ -20,7 +20,7 @@
     "data-collection:clear": "ts-node -r tsconfig-paths/register src/clear-data-collection.ts",
     "demo:fees": "ts-node -r tsconfig-paths/register src/demo-seed-fees.ts",
     "schema:sync": "node dist/schema-sync.js",
-    "test": "node --require ts-node/register --test \"src/**/*.test.js\""
+    "test": "node --require ts-node/register --test \"src/**/*.test.js\" \"test/**/*.test.js\""
   },
   "keywords": [],
   "author": "",

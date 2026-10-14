@@ -15,6 +15,7 @@ import { Role } from '../roles/entities/role.entity';
 import { DcSchool } from '../data-collection/entities/dc-school.entity';
 import { AuditLog } from '../common/entities/audit-log.entity';
 import { PRIVILEGED_AUDIT_MODULES } from '../common/audit/privileged-modules';
+import { likeContains } from '../common/utils/like-utils';
 
 @Injectable()
 export class UsersService {
@@ -162,6 +163,40 @@ export class UsersService {
   }
 
   /**
+   * The schools an actor may grant to other users (or enumerate for
+   * assignment): their own assigned schools plus the schools they created.
+   * Admin-tier roles ('Super Admin'/'Admin') are global administrators by
+   * design and get `global: true`. System callers (no actorId) are trusted.
+   */
+  private async schoolGrantScope(
+    actorId: string,
+  ): Promise<{ global: boolean; ids: Set<string> }> {
+    const actor = await this.usersRepository.findOne({
+      where: { id: actorId },
+      relations: ['roles', 'schools'],
+    });
+    if (!actor) throw new ForbiddenException('Actor not found');
+    if (
+      (actor.roles || []).some(
+        (r) => r.name === 'Super Admin' || r.name === 'Admin',
+      )
+    ) {
+      return { global: true, ids: new Set<string>() };
+    }
+    const created = await this.schoolsRepository.find({
+      where: { createdById: actor.id },
+      select: ['id'],
+    });
+    return {
+      global: false,
+      ids: new Set<string>([
+        ...(actor.schools || []).map((s) => s.id),
+        ...created.map((s) => s.id),
+      ]),
+    };
+  }
+
+  /**
    * School assignments widen a user's data-collection / monitoring / finance
    * visibility, so "you cannot give what you don't have" applies to schools
    * too: a non-admin holder of `users:update` may only assign schools they can
@@ -175,27 +210,9 @@ export class UsersService {
     schoolIds: string[],
   ): Promise<void> {
     if (!actorId || !schoolIds?.length) return;
-    const actor = await this.usersRepository.findOne({
-      where: { id: actorId },
-      relations: ['roles', 'schools'],
-    });
-    if (!actor) throw new ForbiddenException('Actor not found');
-    if (
-      (actor.roles || []).some(
-        (r) => r.name === 'Super Admin' || r.name === 'Admin',
-      )
-    ) {
-      return;
-    }
-    const created = await this.schoolsRepository.find({
-      where: { createdById: actor.id },
-      select: ['id'],
-    });
-    const accessible = new Set<string>([
-      ...(actor.schools || []).map((s) => s.id),
-      ...created.map((s) => s.id),
-    ]);
-    if (!schoolIds.every((id) => accessible.has(id))) {
+    const scope = await this.schoolGrantScope(actorId);
+    if (scope.global) return;
+    if (!schoolIds.every((id) => scope.ids.has(id))) {
       throw new ForbiddenException(
         'You can only assign schools you have access to yourself',
       );
@@ -253,6 +270,12 @@ export class UsersService {
     }
 
     if (createUserDto.schoolIds?.length) {
+      // School access is a privilege grant, not a profile field: the actor
+      // may only hand out schools they can access themself (admins exempt),
+      // exactly like update()/addSchools(). Without this check a holder of
+      // `users:create` could mint an account scoped to every school and use
+      // it to read/write all tenants' data.
+      await this.assertCanGrantSchoolAccess(actorId, createUserDto.schoolIds);
       user.schools = await this.schoolsRepository.findBy({ id: In(createUserDto.schoolIds) });
     }
 
@@ -318,21 +341,21 @@ export class UsersService {
       conditions.push(
         '(user.firstName ILIKE :search OR user.lastName ILIKE :search OR user.email ILIKE :search)',
       );
-      params.search = `%${search}%`;
+      params.search = likeContains(search);
     }
     if (searchName) {
       conditions.push(
         '(user.firstName ILIKE :searchName OR user.lastName ILIKE :searchName)',
       );
-      params.searchName = `%${searchName}%`;
+      params.searchName = likeContains(searchName);
     }
     if (searchPhone) {
       conditions.push('user.phone ILIKE :searchPhone');
-      params.searchPhone = `%${searchPhone}%`;
+      params.searchPhone = likeContains(searchPhone);
     }
     if (searchEmail) {
       conditions.push('user.email ILIKE :searchEmail');
-      params.searchEmail = `%${searchEmail}%`;
+      params.searchEmail = likeContains(searchEmail);
     }
 
     if (conditions.length > 0) {
@@ -559,34 +582,52 @@ export class UsersService {
    * Schools available to assign to a user, sourced from the real Data
    * Collection school registry (dc_schools), with optional search + geo
    * (division/district/upazila) filters used by the assign-schools UI.
+   *
+   * Cross-tenant enumeration guard: a non-admin actor only sees the schools
+   * they could actually grant (their own footprint — same rule as
+   * assertCanGrantSchoolAccess), so the picker never advertises schools the
+   * assignment would then reject. Admin-tier actors see the full registry.
    */
-  async findAvailableSchools(filters: {
-    search?: string;
-    division?: string;
-    district?: string;
-    upazila?: string;
-  }): Promise<DcSchool[]> {
+  async findAvailableSchools(
+    filters: {
+      search?: string;
+      division?: string;
+      district?: string;
+      upazila?: string;
+    },
+    actorId?: string,
+  ): Promise<DcSchool[]> {
     const query = this.schoolsRepository.createQueryBuilder('school');
+
+    if (actorId) {
+      const scope = await this.schoolGrantScope(actorId);
+      if (!scope.global) {
+        if (!scope.ids.size) return [];
+        query.andWhere('school.id IN (:...grantableIds)', {
+          grantableIds: [...scope.ids],
+        });
+      }
+    }
 
     if (filters.search?.trim()) {
       query.andWhere(
         '(school.name ILIKE :search OR school.code ILIKE :search)',
-        { search: `%${filters.search.trim()}%` },
+        { search: likeContains(filters.search.trim()) },
       );
     }
     if (filters.division?.trim()) {
       query.andWhere('school.division ILIKE :division', {
-        division: `%${filters.division.trim()}%`,
+        division: likeContains(filters.division.trim()),
       });
     }
     if (filters.district?.trim()) {
       query.andWhere('school.district ILIKE :district', {
-        district: `%${filters.district.trim()}%`,
+        district: likeContains(filters.district.trim()),
       });
     }
     if (filters.upazila?.trim()) {
       query.andWhere('school.upazila ILIKE :upazila', {
-        upazila: `%${filters.upazila.trim()}%`,
+        upazila: likeContains(filters.upazila.trim()),
       });
     }
 
@@ -636,10 +677,17 @@ export class UsersService {
   }
 
   async getActivity(userId: string, actorId?: string, limit = 50): Promise<AuditLog[]> {
-    const user = await this.usersRepository.findOne({ where: { id: userId } });
+    const user = await this.usersRepository.findOne({
+      where: { id: userId },
+      relations: ['roles'],
+    });
     if (!user) {
       throw new NotFoundException('User not found');
     }
+    // A user's activity trail is privileged data: apply the same hierarchy
+    // rule as getSchools() so a lower-tier manager cannot inspect the trail
+    // of users more privileged than themselves (e.g. Admin → Super Admin).
+    this.assertCanManageTarget(await this.actorPower(actorId), user.roles);
     // Same privileged-module filter as AuditService: a plain admin with
     // users:read must not see how the platform's roles/permissions were
     // configured via another user's (e.g. a Super Admin's) activity trail.

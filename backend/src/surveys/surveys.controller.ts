@@ -25,6 +25,8 @@ import { UpdateSurveyDto } from './dto/update-survey.dto';
 import { SubmitSurveyResponseDto } from './dto/submit-response.dto';
 import { CreateSurveyAssignmentDto } from './dto/create-survey.dto';
 import { UpdateSurveyCategoryDto } from './dto/update-survey-category.dto';
+import { CreateSurveyCategoryDto } from './dto/create-survey-category.dto';
+import { BulkSurveyAssignmentsDto } from './dto/bulk-assignments.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AccessGuard } from '../auth/guards/access.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
@@ -92,9 +94,7 @@ export class SurveysController {
   @Post('categories')
   @Permissions({ module: 'categories', action: 'create' })
   @ApiOperation({ summary: 'Create a new survey category' })
-  async createCategory(
-    @Body() body: { name: string; description?: string; sortOrder?: number },
-  ) {
+  async createCategory(@Body() body: CreateSurveyCategoryDto) {
     return this.surveysService.createCategory(body);
   }
 
@@ -307,7 +307,7 @@ export class SurveysController {
   @ApiOperation({ summary: 'Add multiple assignments to a survey at once' })
   async addBulkAssignments(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { assignments: CreateSurveyAssignmentDto[] },
+    @Body() body: BulkSurveyAssignmentsDto,
     @CurrentUser('id') userId: string,
   ) {
     return this.surveysService.addBulkAssignments(id, body.assignments, userId);

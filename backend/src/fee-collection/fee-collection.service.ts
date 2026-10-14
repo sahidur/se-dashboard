@@ -12,6 +12,7 @@ import {
   EntityManager,
 } from 'typeorm';
 import { StudentFee, StudentFeeStatus } from './entities/student-fee.entity';
+import { likeContains } from '../common/utils/like-utils';
 import { Payment, PaymentStatus } from './entities/payment.entity';
 import { Receipt, ReceiptStatus } from './entities/receipt.entity';
 import { Student, StudentStatus } from '../students/entities/student.entity';
@@ -788,7 +789,7 @@ export class FeeCollectionService {
 
     if (search) {
       qb.andWhere('(r.receipt_number ILIKE :search OR student.name ILIKE :search OR student.admission_number ILIKE :search)', {
-        search: `%${search}%`,
+        search: likeContains(search),
       });
     }
     return qb.getMany();

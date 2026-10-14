@@ -91,12 +91,18 @@ export class UsersController {
   @ApiQuery({ name: 'district', required: false, type: String })
   @ApiQuery({ name: 'upazila', required: false, type: String })
   async getAvailableSchools(
+    @CurrentUser('id') actorId: string,
     @Query('search') search?: string,
     @Query('division') division?: string,
     @Query('district') district?: string,
     @Query('upazila') upazila?: string,
   ) {
-    return this.usersService.findAvailableSchools({ search, division, district, upazila });
+    // actorId scopes the registry to schools the actor could actually grant
+    // (admins see everything) — see UsersService.findAvailableSchools.
+    return this.usersService.findAvailableSchools(
+      { search, division, district, upazila },
+      actorId,
+    );
   }
 
   @Get(':id')

@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike, In, IsNull, ObjectLiteral } from 'typeorm';
+import { likeContains } from '../common/utils/like-utils';
 import { DcSchool } from './entities/dc-school.entity';
 import { DcBasicInfo } from './entities/dc-basic-info.entity';
 import { DcInfrastructure } from './entities/dc-infrastructure.entity';
@@ -259,10 +260,10 @@ export class DataCollectionService {
 
     if (search) {
       const searchClauses = admin
-        ? [{ name: ILike(`%${search}%`) }, { code: ILike(`%${search}%`) }]
+        ? [{ name: ILike(likeContains(search)) }, { code: ILike(likeContains(search)) }]
         : baseWhere.flatMap((w) => [
-            { ...w, name: ILike(`%${search}%`) },
-            { ...w, code: ILike(`%${search}%`) },
+            { ...w, name: ILike(likeContains(search)) },
+            { ...w, code: ILike(likeContains(search)) },
           ]);
       return this.schoolRepo.find({
         where: searchClauses,

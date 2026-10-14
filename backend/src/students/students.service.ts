@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, IsNull } from 'typeorm';
+import { likeContains } from '../common/utils/like-utils';
 import { Student, StudentStatus, StudentGender } from './entities/student.entity';
 import { SchoolClass } from './entities/school-class.entity';
 import { SchoolSection } from './entities/section.entity';
@@ -273,7 +274,7 @@ export class StudentsService {
     if (query.search) {
       qb.andWhere(
         '(student.name ILIKE :search OR student.guardian_name ILIKE :search OR student.guardian_phone ILIKE :search OR student.admission_number ILIKE :search OR student.reference_number ILIKE :search)',
-        { search: `%${query.search}%` },
+        { search: likeContains(query.search) },
       );
     }
 

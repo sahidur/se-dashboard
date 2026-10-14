@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { likeContains } from '../common/utils/like-utils';
 import { MonitoringSubmission } from './entities/monitoring-submission.entity';
 import { DcSchool } from '../data-collection/entities/dc-school.entity';
 import {
@@ -277,7 +278,7 @@ export class SchoolMonitoringService {
     if (filters.search) {
       qb.andWhere(
         '(school.name ILIKE :q OR s.observerName ILIKE :q OR s.teacherName ILIKE :q OR s.generalRemarks ILIKE :q)',
-        { q: `%${filters.search}%` },
+        { q: likeContains(filters.search) },
       );
     }
 

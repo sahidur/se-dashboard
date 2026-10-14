@@ -116,6 +116,7 @@ export class CreateSurveyAssignmentDto {
 
   @ApiPropertyOptional({ description: 'User IDs to exclude when assigning to a role' })
   @IsArray()
+  @IsUUID('all', { each: true })
   @IsOptional()
   excludeUserIds?: string[];
 }

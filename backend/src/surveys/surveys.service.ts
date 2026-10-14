@@ -18,8 +18,10 @@ import { SurveyCategory } from './entities/survey-category.entity';
 import { CreateSurveyDto } from './dto/create-survey.dto';
 import { UpdateSurveyDto } from './dto/update-survey.dto';
 import { UpdateSurveyCategoryDto } from './dto/update-survey-category.dto';
+import { CreateSurveyCategoryDto } from './dto/create-survey-category.dto';
 import { SubmitSurveyResponseDto } from './dto/submit-response.dto';
 import { UsersService } from '../users/users.service';
+import { likeContains } from '../common/utils/like-utils';
 
 @Injectable()
 export class SurveysService {
@@ -342,7 +344,7 @@ export class SurveysService {
     if (filters?.search) {
       query.andWhere(
         '(survey.title ILIKE :search OR survey.description ILIKE :search)',
-        { search: `%${filters.search}%` },
+        { search: likeContains(filters.search) },
       );
     }
 
@@ -1254,21 +1256,19 @@ export class SurveysService {
     });
   }
 
-  async createCategory(data: {
-    name: string;
-    description?: string;
-    sortOrder?: number;
-  }): Promise<SurveyCategory> {
+  async createCategory(data: CreateSurveyCategoryDto): Promise<SurveyCategory> {
     const existing = await this.categoryRepository.findOne({
       where: { name: data.name },
     });
     if (existing) {
       throw new BadRequestException('Category already exists');
     }
+    // Explicit field allowlist — never spread the request body onto the entity.
     const category = this.categoryRepository.create({
       name: data.name,
       description: data.description,
       sortOrder: data.sortOrder || 0,
+      ...(data.isActive !== undefined && { isActive: data.isActive }),
     });
     return this.categoryRepository.save(category);
   }

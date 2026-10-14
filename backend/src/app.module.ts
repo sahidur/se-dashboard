@@ -20,6 +20,8 @@ import { FeeManagementModule } from './fee-management/fee-management.module';
 import { FeeCollectionModule } from './fee-collection/fee-collection.module';
 import { AuditModule } from './common/audit/audit.module';
 import { HealthModule } from './common/health/health.module';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { AccessGuard } from './auth/guards/access.guard';
 
 @Module({
   imports: [
@@ -111,6 +113,20 @@ import { HealthModule } from './common/health/health.module';
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    // Default-deny authentication/authorization (OWASP A01 — broken access
+    // control): every route now requires a valid session unless it is
+    // explicitly marked @Public(), so a future controller that forgets
+    // @UseGuards(...) is closed instead of silently exposed. AccessGuard
+    // keeps its documented semantics (@Roles/@Permissions where declared,
+    // any authenticated user otherwise).
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: AccessGuard,
     },
   ],
 })

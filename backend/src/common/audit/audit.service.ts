@@ -7,6 +7,7 @@ import { UsersService } from '../../users/users.service';
 import { getAuditContext } from './audit-context';
 import { PRIVILEGED_AUDIT_MODULES } from './privileged-modules';
 import { sanitizeAuditData } from './sanitize-audit-data';
+import { likeContains } from '../utils/like-utils';
 
 // Kept as a re-export so existing importers of `PRIVILEGED_AUDIT_MODULES`
 // from './audit.service' keep working; the definition lives in
@@ -101,7 +102,7 @@ export class AuditService {
     if (dto.search) {
       qb.andWhere(
         '(log.module ILIKE :search OR log.action ILIKE :search OR log.entityId ILIKE :search OR log.ipAddress ILIKE :search)',
-        { search: `%${dto.search}%` },
+        { search: likeContains(dto.search) },
       );
     }
     if (dto.startDate) {
