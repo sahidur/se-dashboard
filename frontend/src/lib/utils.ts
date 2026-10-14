@@ -50,6 +50,23 @@ export function formatDateTimeBd(date: string | Date): string {
   });
 }
 
+/**
+ * Render a stored phone value as a Bangladeshi mobile number (01XXX-XXXXXX).
+ * Accepts 01…, +880… and 880… spellings (spaces/dashes ignored) and repairs a
+ * lost leading zero when the number was stored as digits. Anything that does
+ * not look like a BD mobile is returned exactly as stored.
+ */
+export function formatBdPhone(raw?: unknown): string {
+  if (raw === null || raw === undefined || String(raw).trim() === '') return '—';
+  const original = String(raw).trim();
+  const digits = original.replace(/[^\d]/g, '');
+  let local = digits;
+  if (local.startsWith('880') && local.length >= 11) local = `0${local.slice(3)}`;
+  if (/^1[3-9]\d{8}$/.test(local)) local = `0${local}`;
+  if (/^01[3-9]\d{8}$/.test(local)) return `${local.slice(0, 5)}-${local.slice(5)}`;
+  return original;
+}
+
 export function getInitials(firstName: string, lastName: string) {
   return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
 }

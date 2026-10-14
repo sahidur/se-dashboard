@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import api from '@/lib/api';
 import { buildCsv, buildExcelHtml, downloadContent } from '@/components/data-collection/export-buttons';
-import { displayGradeLabel, gradeSortIndex, resolveAssetUrl } from '@/lib/utils';
+import { displayGradeLabel, formatBdPhone, gradeSortIndex, resolveAssetUrl } from '@/lib/utils';
 import type { FormCatalogItem, FormCategory } from './form-catalog';
 
 /* ─── Column handling ───────────────────────────────────── */
@@ -66,7 +66,7 @@ const MONTH_ORDER = [
 
 /** Grades may be stored as slugs ("g1"), "GN", or "Grade N" — one display fn. */
 
-type FieldKind = 'boolean' | 'date' | 'percent' | 'currency' | 'year' | 'number' | 'image' | 'list' | 'text';
+type FieldKind = 'boolean' | 'date' | 'percent' | 'currency' | 'year' | 'number' | 'image' | 'list' | 'phone' | 'text';
 
 function humanizeKey(key: string): string {
   if (LABEL_OVERRIDES[key]) return LABEL_OVERRIDES[key];
@@ -98,6 +98,8 @@ function classifyField(key: string, values: unknown[]): FieldKind {
   if (typeof sample === 'boolean') return 'boolean';
   if (key === 'createdAt' || key === 'updatedAt' || (isIsoDateString(sample) && /date|at$/i.test(key))) return 'date';
   if (isImageUrl(sample) || /photo|image|url$/i.test(key)) return 'image';
+
+  if (/(phone|mobile)/i.test(key)) return 'phone';
 
   const numeric = values.some((v) => asNumber(v) !== null);
   if (numeric) {
@@ -138,6 +140,7 @@ function formatValue(v: unknown, kind: FieldKind, key?: string): string {
       : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   }
   if (kind === 'list') return (parseList(v) ?? [String(v)]).join(', ');
+  if (kind === 'phone') return formatBdPhone(v);
   const n = asNumber(v);
   if (n !== null) {
     if (kind === 'year') return String(Math.round(n));
@@ -205,7 +208,7 @@ function CellValue({ value, kind, fieldKey }: { value: unknown; kind: FieldKind;
   }
   const n = asNumber(value);
   if (kind === 'percent' && n !== null) return <PercentValue value={n} />;
-  return <span className={kind === 'currency' || kind === 'number' ? 'tabular-nums' : ''}>{formatValue(value, kind, fieldKey)}</span>;
+  return <span className={kind === 'currency' || kind === 'number' ? 'tabular-nums' : kind === 'phone' ? 'font-mono' : ''}>{formatValue(value, kind, fieldKey)}</span>;
 }
 
 /* ─── Component ─────────────────────────────────────────── */

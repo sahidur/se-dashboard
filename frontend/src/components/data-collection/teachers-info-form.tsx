@@ -18,7 +18,7 @@ import { ExportButtons, exportPayloadFromColumns } from '@/components/data-colle
 import { useFormDraft } from '@/hooks/use-form-draft';
 import { useAuthStore } from '@/store/auth-store';
 import api, { getErrorMessage } from '@/lib/api';
-import { isValidAcademicYear } from '@/lib/utils';
+import { formatBdPhone, isValidAcademicYear } from '@/lib/utils';
 import { useAcademicYearOptions } from '@/hooks/use-academic-year-options';
 import type { DcSchool, DcTeacherIndividual } from '@/types';
 
@@ -168,7 +168,19 @@ export function TeachersInfoForm({ schoolId }: Props) {
       .catch(() => router.push('/data-collection/schools'));
   }, [schoolId, router]);
 
-  /* Fetch existing records */
+  /* Initial load — fetch inline so setState only runs in async callbacks
+     (satisfies react-hooks/set-state-in-effect). */
+  useEffect(() => {
+    api.get<DcTeacherIndividual[]>(`/data-collection/teachers/individual/school/${schoolId}`)
+      .then(({ data }) => setRecords(data))
+      .catch(() => {
+        showToast('error', 'Failed to load teacher records');
+        setRecords([]);
+      })
+      .finally(() => setLoadingRecords(false));
+  }, [schoolId, showToast]);
+
+  /** Manual reload (refresh button, after save/delete) with the spinner. */
   const loadRecords = useCallback(async () => {
     setLoadingRecords(true);
     try {
@@ -183,8 +195,6 @@ export function TeachersInfoForm({ schoolId }: Props) {
       setLoadingRecords(false);
     }
   }, [schoolId, showToast]);
-
-  useEffect(() => { loadRecords(); }, [loadRecords]);
 
   // Overlay the user's private draft (an in-progress unsubmitted new entry).
   useEffect(() => {
@@ -397,7 +407,7 @@ export function TeachersInfoForm({ schoolId }: Props) {
     { key: 'experienceYears', header: 'Exp. (Yrs)', className: 'text-right font-mono', render: (r) => <span className="font-semibold">{Number(r.experienceYears).toFixed(1)}</span> },
     { key: 'subjectExpertise', header: 'Subjects', render: (r) => <span className="text-xs max-w-[160px] block">{fmtList(r.subjectExpertise)}</span> },
     { key: 'trainingReceived', header: 'Training', render: (r) => <span className="text-xs max-w-[160px] block">{fmtList(r.trainingReceived)}</span> },
-    { key: 'phone', header: 'Phone', render: (r) => <span className="whitespace-nowrap font-mono text-xs">{r.phone ?? '—'}</span> },
+    { key: 'phone', header: 'Phone', render: (r) => <span className="whitespace-nowrap font-mono text-xs">{r.phone ? formatBdPhone(r.phone) : '—'}</span> },
     { key: 'joiningDate', header: 'Joining Date', render: (r) => <span className="whitespace-nowrap text-xs">{fmtDate(r.joiningDate)}</span> },
     { key: 'lastWorkingDay', header: 'Last Working Day', render: (r) => <span className="whitespace-nowrap text-xs">{fmtDate(r.lastWorkingDay)}</span> },
     { key: 'separationType', header: 'Separation', render: (r) => (
@@ -791,6 +801,7 @@ export function TeachersInfoForm({ schoolId }: Props) {
         headerExtra={
           <ExportButtons
             payload={exportPayloadFromColumns(teacherInfoColumns, records, 'teachers-information', {
+              phone: (v) => (v ? formatBdPhone(v) : ''),
               experienceYears: (v) => Number(v ?? 0).toFixed(1),
               assessmentScore: (v) => (v == null ? '' : Number(v).toFixed(0)),
               joiningDate: (v) => (v ? fmtDate(String(v)) : ''),
