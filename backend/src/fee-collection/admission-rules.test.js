@@ -376,3 +376,45 @@ test('planner ignores soft-deleted rows', () => {
   const deleted = fee(1, { deleted: true });
   assert.equal(plan({}, [deleted]).some((a) => a.feeId === deleted.id), false);
 });
+
+test('January-only heads are charged in the admission month even when their schedule says monthly', () => {
+  // As configured on production: every head is "monthly", annual amounts sit under January only.
+  const ADM = head('m-adm', 'Admission Fee', 'monthly', 'new_students');
+  const SES = head('m-ses', 'Session Fee', 'monthly', 'existing_students');
+  const ANNUAL = head('m-ann', 'Annual Fund', 'monthly');
+  const EXAM = head('m-exam', 'Exam Fee', 'monthly'); // recurring: March and June
+  const structure = [
+    ...Array.from({ length: 12 }, (_, i) => row(TUITION, i + 1, 1000)),
+    row(ADM, 1, 500),
+    row(SES, 1, 300),
+    row(ANNUAL, 1, 100),
+    row(EXAM, 3, 50),
+    row(EXAM, 6, 50),
+  ];
+  const pick = (student, month) =>
+    names(selectStructureRows(structure, resolveStudentFeeContext(student, YEAR), month));
+
+  // Admitted in July: nothing before; July carries every January-only head for a new student.
+  assert.deepEqual(pick({ admissionDate: '2026-07-15' }, 3), []);
+  assert.deepEqual(pick({ admissionDate: '2026-07-15' }, 7), ['Admission Fee', 'Annual Fund', 'Tuition']);
+  // Following months are plain tuition; Exam Fee is not caught up because it recurs.
+  assert.deepEqual(pick({ admissionDate: '2026-07-15' }, 8), ['Tuition']);
+  // Admitted in February: Jan-only heads arrive in February, exam fees on schedule in March.
+  assert.deepEqual(pick({ admissionDate: '2026-02-03' }, 2), ['Admission Fee', 'Annual Fund', 'Tuition']);
+  assert.deepEqual(pick({ admissionDate: '2026-02-03' }, 3), ['Exam Fee', 'Tuition']);
+  // An old student admitted mid-year (explicit marker) gets the Session Fee instead of the Admission Fee.
+  assert.deepEqual(
+    pick({ admissionDate: '2026-07-15', studentType: 'existing', studentTypeAcademicYearId: YEAR.id }, 7),
+    ['Annual Fund', 'Session Fee', 'Tuition'],
+  );
+  // Existing students and January admissions are unaffected.
+  assert.deepEqual(pick({ admissionDate: '2024-03-01' }, 1), ['Annual Fund', 'Session Fee', 'Tuition']);
+  assert.deepEqual(pick({ admissionDate: '2026-01-20' }, 1), ['Admission Fee', 'Annual Fund', 'Tuition']);
+});
+
+test('a head that gains a second month is recurring, no longer a one-time catch-up', () => {
+  const FUND = head('m-fund', 'Fund', 'monthly');
+  const structure = [row(TUITION, 5, 1000), row(FUND, 1, 100), row(FUND, 5, 100)];
+  const pick = (m) => names(selectStructureRows(structure, resolveStudentFeeContext({ admissionDate: '2026-05-02' }, YEAR), m));
+  assert.deepEqual(pick(5), ['Fund', 'Tuition']); // billed because month 5 has its own row, once
+});

@@ -128,8 +128,11 @@ export function periodicScheduleMonth(
  * With a context:
  *  - nothing is charged before the first billable month;
  *  - heads are filtered by new/existing applicability;
- *  - a yearly/half-yearly head whose scheduled month has already passed when
- *    the student is admitted is charged in full in the first billable month.
+ *  - a one-time annual head whose charge month has already passed when the
+ *    student is admitted is charged in full in the first billable month.
+ *    That is a yearly/half-yearly head at its scheduled month, or any head whose
+ *    amount is set only under January in the fee structure (e.g. Admission Fee,
+ *    Session Fee, Annual Fund), whatever its schedule says.
  */
 export function selectStructureRows(
   structures: FeeStructure[],
@@ -142,6 +145,18 @@ export function selectStructureRows(
   const first = ctx.firstBillableMonth;
   if (first === null || month < first) return [];
 
+  // Heads whose only structure row is in January are one-time annual charges.
+  const monthsByHead = new Map<string, Set<number>>();
+  for (const s of structures) {
+    const set = monthsByHead.get(s.feeHeadId) ?? new Set<number>();
+    set.add(s.month);
+    monthsByHead.set(s.feeHeadId, set);
+  }
+  const januaryOnly = (headId: string) => {
+    const months = monthsByHead.get(headId);
+    return !!months && months.size === 1 && months.has(YEARLY_SCHEDULE_MONTH);
+  };
+
   const picked = new Map<string, FeeStructure>();
   for (const s of structures) {
     if (!headApplies(s.feeHead, ctx.isNew)) continue;
@@ -151,7 +166,7 @@ export function selectStructureRows(
     } else if (
       month === first &&
       s.month < month &&
-      periodicScheduleMonth(s.feeHead) === s.month
+      (periodicScheduleMonth(s.feeHead) === s.month || januaryOnly(s.feeHeadId))
     ) {
       picked.set(s.feeHeadId, s);
     }

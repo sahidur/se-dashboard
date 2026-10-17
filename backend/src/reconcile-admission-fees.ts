@@ -1,8 +1,7 @@
 /**
  * Moves existing data to the admission-date fee rules, in one run:
  *   1. Fee heads: Admission Fee -> new students, Session Fee -> existing
- *      students (matched by name; monthly heads with amounts only in January
- *      become yearly so late joiners can be charged the catch-up).
+ *      students (matched by name).
  *   2. Every student's fee rows: dues before the admission month are voided,
  *      unpaid months get the right heads, missing months are added. Rows with
  *      money collected are never changed - they become open items on the
@@ -22,8 +21,7 @@ import * as path from 'path';
 import { AppModule } from './app.module';
 import { FeeReconcileService, ReconcileOptions } from './fee-collection/fee-reconcile.service';
 import { Student } from './students/entities/student.entity';
-import { FeeHead, FeeApplicability, FeeSchedule } from './fee-management/entities/fee-head.entity';
-import { FeeStructure } from './fee-management/entities/fee-structure.entity';
+import { FeeHead, FeeApplicability } from './fee-management/entities/fee-head.entity';
 
 const flags = process.argv.slice(2);
 const flagValue = (name: string) => flags.find((f) => f.startsWith(`--${name}=`))?.slice(name.length + 3);
@@ -42,14 +40,7 @@ const csv = (cells: unknown[]) =>
 /** Fee-head changes to make (admission/session by name). */
 async function planHeadChanges(ds: DataSource) {
   const heads = await ds.getRepository(FeeHead).find();
-  const months = new Map<string, Set<number>>();
-  for (const s of await ds.getRepository(FeeStructure).find()) {
-    const set = months.get(s.feeHeadId) ?? new Set<number>();
-    set.add(s.month);
-    months.set(s.feeHeadId, set);
-  }
-
-  const changes: { head: FeeHead; applicableTo: FeeApplicability; feeSchedule: FeeSchedule }[] = [];
+  const changes: { head: FeeHead; applicableTo: FeeApplicability }[] = [];
   for (const head of heads) {
     if (head.applicableTo !== FeeApplicability.ALL) continue; // already configured
     const applicableTo = /admission/i.test(head.name)
@@ -58,11 +49,7 @@ async function planHeadChanges(ds: DataSource) {
         ? FeeApplicability.EXISTING_STUDENTS
         : FeeApplicability.ALL;
     if (applicableTo === FeeApplicability.ALL) continue;
-    const used = months.get(head.id);
-    const januaryOnly = !!used && used.size > 0 && [...used].every((m) => m === 1);
-    const feeSchedule =
-      head.feeSchedule === FeeSchedule.MONTHLY && januaryOnly ? FeeSchedule.YEARLY : head.feeSchedule;
-    changes.push({ head, applicableTo, feeSchedule });
+    changes.push({ head, applicableTo });
   }
   return changes;
 }
@@ -89,20 +76,18 @@ async function run(): Promise<number> {
     const headChanges = await planHeadChanges(ds);
     console.log(`\nFee heads to configure: ${headChanges.length}`);
     for (const c of headChanges) {
-      const sched = c.feeSchedule !== c.head.feeSchedule ? `, schedule ${c.head.feeSchedule} -> ${c.feeSchedule}` : '';
-      console.log(`  ${c.head.category ?? '-'} / ${c.head.name}: ${c.applicableTo}${sched}`);
+      console.log(`  ${c.head.category ?? '-'} / ${c.head.name}: ${c.applicableTo}`);
     }
     const opts: ReconcileOptions = { actorId: null };
     if (APPLY) {
       for (const c of headChanges) {
         c.head.applicableTo = c.applicableTo;
-        c.head.feeSchedule = c.feeSchedule;
         await ds.getRepository(FeeHead).save(c.head);
       }
     } else {
       // Show the effect of the head changes without saving them.
       opts.headOverrides = new Map(
-        headChanges.map((c) => [c.head.id, { applicableTo: c.applicableTo, feeSchedule: c.feeSchedule }]),
+        headChanges.map((c) => [c.head.id, { applicableTo: c.applicableTo }]),
       );
     }
 
