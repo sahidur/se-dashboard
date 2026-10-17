@@ -8,12 +8,14 @@ import { SchoolSection } from './entities/section.entity';
 import { DcSchool } from '../data-collection/entities/dc-school.entity';
 import { AcademicYear } from '../fee-management/entities/academic-year.entity';
 import { UsersModule } from '../users/users.module';
+import { FeeCollectionModule } from '../fee-collection/fee-collection.module';
 import { SchoolScopeGuard } from './school-scope.guard';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Student, SchoolClass, SchoolSection, DcSchool, AcademicYear]),
     UsersModule,
+    FeeCollectionModule,
   ],
   controllers: [StudentsController],
   providers: [StudentsService, SchoolScopeGuard],

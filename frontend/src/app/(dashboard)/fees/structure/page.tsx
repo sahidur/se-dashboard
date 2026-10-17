@@ -465,8 +465,7 @@ export default function FeeStructurePage() {
             <p className="mt-3 flex items-start gap-1.5 text-xs text-gray-500">
               <FileSpreadsheet size={13} className="mt-0.5 shrink-0" />
               Leave a fee head as 0/empty to not charge it. Yearly heads are charged only in January and half-yearly heads
-              only in July — their amount is saved to that month automatically. Historical student fees already generated
-              are never changed.
+              only in July — their amount is saved to that month automatically. Students admitted after that month pay the full amount in their admission month. Unpaid dues are recalculated when the structure changes; months with payments are never changed.
             </p>
           </form>
         )}

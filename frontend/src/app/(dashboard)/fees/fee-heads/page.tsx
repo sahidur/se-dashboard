@@ -27,8 +27,18 @@ interface HeadRow {
   isActive: boolean;
   category: string | null;
   feeSchedule: 'yearly' | 'half_yearly' | 'monthly';
+  applicableTo?: 'all' | 'new_students' | 'existing_students';
   installmentAllowed: boolean;
 }
+
+const APPLICABLE_TO = [
+  { value: 'all', label: 'All students' },
+  { value: 'new_students', label: 'New students' },
+  { value: 'existing_students', label: 'Existing students' },
+] as const;
+
+const applicableToLabel = (value?: string | null) =>
+  APPLICABLE_TO.find((a) => a.value === value)?.label ?? 'All students';
 
 const FEE_SCHEDULES = [
   { value: 'yearly', label: 'Yearly' },
@@ -87,6 +97,7 @@ export default function FeeHeadsPage() {
     category: 'brac_academy',
     isActive: true,
     feeSchedule: 'monthly' as HeadRow['feeSchedule'],
+    applicableTo: 'all' as NonNullable<HeadRow['applicableTo']>,
     installmentAllowed: false,
   });
   const [categoryLocked, setCategoryLocked] = useState(false);
@@ -138,6 +149,7 @@ export default function FeeHeadsPage() {
       category: category ?? 'brac_academy',
       isActive: true,
       feeSchedule: 'monthly',
+      applicableTo: 'all',
       installmentAllowed: false,
     });
     setCategoryLocked(Boolean(category));
@@ -152,6 +164,7 @@ export default function FeeHeadsPage() {
       category: row.category ?? '',
       isActive: row.isActive,
       feeSchedule: row.feeSchedule ?? 'monthly',
+      applicableTo: row.applicableTo ?? 'all',
       installmentAllowed: Boolean(row.installmentAllowed),
     });
     setCategoryLocked(false);
@@ -220,6 +233,11 @@ export default function FeeHeadsPage() {
             <CalendarClock size={11} />
             {feeScheduleLabel(row.feeSchedule)}
           </span>
+          {row.applicableTo && row.applicableTo !== 'all' && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+              {applicableToLabel(row.applicableTo)}
+            </span>
+          )}
           <span
             className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
               row.installmentAllowed
@@ -449,6 +467,35 @@ export default function FeeHeadsPage() {
                 );
               })}
             </div>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700">
+              Charged To
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {APPLICABLE_TO.map((a) => {
+                const selected = form.applicableTo === a.value;
+                return (
+                  <button
+                    key={a.value}
+                    type="button"
+                    onClick={() => setForm({ ...form, applicableTo: a.value })}
+                    className={`rounded-xl border px-3 py-2 text-sm transition-all ${
+                      selected
+                        ? 'border-brand-400 bg-brand-50 font-semibold text-brand-600 shadow-sm'
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {a.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              Admission Fee: choose New students. Session Fee: choose Existing students. A student is
+              new when the admission date falls inside the academic year (or is marked New on the
+              student record).
+            </p>
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700">

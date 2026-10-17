@@ -1,15 +1,19 @@
 import {
   Injectable,
+  Optional,
   NotFoundException,
   ConflictException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, IsNull } from 'typeorm';
+import { Repository, In, IsNull, EntityManager } from 'typeorm';
 import { likeContains } from '../common/utils/like-utils';
 import { Student, StudentStatus, StudentGender } from './entities/student.entity';
 import { SchoolClass } from './entities/school-class.entity';
 import { SchoolSection } from './entities/section.entity';
+import { FeeReconcileService, ReconcileSummary } from '../fee-collection/fee-reconcile.service';
+import { isAdmissionRulesEnabled, toDateOnly } from '../fee-management/fee-calculation';
 import {
   CreateClassDto,
   UpdateClassDto,
@@ -42,10 +46,13 @@ interface BulkStudentFields {
   referenceNumber?: string;
   birthCertificateId?: string;
   religion?: string;
+  studentType?: 'new' | 'existing';
 }
 
 @Injectable()
 export class StudentsService {
+  private readonly logger = new Logger(StudentsService.name);
+
   constructor(
     @InjectRepository(Student)
     private readonly studentsRepo: Repository<Student>,
@@ -53,7 +60,27 @@ export class StudentsService {
     private readonly classesRepo: Repository<SchoolClass>,
     @InjectRepository(SchoolSection)
     private readonly sectionsRepo: Repository<SchoolSection>,
+    @Optional()
+    private readonly feeReconcile?: FeeReconcileService,
   ) {}
+
+  /**
+   * Re-applies the admission-date fee rules to one student inside the caller's
+   * transaction. No-op until FEE_ADMISSION_RULES=on.
+   */
+  private async reconcileFees(
+    manager: EntityManager,
+    studentId: string,
+    userId?: string,
+  ): Promise<ReconcileSummary | undefined> {
+    if (!this.feeReconcile || !isAdmissionRulesEnabled()) return undefined;
+    const result = await this.feeReconcile.reconcileStudent(
+      studentId,
+      { actorId: userId ?? null },
+      manager,
+    );
+    return result.summary;
+  }
 
   // ---------- Classes ----------
 
@@ -234,15 +261,26 @@ export class StudentsService {
       yearName,
     );
 
-    return this.studentsRepo.save(
-      this.studentsRepo.create({
-        ...dto,
-        dateOfBirth: dto.dateOfBirth ?? undefined,
-        admissionDate: dto.admissionDate ?? undefined,
-        admissionNumber,
-        createdById: userId,
-      }),
-    );
+    if (dto.studentType && !dto.academicYearId) {
+      throw new BadRequestException('Select an academic year to set the student type');
+    }
+    const { studentType, ...rest } = dto;
+
+    return this.studentsRepo.manager.transaction(async (manager) => {
+      const saved = await manager.save(
+        manager.create(Student, {
+          ...rest,
+          dateOfBirth: dto.dateOfBirth ?? undefined,
+          admissionDate: dto.admissionDate ?? undefined,
+          studentType: studentType ?? null,
+          studentTypeAcademicYearId: studentType ? dto.academicYearId : null,
+          admissionNumber,
+          createdById: userId,
+        }),
+      );
+      const feeReconcile = await this.reconcileFees(manager, saved.id, userId);
+      return feeReconcile ? Object.assign(saved, { feeReconcile }) : saved;
+    });
   }
 
   async listStudents(query: ListStudentsQueryDto) {
@@ -291,7 +329,7 @@ export class StudentsService {
     return student;
   }
 
-  async updateStudent(id: string, dto: UpdateStudentDto): Promise<Student> {
+  async updateStudent(id: string, dto: UpdateStudentDto, userId?: string): Promise<Student> {
     const student = await this.findStudent(id);
     if (dto.classId) {
       const schoolClass = await this.classesRepo.findOne({ where: { id: dto.classId, schoolId: student.schoolId } });
@@ -311,8 +349,57 @@ export class StudentsService {
         );
       }
     }
-    Object.assign(student, dto);
-    return this.studentsRepo.save(student);
+    const before = {
+      admissionDate: toDateOnly(student.admissionDate),
+      classId: student.classId ?? null,
+      academicYearId: student.academicYearId ?? null,
+      status: student.status,
+      studentType: student.studentType ?? null,
+      studentTypeAcademicYearId: student.studentTypeAcademicYearId ?? null,
+    };
+
+    const { studentType, ...rest } = dto;
+    Object.assign(student, rest);
+
+    // Explicit new/existing marker. It belongs to one academic year, so a
+    // marker left over from an earlier year is history: it is never cleared
+    // by a form that shows the field as blank for the current year.
+    if (studentType !== undefined) {
+      const effectiveYear = student.academicYearId ?? null;
+      const stale =
+        !!before.studentType && before.studentTypeAcademicYearId !== effectiveYear;
+      if (studentType === null) {
+        if (!stale) {
+          student.studentType = null;
+          student.studentTypeAcademicYearId = null;
+        }
+      } else {
+        if (!effectiveYear) {
+          throw new BadRequestException('Select an academic year to set the student type');
+        }
+        student.studentType = studentType;
+        student.studentTypeAcademicYearId = effectiveYear;
+      }
+    }
+
+    const feeRelevantChange =
+      before.admissionDate !== toDateOnly(student.admissionDate) ||
+      before.classId !== (student.classId ?? null) ||
+      before.academicYearId !== (student.academicYearId ?? null) ||
+      before.status !== student.status ||
+      before.studentType !== (student.studentType ?? null) ||
+      before.studentTypeAcademicYearId !== (student.studentTypeAcademicYearId ?? null);
+
+    if (!feeRelevantChange || !this.feeReconcile || !isAdmissionRulesEnabled()) {
+      return this.studentsRepo.save(student);
+    }
+    // Admission date / type / class / year changed: recalculate the student's
+    // dues in the same transaction so the two can never disagree.
+    return this.studentsRepo.manager.transaction(async (manager) => {
+      const saved = await manager.save(student);
+      const feeReconcile = await this.reconcileFees(manager, id, userId);
+      return feeReconcile ? Object.assign(saved, { feeReconcile }) : saved;
+    });
   }
 
   async removeStudent(id: string): Promise<void> {
@@ -324,7 +411,7 @@ export class StudentsService {
 
   // ---------- Promotion / Transfer ----------
 
-  async promote(dto: PromoteStudentsDto): Promise<Student[]> {
+  async promote(dto: PromoteStudentsDto, userId?: string): Promise<Student[]> {
     if (dto.studentIds.length === 0) {
       throw new BadRequestException('No students selected');
     }
@@ -357,7 +444,14 @@ export class StudentsService {
       student.academicYearId = dto.targetAcademicYearId;
       student.status = StudentStatus.ACTIVE;
     }
-    return this.studentsRepo.save(students);
+    if (!this.feeReconcile || !isAdmissionRulesEnabled()) {
+      return this.studentsRepo.save(students);
+    }
+    return this.studentsRepo.manager.transaction(async (manager) => {
+      const saved = await manager.save(students);
+      for (const s of saved) await this.reconcileFees(manager, s.id, userId);
+      return saved;
+    });
   }
 
   async transfer(id: string, dto: TransferStudentDto): Promise<Student> {
@@ -528,6 +622,20 @@ export class StudentsService {
         }
       }
 
+      if (row.studentType != null && String(row.studentType).trim() !== '') {
+        const value = String(row.studentType).trim().toLowerCase();
+        if (['new', 'n'].includes(value)) entity.studentType = 'new';
+        else if (['existing', 'old', 'o', 'e'].includes(value)) entity.studentType = 'existing';
+        else {
+          fail(`Unknown student type "${String(row.studentType).trim()}" — use New or Old (or leave blank)`);
+          return;
+        }
+        if (!dto.academicYearId) {
+          fail('Student type needs an academic year selected for the import');
+          return;
+        }
+      }
+
       rows.push({ row: rowNo, entity });
     });
 
@@ -548,6 +656,7 @@ export class StudentsService {
         sectionId: dto.sectionId,
         status: StudentStatus.ACTIVE,
         admissionNumber,
+        studentTypeAcademicYearId: entity.studentType ? dto.academicYearId : undefined,
         createdById: userId,
       });
       return { row, student };
@@ -577,6 +686,28 @@ export class StudentsService {
               error: `Could not save (admission number ${student.admissionNumber} may conflict) — retry this row`,
             });
           }
+        }
+      }
+    }
+
+    // Late admissions get the months their class already has. Failures here
+    // must not undo an import that is already committed - they are logged and
+    // the dues can be re-applied per student.
+    if (inserted > 0 && this.feeReconcile && isAdmissionRulesEnabled()) {
+      const saved = await this.studentsRepo.find({
+        where: {
+          schoolId: dto.schoolId,
+          admissionNumber: In(numbered.map((n) => n.student.admissionNumber)),
+        },
+        select: ['id'],
+      });
+      for (const s of saved) {
+        try {
+          await this.feeReconcile.reconcileStudent(s.id, { actorId: userId });
+        } catch (error) {
+          this.logger.warn(
+            `Fee reconcile after bulk upload failed for student ${s.id}: ${(error as Error)?.message ?? error}`,
+          );
         }
       }
     }

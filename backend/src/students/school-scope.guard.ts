@@ -8,6 +8,7 @@ import { SchoolClass } from './entities/school-class.entity';
 import { SchoolSection } from './entities/section.entity';
 import { StudentFee } from '../fee-collection/entities/student-fee.entity';
 import { Payment } from '../fee-collection/entities/payment.entity';
+import { FeeAdjustment } from '../fee-collection/entities/fee-adjustment.entity';
 import { StudentDiscount } from '../fee-management/entities/student-discount.entity';
 
 @Injectable()
@@ -86,6 +87,8 @@ export class SchoolScopeGuard implements CanActivate {
       if (id && path.startsWith('/payments/')) {
         const payment = await lookup(Payment, id);
         add(payment.schoolId);
+      } else if (id && path.startsWith('/adjustments/')) {
+        await lookup(FeeAdjustment, id);
       } else if (id) {
         await lookup(Student, id);
         const fees = await this.db.getRepository(StudentFee).find({ where: { studentId: id }, select: ['schoolId'] });
@@ -113,7 +116,7 @@ export class SchoolScopeGuard implements CanActivate {
     // check below still refuses scope-less payment lists.
     if (!schoolIds.size && (
       (controller === 'StudentsController' && ['/', '/classes', '/sections'].includes(path)) ||
-      (controller === 'FeeCollectionController' && path === '/payments')
+      (controller === 'FeeCollectionController' && ['/payments', '/adjustments'].includes(path))
     )) throw new NotFoundException('School not found or access denied');
 
     // Payment history must be listed per school: filtering only by studentId

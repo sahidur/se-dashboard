@@ -309,6 +309,11 @@ CORS_ORIGIN=https://${DOMAIN}
 UPLOAD_URL_SECRET=${UPLOAD_URL_SECRET}
 UPLOAD_URL_TTL_SECONDS=2592000
 UPLOADS_ALLOW_UNSIGNED=${UPLOADS_ALLOW_UNSIGNED:-false}
+# ── Fee rules ─────────────────────────────────────────────────────
+# Billing starts at the student's admission month; Admission Fee is charged to
+# new students and Session Fee to existing ones. A fresh install has no
+# legacy fee data to migrate, so the rules are on from day one.
+FEE_ADMISSION_RULES=on
 # ── Seeding ───────────────────────────────────────────────────────
 # Only read by 'npm run seed' when admin@bep.org does not already exist.
 SEED_ADMIN_PASSWORD=${SEED_ADMIN_PASSWORD}

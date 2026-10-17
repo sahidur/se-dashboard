@@ -142,6 +142,12 @@ const navigation: NavEntry[] = [
         module: 'fee-collection',
       },
       {
+        label: 'Fee Adjustments',
+        href: '/fees/adjustments',
+        icon: ClipboardCheck,
+        module: 'fee-collection',
+      },
+      {
         label: 'Fee Structure',
         href: '/fees/structure',
         icon: FileSpreadsheet,

@@ -28,6 +28,7 @@ const TEMPLATE_HEADERS = [
   'Reference Number',
   'Birth Certificate ID',
   'Religion',
+  'Student Type (New/Old)',
 ];
 
 const FIELD_ALIASES: Record<string, string[]> = {
@@ -58,6 +59,7 @@ const FIELD_ALIASES: Record<string, string[]> = {
     'birthcertificatenumber',
   ],
   religion: ['religion'],
+  studentType: ['studenttype', 'newold', 'newoldstudent', 'admissiontype'],
 };
 
 const HEADER_TO_FIELD: Record<string, string> = Object.entries(
@@ -178,6 +180,7 @@ const EXAMPLE_ROW = [
   'REF-001',
   '2012456789',
   'Islam',
+  'New',
 ];
 
 export function BulkUploadModal({
@@ -286,6 +289,7 @@ export function BulkUploadModal({
       ['4. Dates accept YYYY-MM-DD, DD/MM/YYYY or a real Excel date cell.'],
       ['5. School, academic year, class and section are chosen in the upload dialog — do not add them as columns.'],
       ['6. Admission numbers are generated automatically — do not add an admission number column.'],
+      ['6b. Student Type is optional: New, Old, or blank. Blank means automatic - a student is new when the admission date is inside the selected academic year. An academic year must be selected in the dialog to use this column.'],
       ['7. Save as .xlsx or .csv, then upload it in the Bulk Upload dialog.'],
       [],
       ['Example values (each column, in order):'],
@@ -399,6 +403,7 @@ export function BulkUploadModal({
           'referenceNumber',
           'birthCertificateId',
           'religion',
+          'studentType',
         ] as const) {
           const value = textValue(mapped[field]);
           if (value !== null) student[field] = value;

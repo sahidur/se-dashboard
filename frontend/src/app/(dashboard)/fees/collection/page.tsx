@@ -329,7 +329,10 @@ export default function MonthlyCollectionPage() {
                 const failedDetail = failedCount
                   ? ` — failed: ${data.failed.map((f: { admissionNumber: string; reason: string }) => `${f.admissionNumber} (${f.reason})`).join('; ')}`
                   : '';
-                setMessage(`Generated ${data.created} fee record(s) (${data.skipped} already existed)${refreshed}.${failedDetail}`);
+                const notAdmittedNote = data.notAdmitted
+                  ? `, ${data.notAdmitted} student(s) not yet admitted in this month skipped`
+                  : '';
+                setMessage(`Generated ${data.created} fee record(s) (${data.skipped} already existed${notAdmittedNote})${refreshed}.${failedDetail}`);
                 loadCollection();
               } catch (error) {
                 alert(getErrorMessage(error, 'Fee generation failed'));

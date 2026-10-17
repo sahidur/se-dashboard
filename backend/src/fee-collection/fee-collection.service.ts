@@ -29,11 +29,14 @@ import {
 } from './dto/fee-collection.dto';
 import {
   toMoney,
-  scheduleApplies,
   buildBreakdown,
   computeFeeTotals,
   breakdownEquals,
+  isAdmissionRulesEnabled,
+  selectStructureRows,
+  StudentFeeContext,
 } from '../fee-management/fee-calculation';
+import { loadFeeContexts, feeContextKey } from './fee-context';
 import { computeHeadWisePaid } from './head-wise-paid';
 
 @Injectable()
@@ -67,8 +70,10 @@ export class FeeCollectionService {
   async generateFees(dto: GenerateFeesDto): Promise<{
     created: number;
     skipped: number;
+    notAdmitted: number;
     failed: { admissionNumber: string; reason: string }[];
   }> {
+    const rulesOn = isAdmissionRulesEnabled();
     return this.dataSource.transaction(async (manager) => {
       const students = await manager.find(Student, {
         where: {
@@ -78,7 +83,7 @@ export class FeeCollectionService {
           ...(dto.classId ? { classId: dto.classId } : {}),
         },
       });
-      if (students.length === 0) return { created: 0, skipped: 0, failed: [] };
+      if (students.length === 0) return { created: 0, skipped: 0, notAdmitted: 0, failed: [] };
 
       const studentIds = students.map((s) => s.id);
       // Soft-deleted rows still occupy the (student, year, month) unique
@@ -101,17 +106,25 @@ export class FeeCollectionService {
               schoolId: dto.schoolId,
               academicYearId: dto.academicYearId,
               classId: In(classIds),
-              month: dto.month,
+              // Catch-up of yearly/half-yearly heads reads other months' rows.
+              ...(rulesOn ? {} : { month: dto.month }),
             },
             relations: ['feeHead'],
           })
         : [];
+      const contexts = rulesOn
+        ? await loadFeeContexts(
+            manager,
+            students.map((s) => ({ studentId: s.id, academicYearId: dto.academicYearId })),
+          )
+        : new Map<string, StudentFeeContext>();
       const discounts = await manager.find(StudentDiscount, {
         where: { academicYearId: dto.academicYearId, studentId: In(studentIds), isActive: true },
       });
 
       let created = 0;
       let skipped = 0;
+      let notAdmitted = 0;
       const failed: { admissionNumber: string; reason: string }[] = [];
 
       for (const [index, student] of students.entries()) {
@@ -119,13 +132,21 @@ export class FeeCollectionService {
           skipped++;
           continue;
         }
+        const ctx = contexts.get(feeContextKey(student.id, dto.academicYearId)) ?? null;
+        // Not admitted yet for this month: no due is generated at all.
+        if (ctx && (ctx.firstBillableMonth === null || dto.month < ctx.firstBillableMonth)) {
+          notAdmitted++;
+          continue;
+        }
         const savepoint = `fee_generation_${index}`;
         let savepointCreated = false;
         // One bad student (e.g. a mis-keyed discount) must not abort the
         // whole batch — the failure is reported, the rest still generate.
         try {
-          const rows = structures.filter(
-            (f) => f.classId === student.classId && scheduleApplies(f, dto.month),
+          const rows = selectStructureRows(
+            structures.filter((f) => f.classId === student.classId),
+            ctx,
+            dto.month,
           );
           const breakdown = buildBreakdown(rows, discounts, student.id, dto.month);
           const { baseAmount, discountAmount, payableAmount } = computeFeeTotals(breakdown);
@@ -183,7 +204,7 @@ export class FeeCollectionService {
         }
       }
 
-      return { created, skipped, failed };
+      return { created, skipped, notAdmitted, failed };
     });
   }
 
@@ -251,7 +272,16 @@ export class FeeCollectionService {
       },
     });
     const structures = await this.loadStructures(manager, fees);
-    return this.recalculateRows(manager, fees, structures, discounts);
+    return this.recalculateRows(manager, fees, structures, discounts, await this.contextsFor(manager, fees));
+  }
+
+  /** Per-(student, year) admission context; empty (legacy behaviour) when rules are off. */
+  private async contextsFor(
+    manager: EntityManager,
+    fees: StudentFee[],
+  ): Promise<Map<string, StudentFeeContext>> {
+    if (!isAdmissionRulesEnabled()) return new Map();
+    return loadFeeContexts(manager, fees);
   }
 
   private async recalculateStudentInManager(
@@ -283,7 +313,7 @@ export class FeeCollectionService {
       where: { studentId, isActive: true },
     });
     const structures = await this.loadStructures(manager, fees);
-    return this.recalculateRows(manager, fees, structures, discounts);
+    return this.recalculateRows(manager, fees, structures, discounts, await this.contextsFor(manager, fees));
   }
 
   private async loadStructures(
@@ -299,7 +329,8 @@ export class FeeCollectionService {
       where: {
         schoolId: In(schoolIds),
         academicYearId: In(yearIds),
-        month: In(months),
+        // With admission rules on, catch-up reads the head's scheduled month.
+        ...(isAdmissionRulesEnabled() ? {} : { month: In(months) }),
         ...(classIds.length ? { classId: In(classIds) } : {}),
       },
       relations: ['feeHead'],
@@ -311,19 +342,29 @@ export class FeeCollectionService {
     fees: StudentFee[],
     structures: FeeStructure[],
     discounts: StudentDiscount[],
+    contexts: Map<string, StudentFeeContext> = new Map(),
   ): Promise<{ updated: number; skipped: number }> {
     let updated = 0;
     let skipped = 0;
     for (const fee of fees) {
+      const ctx = contexts.get(feeContextKey(fee.studentId, fee.academicYearId)) ?? null;
+      // Rows before the admission month are not rebuilt here (and not voided
+      // either - that is the reconcile routine's explicit, audited job).
+      if (ctx && (ctx.firstBillableMonth === null || fee.month < ctx.firstBillableMonth)) {
+        skipped++;
+        continue;
+      }
       // classId/year/month come from the fee row itself — the snapshot
       // belongs to the class at generation time, not the student's current one.
-      const rows = structures.filter(
-        (s) =>
-          s.schoolId === fee.schoolId &&
-          s.classId === fee.classId &&
-          s.academicYearId === fee.academicYearId &&
-          s.month === fee.month &&
-          scheduleApplies(s, fee.month),
+      const rows = selectStructureRows(
+        structures.filter(
+          (s) =>
+            s.schoolId === fee.schoolId &&
+            s.classId === fee.classId &&
+            s.academicYearId === fee.academicYearId,
+        ),
+        ctx,
+        fee.month,
       );
       const applicableDiscounts = discounts.filter(
         (d) => d.academicYearId === fee.academicYearId,

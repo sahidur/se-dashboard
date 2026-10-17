@@ -163,6 +163,17 @@ export class Student {
   @Column({ name: 'admission_date', type: 'date', nullable: true })
   admissionDate: Date;
 
+  // Explicit new/existing marker. When set (and bound to the academic year it
+  // was set for) it overrides the admission-date rule for fee-head
+  // applicability only; NULL = derive from admission date vs academic year.
+  @Column({ name: 'student_type', type: 'varchar', length: 10, nullable: true })
+  studentType: 'new' | 'existing' | null;
+
+  // Academic year the student_type override belongs to. "New" is relative to
+  // one year, so the override stops applying once the student moves on.
+  @Column({ name: 'student_type_academic_year_id', type: 'uuid', nullable: true })
+  studentTypeAcademicYearId: string | null;
+
   @Column({ type: 'enum', enum: StudentStatus, default: StudentStatus.ACTIVE })
   status: StudentStatus;
 

@@ -5,6 +5,7 @@ import {
   IsUUID,
   IsInt,
   IsEnum,
+  IsIn,
   IsNumber,
   IsPositive,
   IsDateString,
@@ -18,6 +19,7 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { PaymentMethod } from '../entities/payment.entity';
+import { FeeAdjustmentStatus } from '../entities/fee-adjustment.entity';
 
 export class GenerateFeesDto {
   @ApiProperty()
@@ -159,4 +161,58 @@ export class ListPaymentsQueryDto {
   @Min(1)
   @Max(200)
   limit?: number;
+}
+
+export class ListFeeAdjustmentsQueryDto {
+  @ApiProperty()
+  @IsUUID()
+  schoolId: string;
+
+  @ApiPropertyOptional({ enum: FeeAdjustmentStatus })
+  @IsOptional()
+  @IsEnum(FeeAdjustmentStatus)
+  status?: FeeAdjustmentStatus;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  academicYearId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  studentId?: string;
+
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ example: 50 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  limit?: number;
+}
+
+export const RESOLVABLE_ADJUSTMENT_STATUSES = [
+  FeeAdjustmentStatus.REFUNDED,
+  FeeAdjustmentStatus.APPLIED_MANUALLY,
+  FeeAdjustmentStatus.WAIVED,
+] as const;
+
+export class ResolveFeeAdjustmentDto {
+  @ApiProperty({ enum: RESOLVABLE_ADJUSTMENT_STATUSES })
+  @IsIn(RESOLVABLE_ADJUSTMENT_STATUSES)
+  status: FeeAdjustmentStatus;
+
+  @ApiProperty({ example: 'Refunded in cash, voucher #123' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1000)
+  note: string;
 }

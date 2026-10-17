@@ -9,6 +9,8 @@
 #
 #  Usage: sudo bash redeploy.sh
 #         sudo STRICT_UPLOADS=false bash redeploy.sh  # temporary legacy URL grace
+#         sudo FEE_MIGRATE=apply bash redeploy.sh     # apply the fee-rules migration
+#                                                     # (a plain run only previews it)
 # =============================================================================
 set -euo pipefail
 IFS=$'\n\t'
@@ -38,6 +40,10 @@ DOMAIN="${DOMAIN:-se.somadhanhobe.com}"
 #                     requires a valid signature; logged-in users are unaffected.
 #   false          -> temporarily preserve an existing legacy unsigned setting.
 STRICT_UPLOADS="${STRICT_UPLOADS:-true}"
+
+# Fee admission-date rules migration: "preview" (default, writes nothing) or "apply".
+FEE_MIGRATE="${FEE_MIGRATE:-preview}"
+[[ "$FEE_MIGRATE" == "preview" || "$FEE_MIGRATE" == "apply" ]] || die "FEE_MIGRATE must be 'preview' or 'apply'"
 
 # =============================================================================
 #  Migration – legacy "bep-*" naming → "se360-*"
@@ -734,6 +740,41 @@ case "$SCHEMA_RC" in
 esac
 
 # =============================================================================
+#  Admission-date fee rules (one-time data migration)
+# =============================================================================
+# FEE_ADMISSION_RULES=on in backend/.env switches the rules on. Until the
+# migration has been applied, a normal redeploy only PREVIEWS it - nothing in
+# the database changes. Check the CSV it prints, then apply with:
+#     sudo FEE_MIGRATE=apply bash redeploy.sh
+# The migration never changes payments or receipts, and is safe to re-run.
+step "Fee admission-date rules"
+ensure_env FEE_ADMISSION_RULES "off"
+_fee_rules="$(grep -E '^FEE_ADMISSION_RULES=' "$BACKEND_ENV_FILE" | tail -n 1 | cut -d'=' -f2- || true)"
+if [[ "$_fee_rules" == "on" ]]; then
+  ok "Admission-date fee rules are on"
+else
+  FEE_REPORT_DIR="${LOG_DIR}/fee-migration"
+  mkdir -p "$FEE_REPORT_DIR"
+  chown "$APP_USER":"$APP_USER" "$FEE_REPORT_DIR"
+  chmod 750 "$FEE_REPORT_DIR"
+  if [[ "$FEE_MIGRATE" == "apply" ]]; then
+    info "Applying the fee migration (back up the database first if you have not)"
+    if ! sudo -u "$APP_USER" bash -c "cd ${APP_DIR}/backend && node dist/reconcile-admission-fees.js --apply --out=${FEE_REPORT_DIR}"; then
+      die "Fee migration did not finish cleanly. Nothing was turned on - fix the problem above and re-run (it is safe to repeat)."
+    fi
+    sed -i 's|^FEE_ADMISSION_RULES=.*|FEE_ADMISSION_RULES=on|' "$BACKEND_ENV_FILE"
+    ok "Fee migration applied - admission-date fee rules are now on"
+  else
+    # A preview problem must never block a deploy.
+    sudo -u "$APP_USER" bash -c "cd ${APP_DIR}/backend && node dist/reconcile-admission-fees.js --out=${FEE_REPORT_DIR}" \
+      || warn "Preview could not complete - see the messages above"
+    info "Nothing was changed. Review the CSV in ${FEE_REPORT_DIR}, then apply with:"
+    info "    sudo FEE_MIGRATE=apply bash redeploy.sh"
+  fi
+fi
+unset _fee_rules
+
+# =============================================================================
 #  Seed roles and permissions
 # =============================================================================
 # seedDefaultRoles() only ever ADDS missing permission rows, so releases that
@@ -822,6 +863,14 @@ else
 fi
 echo ""
 echo -e "  ${BOLD}Database${NC}: additive schema changes applied and roles/permissions re-seeded."
+_fee_state="$(grep -E '^FEE_ADMISSION_RULES=' "$BACKEND_ENV_FILE" | tail -n 1 | cut -d'=' -f2- || true)"
+if [[ "$_fee_state" == "on" ]]; then
+  echo -e "    Admission-date fee rules: ON"
+else
+  echo -e "    ${YELLOW}Admission-date fee rules: OFF${NC} - review the preview CSV in ${LOG_DIR}/fee-migration, then run:"
+  echo -e "      sudo FEE_MIGRATE=apply bash redeploy.sh"
+fi
+unset _fee_state
 echo -e "    Re-run manually with:"
 echo -e "      cd ${APP_DIR}/backend && sudo -u ${APP_USER} npm run schema:check"
 echo -e "      cd ${APP_DIR}/backend && sudo -u ${APP_USER} npm run seed:prod"

@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { FeeCollectionService } from './fee-collection.service';
+import { FeeReconcileService } from './fee-reconcile.service';
+import { FeeAdjustment } from './entities/fee-adjustment.entity';
 import { FeeCollectionController } from './fee-collection.controller';
 import { FinanceReportsService } from './finance-reports.service';
 import { FinanceReportsController } from './finance-reports.controller';
@@ -23,6 +25,7 @@ import { SchoolScopeGuard } from '../students/school-scope.guard';
   imports: [
     TypeOrmModule.forFeature([
       StudentFee,
+      FeeAdjustment,
       Payment,
       Receipt,
       Student,
@@ -38,7 +41,7 @@ import { SchoolScopeGuard } from '../students/school-scope.guard';
     UsersModule,
   ],
   controllers: [FeeCollectionController, FinanceReportsController],
-  providers: [FeeCollectionService, FinanceReportsService, SchoolScopeGuard],
-  exports: [FinanceReportsService, FeeCollectionService],
+  providers: [FeeCollectionService, FeeReconcileService, FinanceReportsService, SchoolScopeGuard],
+  exports: [FinanceReportsService, FeeCollectionService, FeeReconcileService],
 })
 export class FeeCollectionModule {}

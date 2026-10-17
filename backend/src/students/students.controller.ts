@@ -149,8 +149,9 @@ export class StudentsController {
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateStudentDto,
+    @CurrentUser('id') userId: string,
   ) {
-    return this.service.updateStudent(id, dto);
+    return this.service.updateStudent(id, dto, userId);
   }
 
   @Delete(':id')
@@ -163,8 +164,8 @@ export class StudentsController {
   @Post('promote')
   @Permissions({ module: 'student-management', action: 'update' })
   @ApiOperation({ summary: 'Promote students to a class/section/academic year' })
-  promote(@Body() dto: PromoteStudentsDto) {
-    return this.service.promote(dto);
+  promote(@Body() dto: PromoteStudentsDto, @CurrentUser('id') userId: string) {
+    return this.service.promote(dto, userId);
   }
 
   @Post(':id/transfer')

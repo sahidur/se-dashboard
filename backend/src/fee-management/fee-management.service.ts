@@ -13,7 +13,7 @@ import { StudentDiscount, DiscountType } from './entities/student-discount.entit
 import { SchoolClass } from '../students/entities/school-class.entity';
 import { Student } from '../students/entities/student.entity';
 import { FeeCollectionService } from '../fee-collection/fee-collection.service';
-import { toMoney } from './fee-calculation';
+import { toMoney, isAdmissionRulesEnabled, periodicScheduleMonth, MONTHS_IN_YEAR } from './fee-calculation';
 import {
   CreateAcademicYearDto,
   UpdateAcademicYearDto,
@@ -242,6 +242,27 @@ export class FeeManagementService {
           month: dto.month,
           classId: dto.classId,
         });
+
+        // Yearly / half-yearly heads are also charged as a catch-up in the
+        // first billable month of students admitted after the scheduled
+        // month, so editing one changes unpaid dues in OTHER months too.
+        if (isAdmissionRulesEnabled()) {
+          const changedHeadIds = [...toSave, ...toRemove].map((r) => r.feeHeadId);
+          const changedHeads = changedHeadIds.length
+            ? await manager.find(FeeHead, { where: { id: In(changedHeadIds) } })
+            : [];
+          if (changedHeads.some((h) => periodicScheduleMonth(h) !== null)) {
+            for (let month = 1; month <= MONTHS_IN_YEAR; month++) {
+              if (month === dto.month) continue;
+              await this.feeCollection.recalculateFeesWith(manager, {
+                schoolId: dto.schoolId,
+                academicYearId: dto.academicYearId,
+                month,
+                classId: dto.classId,
+              });
+            }
+          }
+        }
       }
 
       return manager.find(FeeStructure, {

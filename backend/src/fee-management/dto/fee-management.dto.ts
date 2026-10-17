@@ -21,7 +21,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { AcademicYearStatus } from '../entities/academic-year.entity';
 import { DiscountType } from '../entities/student-discount.entity';
-import { FeeSchedule } from '../entities/fee-head.entity';
+import { FeeSchedule, FeeApplicability } from '../entities/fee-head.entity';
 
 export class CreateAcademicYearDto {
   @ApiProperty({ example: '2026' })
@@ -87,6 +87,11 @@ export class CreateFeeHeadDto {
   @IsIn(FEE_HEAD_CATEGORIES as unknown as string[])
   category?: string;
 
+  @ApiPropertyOptional({ enum: FeeApplicability, default: FeeApplicability.ALL, description: 'Who is charged: everyone, new students only, or existing students only' })
+  @IsOptional()
+  @IsEnum(FeeApplicability)
+  applicableTo?: FeeApplicability;
+
   @ApiPropertyOptional({ enum: FeeSchedule, default: FeeSchedule.MONTHLY })
   @IsOptional()
   @IsEnum(FeeSchedule)
@@ -122,6 +127,11 @@ export class UpdateFeeHeadDto {
   @IsOptional()
   @IsIn(FEE_HEAD_CATEGORIES as unknown as string[])
   category?: string;
+
+  @ApiPropertyOptional({ enum: FeeApplicability, default: FeeApplicability.ALL, description: 'Who is charged: everyone, new students only, or existing students only' })
+  @IsOptional()
+  @IsEnum(FeeApplicability)
+  applicableTo?: FeeApplicability;
 
   @ApiPropertyOptional({ enum: FeeSchedule })
   @IsOptional()

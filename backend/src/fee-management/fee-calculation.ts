@@ -1,9 +1,163 @@
 import { FeeStructure } from './entities/fee-structure.entity';
 import { StudentDiscount, DiscountType } from './entities/student-discount.entity';
-import { FeeSchedule } from './entities/fee-head.entity';
+import { FeeSchedule, FeeApplicability, FeeHead } from './entities/fee-head.entity';
 import { StudentFee } from '../fee-collection/entities/student-fee.entity';
 
 export const MONTHS_IN_YEAR = 12;
+
+// Month in which each periodic schedule is normally charged.
+export const YEARLY_SCHEDULE_MONTH = 1;
+export const HALF_YEARLY_SCHEDULE_MONTH = 7;
+
+/**
+ * Admission-date based fee rules (billing starts at the admission month,
+ * Admission Fee for new students / Session Fee for existing students, catch-up
+ * of yearly/half-yearly heads) are switched on with FEE_ADMISSION_RULES=on.
+ * Until the one-off reconcile script has been reviewed and applied on a
+ * database, the flag stays off and the legacy behaviour is untouched.
+ */
+export function isAdmissionRulesEnabled(): boolean {
+  return (process.env.FEE_ADMISSION_RULES ?? '').trim().toLowerCase() === 'on';
+}
+
+/** Structural subsets, so the pure rules do not depend on entity classes. */
+export interface FeeRuleStudent {
+  admissionDate?: Date | string | null;
+  studentType?: 'new' | 'existing' | null;
+  studentTypeAcademicYearId?: string | null;
+}
+export interface FeeRuleYear {
+  id: string;
+  name?: string | null;
+  startDate?: Date | string | null;
+  endDate?: Date | string | null;
+}
+export interface StudentFeeContext {
+  /** 1-12, or null when the student is admitted after the year ends. */
+  firstBillableMonth: number | null;
+  /** New student for this academic year (drives Admission/Session fee). */
+  isNew: boolean;
+}
+
+/** 'YYYY-MM-DD' from a date column value (string) or Date; null if unusable. */
+export function toDateOnly(value: unknown): string | null {
+  if (value === null || value === undefined || value === '') return null;
+  if (value instanceof Date) {
+    if (isNaN(value.getTime())) return null;
+    const mm = String(value.getMonth() + 1).padStart(2, '0');
+    const dd = String(value.getDate()).padStart(2, '0');
+    return `${value.getFullYear()}-${mm}-${dd}`;
+  }
+  const s = String(value).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+}
+
+/**
+ * Academic years run January-December. Uses the stored start/end dates and
+ * falls back to the calendar year given by a numeric year name ("2026").
+ */
+export function academicYearRange(year: FeeRuleYear): { start: string; end: string } | null {
+  const start = toDateOnly(year.startDate);
+  const end = toDateOnly(year.endDate);
+  if (start && end) return { start, end };
+  const n = /^\d{4}$/.test((year.name ?? '').trim()) ? year.name!.trim() : null;
+  return n ? { start: `${n}-01-01`, end: `${n}-12-31` } : null;
+}
+
+/**
+ * Resolves, for one student in one academic year:
+ *  - firstBillableMonth: admission month if admitted inside the year; month 1
+ *    if admitted before it (or the date is missing); none if after it. Whole
+ *    months are billed - the day of the month never matters.
+ *  - isNew: explicit override (only for the academic year it was set for),
+ *    otherwise "admission date falls inside the academic year".
+ */
+export function resolveStudentFeeContext(
+  student: FeeRuleStudent,
+  year: FeeRuleYear,
+): StudentFeeContext {
+  const admission = toDateOnly(student.admissionDate);
+  const range = academicYearRange(year);
+
+  let firstBillableMonth: number | null = 1;
+  let inYear = false;
+  if (admission && range) {
+    if (admission > range.end) {
+      firstBillableMonth = null;
+    } else if (admission >= range.start) {
+      firstBillableMonth = Number(admission.slice(5, 7));
+      inYear = true;
+    }
+  }
+
+  const overrideApplies =
+    !!student.studentType &&
+    !!student.studentTypeAcademicYearId &&
+    student.studentTypeAcademicYearId === year.id;
+  const isNew = overrideApplies ? student.studentType === 'new' : inYear;
+
+  return { firstBillableMonth, isNew };
+}
+
+export function headApplies(
+  head: Pick<FeeHead, 'applicableTo'> | null | undefined,
+  isNew: boolean,
+): boolean {
+  const rule = head?.applicableTo ?? FeeApplicability.ALL;
+  if (rule === FeeApplicability.NEW_STUDENTS) return isNew;
+  if (rule === FeeApplicability.EXISTING_STUDENTS) return !isNew;
+  return true;
+}
+
+/** Month a periodic head is charged in; null for monthly heads. */
+export function periodicScheduleMonth(
+  head: Pick<FeeHead, 'feeSchedule'> | null | undefined,
+): number | null {
+  if (head?.feeSchedule === FeeSchedule.YEARLY) return YEARLY_SCHEDULE_MONTH;
+  if (head?.feeSchedule === FeeSchedule.HALF_YEARLY) return HALF_YEARLY_SCHEDULE_MONTH;
+  return null;
+}
+
+/**
+ * The structure rows that make up one student's fee for one month.
+ *
+ * `structures` must hold the student's class rows for the whole academic year
+ * (catch-up reads the row of the head's scheduled month). Without a context
+ * (rules disabled) this is exactly the legacy selection.
+ *
+ * With a context:
+ *  - nothing is charged before the first billable month;
+ *  - heads are filtered by new/existing applicability;
+ *  - a yearly/half-yearly head whose scheduled month has already passed when
+ *    the student is admitted is charged in full in the first billable month.
+ */
+export function selectStructureRows(
+  structures: FeeStructure[],
+  ctx: StudentFeeContext | null,
+  month: number,
+): FeeStructure[] {
+  if (!ctx) {
+    return structures.filter((s) => s.month === month && scheduleApplies(s, month));
+  }
+  const first = ctx.firstBillableMonth;
+  if (first === null || month < first) return [];
+
+  const picked = new Map<string, FeeStructure>();
+  for (const s of structures) {
+    if (!headApplies(s.feeHead, ctx.isNew)) continue;
+    if (picked.has(s.feeHeadId)) continue;
+    if (s.month === month && scheduleApplies(s, month)) {
+      picked.set(s.feeHeadId, s);
+    } else if (
+      month === first &&
+      s.month < month &&
+      periodicScheduleMonth(s.feeHead) === s.month
+    ) {
+      picked.set(s.feeHeadId, s);
+    }
+  }
+  return [...picked.values()];
+}
 
 export function toMoney(value: number): number {
   return Math.round(value * 100) / 100;

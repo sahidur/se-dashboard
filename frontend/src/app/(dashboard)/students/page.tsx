@@ -59,6 +59,15 @@ interface ClassRow {
   sections: { id: string; name: string; isActive: boolean }[];
 }
 
+interface FeeReconcileSummary {
+  voided: number;
+  reinstated: number;
+  rebuilt: number;
+  created: number;
+  flagged: number;
+  dismissed: number;
+}
+
 interface StudentRow {
   id: string;
   admissionNumber: string;
@@ -83,6 +92,7 @@ const emptyForm = {
   sectionId: '',
   rollNumber: '',
   admissionDate: '',
+  studentType: '',
   status: 'active',
   referenceNumber: '',
   birthCertificateId: '',
@@ -276,6 +286,11 @@ export default function StudentsPage() {
         sectionId: data.sectionId ?? '',
         rollNumber: data.rollNumber != null ? String(data.rollNumber) : '',
         admissionDate: data.admissionDate ? data.admissionDate.slice(0, 10) : '',
+        // The marker belongs to one academic year; show it only for the current one.
+        studentType:
+          data.studentType && data.studentTypeAcademicYearId === data.academicYearId
+            ? data.studentType
+            : '',
         status: data.status ?? 'active',
         referenceNumber: data.referenceNumber ?? '',
         birthCertificateId: data.birthCertificateId ?? '',
@@ -356,18 +371,37 @@ export default function StudentsPage() {
         fatherDob: form.fatherDob || null,
         gender: form.gender || null,
         admissionDate: form.admissionDate || null,
+        studentType: form.studentType || null,
       };
       // The academic year comes from the edit form only; on create it defaults
       // to the page's year filter. Attaching the filter to edits silently
       // reassigned the student's academic year on every save.
       if (!editingId && academicYearId) payload.academicYearId = academicYearId;
 
+      let saved: { feeReconcile?: FeeReconcileSummary } | undefined;
       if (editingId) {
-        await api.patch(`/students/${editingId}`, payload);
+        ({ data: saved } = await api.patch(`/students/${editingId}`, payload));
       } else {
-        await api.post('/students', { ...payload, schoolId: activeSchoolId });
+        ({ data: saved } = await api.post('/students', { ...payload, schoolId: activeSchoolId }));
       }
       setShowModal(false);
+      const fee = saved?.feeReconcile;
+      if (fee && (fee.voided || fee.reinstated || fee.rebuilt || fee.created || fee.flagged)) {
+        alert(
+          'Fee dues were recalculated for this student: ' +
+            [
+              fee.voided && `${fee.voided} month(s) before admission removed`,
+              fee.reinstated && `${fee.reinstated} month(s) restored`,
+              fee.rebuilt && `${fee.rebuilt} month(s) updated`,
+              fee.created && `${fee.created} month(s) added`,
+              fee.flagged &&
+                `${fee.flagged} month(s) already have payments and need Finance review (Fees > Adjustments)`,
+            ]
+              .filter(Boolean)
+              .join('; ') +
+            '.',
+        );
+      }
       fetchStudents();
     } catch (error) {
       alert(getErrorMessage(error, 'Failed to save student'));
@@ -682,6 +716,16 @@ export default function StudentsPage() {
                 options={YES_NO_OPTIONS}
               />
               <Input label="Admission Date" type="date" value={form.admissionDate} onChange={(e) => setForm({ ...form, admissionDate: e.target.value })} />
+              <Select
+                label="Student Type (this academic year)"
+                value={form.studentType}
+                onChange={(v) => setForm({ ...form, studentType: v })}
+                placeholder="Automatic (from admission date)"
+                options={[
+                  { value: 'new', label: 'New student (pays Admission Fee)' },
+                  { value: 'existing', label: 'Old student (pays Session Fee)' },
+                ]}
+              />
               <Select
                 label="Status"
                 value={form.status}

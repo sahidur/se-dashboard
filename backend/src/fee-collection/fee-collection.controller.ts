@@ -12,11 +12,14 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { FeeCollectionService } from './fee-collection.service';
+import { FeeReconcileService } from './fee-reconcile.service';
 import {
   GenerateFeesDto,
   CollectPaymentDto,
   CancelPaymentDto,
   ListPaymentsQueryDto,
+  ListFeeAdjustmentsQueryDto,
+  ResolveFeeAdjustmentDto,
 } from './dto/fee-collection.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AccessGuard } from '../auth/guards/access.guard';
@@ -29,7 +32,10 @@ import { SchoolScopeGuard } from '../students/school-scope.guard';
 @UseGuards(JwtAuthGuard, AccessGuard, SchoolScopeGuard)
 @Controller('fee-collection')
 export class FeeCollectionController {
-  constructor(private readonly service: FeeCollectionService) {}
+  constructor(
+    private readonly service: FeeCollectionService,
+    private readonly reconcileService: FeeReconcileService,
+  ) {}
 
   @Post('generate')
   @Permissions({ module: 'fee-collection', action: 'create' })
@@ -132,5 +138,33 @@ export class FeeCollectionController {
   @ApiOperation({ summary: 'Fee summary + month ledger of a student' })
   summary(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.studentFeeSummary(id);
+  }
+
+  @Post('students/:id/reconcile')
+  @Permissions({ module: 'fee-collection', action: 'create' })
+  @ApiOperation({
+    summary:
+      'Re-apply admission-date fee rules to one student (voids pre-admission dues, never touches collected money)',
+  })
+  reconcile(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('id') userId: string) {
+    return this.reconcileService.reconcileStudent(id, { actorId: userId });
+  }
+
+  @Get('adjustments')
+  @Permissions({ module: 'fee-collection', action: 'read' })
+  @ApiOperation({ summary: 'Money flagged for Finance review after fee reconciliation' })
+  adjustments(@Query() query: ListFeeAdjustmentsQueryDto) {
+    return this.reconcileService.listAdjustments(query);
+  }
+
+  @Post('adjustments/:id/resolve')
+  @Permissions({ module: 'fee-collection', action: 'update' })
+  @ApiOperation({ summary: 'Record how Finance resolved a flagged adjustment' })
+  resolveAdjustment(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ResolveFeeAdjustmentDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.reconcileService.resolveAdjustment(id, dto, userId);
   }
 }

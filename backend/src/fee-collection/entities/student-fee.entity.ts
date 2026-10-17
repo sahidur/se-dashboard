@@ -84,6 +84,22 @@ export class StudentFee {
   @Column({ type: 'enum', enum: StudentFeeStatus, default: StudentFeeStatus.DUE })
   status: StudentFeeStatus;
 
+  // Set when a row is voided (status CANCELLED) because the student was not
+  // yet admitted for this month. The row is kept for audit; reconciliation can
+  // reinstate it if the admission date moves earlier.
+  @Column({ name: 'void_reason', type: 'varchar', length: 255, nullable: true })
+  voidReason: string | null;
+
+  // e.g. 'admission_date'. Only rows voided by the system are auto-reinstated.
+  @Column({ name: 'void_source', type: 'varchar', length: 40, nullable: true })
+  voidSource: string | null;
+
+  @Column({ name: 'voided_at', type: 'timestamptz', nullable: true })
+  voidedAt: Date | null;
+
+  @Column({ name: 'voided_by_id', type: 'uuid', nullable: true })
+  voidedById: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

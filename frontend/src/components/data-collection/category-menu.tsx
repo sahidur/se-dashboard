@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import {
   ChevronDown, ChevronRight, Wallet, BarChart3, HandCoins, Receipt,
   FileSpreadsheet, Tag, CalendarRange, AlertTriangle, BookOpen, Target,
-  FileText, type LucideIcon,
+  FileText, ClipboardCheck, type LucideIcon,
 } from 'lucide-react';
 import { FORM_CATEGORIES, type FormCatalogItem, type FormCategory } from './form-catalog';
 import { SECTION_BY_SCHOOL_CATEGORY, getFormDisplayLabel, getStudentPerformanceForm } from './student-performance-catalog';
@@ -86,6 +86,7 @@ const LINK_CATEGORIES: MenuLinkCategory[] = [
     children: [
       { label: 'Monthly Collection', href: '/fees/collection', icon: HandCoins, module: 'fee-collection' },
       { label: 'Payment History', href: '/fees/payments', icon: Receipt, module: 'fee-collection' },
+      { label: 'Fee Adjustments', href: '/fees/adjustments', icon: ClipboardCheck, module: 'fee-collection' },
       { label: 'Fee Structure', href: '/fees/structure', icon: FileSpreadsheet, module: ['fee-collection', 'fee-management'] },
       { label: 'Fee Heads', href: '/fees/fee-heads', icon: Tag, module: ['fee-collection', 'fee-management'] },
       { label: 'Academic Years', href: '/fees/academic-years', icon: CalendarRange, module: ['fee-collection', 'fee-management'] },

@@ -6,6 +6,7 @@ import {
   IsUUID,
   IsInt,
   IsEnum,
+  IsIn,
   IsDateString,
   IsArray,
   MaxLength,
@@ -290,6 +291,15 @@ export class CreateStudentDto {
   @IsDateString()
   admissionDate?: string;
 
+  @ApiPropertyOptional({
+    enum: ['new', 'existing'],
+    nullable: true,
+    description:
+      'Explicit new/existing marker for the current academic year. Takes priority over the admission-date rule; null = automatic.',
+  })
+  @IsOptional()
+  @IsIn(['new', 'existing'])
+  studentType?: 'new' | 'existing' | null;
   @ApiPropertyOptional({ enum: StudentStatus })
   @IsOptional()
   @IsEnum(StudentStatus)
@@ -493,6 +503,15 @@ export class UpdateStudentDto {
   @IsDateString()
   admissionDate?: string;
 
+  @ApiPropertyOptional({
+    enum: ['new', 'existing'],
+    nullable: true,
+    description:
+      'Explicit new/existing marker for the current academic year. Takes priority over the admission-date rule; null = automatic.',
+  })
+  @IsOptional()
+  @IsIn(['new', 'existing'])
+  studentType?: 'new' | 'existing' | null;
   @ApiPropertyOptional({ enum: StudentStatus })
   @IsOptional()
   @IsEnum(StudentStatus)
@@ -636,6 +655,12 @@ export class BulkStudentRowDto {
   @IsString()
   @MaxLength(30)
   admissionDate?: string;
+
+  @ApiPropertyOptional({ example: 'new', description: 'new, existing or old; blank = automatic' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  studentType?: string;
 
   @ApiPropertyOptional({ description: 'External reference / registry number' })
   @IsOptional()
