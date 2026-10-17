@@ -100,6 +100,12 @@ export class Payment {
   @Column({ name: 'cancelled_at', type: 'timestamptz', nullable: true })
   cancelledAt: Date;
 
+  // Client-generated key (one per "collect payment" dialog) so a double
+  // click / network retry cannot post the same instalment twice. NULL for
+  // legacy rows and clients that don't send one; NULLs never conflict.
+  @Column({ name: 'idempotency_key', type: 'uuid', nullable: true, unique: true })
+  idempotencyKey: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

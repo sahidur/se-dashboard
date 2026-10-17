@@ -53,6 +53,14 @@ export class PaymentAllocationDto {
 }
 
 export class CollectPaymentDto {
+  @ApiPropertyOptional({
+    description:
+      'Client-generated UUID, one per payment attempt. Re-sending the same key returns the original payment instead of posting a duplicate.',
+  })
+  @IsOptional()
+  @IsUUID()
+  idempotencyKey?: string;
+
   @ApiProperty({ description: 'Student fee (month) the payment is for' })
   @IsUUID()
   studentFeeId: string;

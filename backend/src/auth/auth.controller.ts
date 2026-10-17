@@ -88,17 +88,25 @@ export class AuthController {
     return { message: 'Session refreshed' };
   }
 
-  @UseGuards(JwtAuthGuard)
+  // Public on purpose: the 15-minute access cookie is usually expired by the
+  // time a user clicks "log out", and a guarded route would 401 BEFORE the
+  // 7-day refresh session is revoked or its cookie cleared. Revocation is
+  // keyed on the refresh cookie (path=/api/auth, so it is sent here); a
+  // cross-site POST can't carry these SameSite=Lax cookies.
+  @Public()
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  @ApiBearerAuth()
   @ApiOperation({ summary: 'User logout' })
+  @Throttle({ default: { ttl: 60000, limit: 20 } })
   async logout(
-    @CurrentUser('id') userId: string,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     clearAuthCookies(res);
-    return this.authService.logout(userId);
+    await this.authService.logoutWithRefreshToken(
+      req.cookies?.[REFRESH_TOKEN_COOKIE] as string | undefined,
+    );
+    return { message: 'Logged out successfully' };
   }
 
   @UseGuards(JwtAuthGuard)

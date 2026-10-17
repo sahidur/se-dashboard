@@ -95,7 +95,15 @@ fi
 if [[ "$INSTALLED_NODE_MAJOR" -lt "$NODE_MAJOR" ]]; then
   warn "Node ${INSTALLED_NODE_MAJOR} installed – upgrading to Node ${NODE_MAJOR}.x (NodeSource)"
   export DEBIAN_FRONTEND=noninteractive
-  curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - >/dev/null
+  # Signed apt repository instead of `curl | bash`: packages are verified
+  # against NodeSource's signing key by apt, and no remote script runs as root.
+  apt-get install -y -qq ca-certificates gnupg >/dev/null
+  install -d -m 0755 /etc/apt/keyrings
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    | gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
+  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" \
+    > /etc/apt/sources.list.d/nodesource.list
+  apt-get update -qq
   apt-get install -y -qq nodejs
   # node_modules built against the old ABI must be rebuilt from scratch
   rm -rf "${APP_DIR}/backend/node_modules" "${APP_DIR}/frontend/node_modules" "${APP_DIR}/frontend/.next"
@@ -614,7 +622,13 @@ fi
 _seed_val="$(grep -E '^SEED_ADMIN_PASSWORD=' "$BACKEND_ENV_FILE" | tail -n 1 | cut -d'=' -f2- || true)"
 if [[ -n "$_seed_val" && ("$_seed_val" == *CHANGE_ME* || "$_seed_val" == *change-in-production* || "$_seed_val" == *placeholder*) ]]; then
   _new_seed="$(openssl rand -base64 18 | tr -d '/+=')Aa1"
-  sed -i "s|^SEED_ADMIN_PASSWORD=.*|SEED_ADMIN_PASSWORD=${_new_seed}|" "$BACKEND_ENV_FILE"
+  # awk reads the new value from the environment: putting the secret in sed's
+  # argv exposed it to every local user via `ps` while sed ran.
+  SEED_NEW="$_new_seed" awk 'BEGIN { v = ENVIRON["SEED_NEW"] } /^SEED_ADMIN_PASSWORD=/ { print "SEED_ADMIN_PASSWORD=" v; next } { print }' \
+    "$BACKEND_ENV_FILE" > "${BACKEND_ENV_FILE}.tmp"
+  cat "${BACKEND_ENV_FILE}.tmp" > "$BACKEND_ENV_FILE"   # keep owner/mode of the original
+  rm -f "${BACKEND_ENV_FILE}.tmp"
+  unset _new_seed
   warn "SEED_ADMIN_PASSWORD was a placeholder – auto-generated a new one"
 fi
 unset _seed_val _new_seed

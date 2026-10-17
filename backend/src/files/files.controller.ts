@@ -31,20 +31,35 @@ import { FilesService, SAFE_SERVE_EXTENSIONS } from './files.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AccessGuard } from '../auth/guards/access.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { GlobalAdminGuard } from '../auth/guards/global-admin.guard';
+import { UsersService } from '../users/users.service';
+import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('Files')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, AccessGuard)
 @Controller('files')
 export class FilesController {
-  constructor(private readonly filesService: FilesService) {}
+  constructor(
+    private readonly filesService: FilesService,
+    private readonly usersService: UsersService,
+  ) {}
 
   @Get('object')
   @ApiOperation({ summary: 'Stream a private S3 object to an authenticated user' })
-  async servePrivateObject(@Query('key') key: string, @Res() res: Response) {
+  async servePrivateObject(
+    @Query('key') key: string,
+    @CurrentUser('id') userId: string,
+    @Res() res: Response,
+  ) {
     let object: Awaited<ReturnType<FilesService['getPrivateObject']>>;
+    // Object-level authorization (feature permission of the folder, or the
+    // uploader) — knowing a key is not enough.
+    const reader = await this.usersService.findOneById(userId);
+    if (!reader) throw new NotFoundException('File not found');
     try {
-      object = await this.filesService.getPrivateObject(key);
+      object = await this.filesService.getPrivateObject(String(key ?? ''), reader);
     } catch (error) {
       if ((error as { name?: string }).name === 'NoSuchKey') {
         throw new NotFoundException('File not found');
@@ -73,6 +88,8 @@ export class FilesController {
   }
 
   @Post('upload')
+  // Uploads are buffered in memory and persist storage: tighter than global.
+  @Throttle({ default: { ttl: 60000, limit: 30 } })
   @ApiOperation({ summary: 'Upload a single file' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -91,14 +108,16 @@ export class FilesController {
   )
   async uploadFile(
     @UploadedFile() file: Express.Multer.File,
+    @CurrentUser('id') userId: string,
     @Query('folder') folder?: string,
   ) {
     // Prevent path traversal via folder param
-    const safeFolder = (folder || 'uploads').replace(/[^a-zA-Z0-9_-]/g, '');
-    return this.filesService.uploadFile(file, safeFolder || 'uploads');
+    const safeFolder = (String(folder ?? '') || 'uploads').replace(/[^a-zA-Z0-9_-]/g, '');
+    return this.filesService.uploadFile(file, safeFolder || 'uploads', userId);
   }
 
   @Post('upload-multiple')
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
   @ApiOperation({ summary: 'Upload multiple files' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
@@ -108,14 +127,18 @@ export class FilesController {
   )
   async uploadMultipleFiles(
     @UploadedFiles() files: Express.Multer.File[],
+    @CurrentUser('id') userId: string,
     @Query('folder') folder?: string,
   ) {
-    const safeFolder = (folder || 'uploads').replace(/[^a-zA-Z0-9_-]/g, '');
-    return this.filesService.uploadMultipleFiles(files, safeFolder || 'uploads');
+    const safeFolder = (String(folder ?? '') || 'uploads').replace(/[^a-zA-Z0-9_-]/g, '');
+    return this.filesService.uploadMultipleFiles(files, safeFolder || 'uploads', userId);
   }
 
   @Delete(':key')
   @Permissions({ module: 'recycle-bin', action: 'delete' })
+  // Irreversible and not tenant-scoped (keys are not linked to a school), so
+  // additionally restricted to the admin tier.
+  @UseGuards(GlobalAdminGuard)
   @ApiOperation({ summary: 'Permanently delete a file (privileged)' })
   async deleteFile(@Param('key') key: string) {
     // Deleting a stored file is irreversible and was previously open to any

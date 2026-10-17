@@ -12,6 +12,7 @@ import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { UsersService } from '../users/users.service';
 import { AuditService } from '../common/audit/audit.service';
+import { PRIVILEGED_ROLE_NAMES, EXCLUSIVE_RESOURCES } from './privileged-roles';
 
 /** Readable permission label: `module:action` or `module:action:resource`. */
 const permLabel = (p: {
@@ -96,7 +97,11 @@ export class RolesService {
       p: { module: string; action: string; resource?: string | null },
     ) =>
       actor.permissionKeys.has(`${p.module}:${p.action}:${p.resource ?? ''}`) ||
-      actor.permissionKeys.has(`${p.module}:${p.action}:`);
+      // Exclusive per-question grants are NOT covered by wildcard grants
+      // (HtLeadershipGuard ignores wildcards), so a wildcard holder must not
+      // be able to mint them either.
+      (!EXCLUSIVE_RESOURCES.includes(p.resource ?? '') &&
+        actor.permissionKeys.has(`${p.module}:${p.action}:`));
     if (!perms.every(holds)) {
       throw new ForbiddenException(
         'You cannot grant permissions you do not hold yourself',
@@ -114,6 +119,14 @@ export class RolesService {
     role: Role,
   ): void {
     if (!actor || actor.isSuperAdmin) return;
+    // "Super Admin"/"Admin" are recognised BY NAME as global administrators
+    // (school-scope bypass, GlobalAdminGuard, ...). Only a Super Admin may
+    // touch them: otherwise a same-hierarchy custom role holding roles:update
+    // could strip the Admin role down to a permission subset it holds and
+    // then self-assign it, escalating to global admin.
+    if (PRIVILEGED_ROLE_NAMES.includes(role.name)) {
+      throw new ForbiddenException('Only a Super Admin can modify a privileged role');
+    }
     if ((role.hierarchy ?? Number.POSITIVE_INFINITY) < actor.best) {
       throw new ForbiddenException(
         'You cannot modify roles with more privileges than your own',
@@ -259,9 +272,18 @@ export class RolesService {
     });
 
     if (updateRoleDto.permissions) {
-      // Escalation guard: the rewritten permission set may only contain
-      // permissions the actor already holds themselves.
-      this.assertPermissionsWithinActorGrants(actor, updateRoleDto.permissions);
+      // Escalation guard: permissions ADDED by this edit may only be ones the
+      // actor holds themselves (keeping a role's existing grants — e.g. an
+      // exclusive ht-leadership grant set by a Super Admin — is not a grant).
+      const existingKeys = new Set(
+        (role.permissions || []).map((p) => `${p.module}:${p.action}:${p.resource ?? ''}`),
+      );
+      this.assertPermissionsWithinActorGrants(
+        actor,
+        updateRoleDto.permissions.filter(
+          (p) => !existingKeys.has(`${p.module}:${p.action}:${p.resource ?? ''}`),
+        ),
+      );
       // Remove existing permissions
       await this.permissionsRepository.delete({ roleId: id });
 

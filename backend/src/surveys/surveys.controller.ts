@@ -140,8 +140,8 @@ export class SurveysController {
   @Get('school-records')
   @Permissions({ module: 'school-records', action: 'read' })
   @ApiOperation({ summary: 'Get all school records' })
-  async getAllSchoolRecords() {
-    return this.surveysService.getAllSchoolRecords();
+  async getAllSchoolRecords(@CurrentUser('id') userId: string) {
+    return this.surveysService.getAllSchoolRecords(userId);
   }
 
   @Get('school-records/:recordId')

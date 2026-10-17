@@ -15,6 +15,8 @@ import { ACCESS_TOKEN_COOKIE } from '../cookies';
 export interface JwtPayload {
   sub: string;
   pwv?: number;
+  /** Token type; refresh tokens must never be accepted as access tokens. */
+  typ?: 'access' | 'refresh';
 }
 
 /**
@@ -54,6 +56,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // the token's remaining TTL, AND read live role names from the DB: role
     // claims baked into the JWT at login would otherwise keep a demoted or
     // exiled admin fully privileged until the access-token TTL expires.
+    // Defence in depth on top of distinct signing secrets: never accept a
+    // refresh token as a bearer access token. (Tokens minted before the
+    // claim existed carry no typ and are still access-only.)
+    if (payload.typ !== undefined && payload.typ !== 'access') {
+      throw new UnauthorizedException('Invalid token type');
+    }
     const user = await this.usersService.findActiveUserById(payload.sub);
     if (!user) {
       throw new UnauthorizedException('Account is deactivated or not found');

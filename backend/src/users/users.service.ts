@@ -16,6 +16,8 @@ import { DcSchool } from '../data-collection/entities/dc-school.entity';
 import { AuditLog } from '../common/entities/audit-log.entity';
 import { PRIVILEGED_AUDIT_MODULES } from '../common/audit/privileged-modules';
 import { likeContains } from '../common/utils/like-utils';
+import { hashRefreshToken } from '../auth/refresh-token-hash';
+import { PRIVILEGED_ROLE_NAMES, EXCLUSIVE_RESOURCES } from '../roles/privileged-roles';
 
 @Injectable()
 export class UsersService {
@@ -45,6 +47,7 @@ export class UsersService {
     actorId?: string,
   ): Promise<{
     isSuperAdmin: boolean;
+    holdsPrivilegedRole: boolean;
     best: number;
     /** Granted permission keys: `${module}:${action}:${resource ?? ''}`
      * (empty resource segment = wildcard/umbrella grant). */
@@ -61,10 +64,14 @@ export class UsersService {
 
   private userPower(user: Pick<User, 'roles'>): {
     isSuperAdmin: boolean;
+    holdsPrivilegedRole: boolean;
     best: number;
     permissionKeys: Set<string>;
   } {
     const isSuperAdmin = (user.roles || []).some((r) => r.name === 'Super Admin');
+    const holdsPrivilegedRole = (user.roles || []).some((r) =>
+      PRIVILEGED_ROLE_NAMES.includes(r.name),
+    );
     const best = Math.min(
       ...(user.roles || []).map((r) => r.hierarchy ?? Number.POSITIVE_INFINITY),
       Number.POSITIVE_INFINITY,
@@ -77,7 +84,7 @@ export class UsersService {
         ),
       ),
     );
-    return { isSuperAdmin, best, permissionKeys };
+    return { isSuperAdmin, holdsPrivilegedRole, best, permissionKeys };
   }
 
   private targetBestHierarchy(roles?: Role[] | null): number {
@@ -105,14 +112,62 @@ export class UsersService {
   }
 
   /**
+   * Full management check for HTTP callers: hierarchy (assertCanManageTarget)
+   * PLUS tenant scope. A non-global actor (not Super Admin/Admin) may only
+   * manage users whose every assigned school lies inside the actor's own
+   * school footprint — otherwise e.g. a school-level `users:update` holder
+   * could reset the password of a user in another school and log in as them,
+   * inheriting that school's access. Users without schools are manageable only
+   * when strictly less privileged than the actor. Self-management passes.
+   */
+  private async assertManageable(
+    actorId: string | undefined,
+    actor: Awaited<ReturnType<UsersService['actorPower']>>,
+    target: { id: string; roles?: Role[] | null },
+  ): Promise<void> {
+    this.assertCanManageTarget(actor, target.roles);
+    if (!actorId || !actor || actor.isSuperAdmin || target.id === actorId) return;
+    const scope = await this.schoolGrantScope(actorId);
+    if (scope.global) return;
+    const withSchools = await this.usersRepository.findOne({
+      where: { id: target.id },
+      relations: ['schools'],
+    });
+    const schoolIds = (withSchools?.schools || []).map((s) => s.id);
+    const inTenant = schoolIds.length
+      ? schoolIds.every((id) => scope.ids.has(id))
+      : this.targetBestHierarchy(target.roles) > actor.best;
+    if (!inTenant) {
+      throw new ForbiddenException('You can only manage users within your own schools');
+    }
+  }
+
+  /**
    * A non-Super-Admin actor may not grant roles that are more powerful than
    * the actor's own strongest role.
    */
   private assertCanAssignRoles(
     actor: Awaited<ReturnType<UsersService['actorPower']>>,
     rolesToAssign: Role[],
+    /** Roles the target already holds (re-submitting them is not a grant). */
+    existingRoles?: Role[] | null,
   ): void {
     if (!actor || actor.isSuperAdmin || !rolesToAssign.length) return;
+    // Global-admin roles are recognised by NAME across the app (school-scope
+    // bypass etc.), so hierarchy alone is not a sufficient check: a custom
+    // role at the same level must not be able to hand out "Admin".
+    if (
+      !actor.holdsPrivilegedRole &&
+      rolesToAssign.some(
+        (r) =>
+          PRIVILEGED_ROLE_NAMES.includes(r.name) &&
+          !(existingRoles || []).some((e) => e.id === r.id),
+      )
+    ) {
+      throw new ForbiddenException(
+        'Only an administrator can assign administrator roles',
+      );
+    }
     const assignedBest = this.targetBestHierarchy(rolesToAssign);
     if (assignedBest < actor.best) {
       throw new ForbiddenException(
@@ -145,7 +200,9 @@ export class UsersService {
     if (!perms.length) return;
     const holds = (p: { module: string; action: string; resource?: string | null }) =>
       actor.permissionKeys.has(`${p.module}:${p.action}:${p.resource ?? ''}`) ||
-      actor.permissionKeys.has(`${p.module}:${p.action}:`);
+      // Exclusive grants (ht-leadership) are not covered by wildcards.
+      (!EXCLUSIVE_RESOURCES.includes(p.resource ?? '') &&
+        actor.permissionKeys.has(`${p.module}:${p.action}:`));
     if (!perms.every(holds)) {
       throw new ForbiddenException(
         'You cannot assign roles carrying permissions you do not hold yourself',
@@ -217,6 +274,32 @@ export class UsersService {
         'You can only assign schools you have access to yourself',
       );
     }
+  }
+
+  /**
+   * Tenant proxy for data that is owned by a USER rather than by a school
+   * (e.g. survey school records, which point at the legacy `schools` table):
+   * returns null for global admins (no restriction) or the ids of the user
+   * plus every user sharing one of their schools (assigned or created).
+   */
+  async findTenantUserIds(userId: string): Promise<Set<string> | null> {
+    const scope = await this.schoolGrantScope(userId);
+    if (scope.global) return null;
+    const ids = new Set<string>([userId]);
+    if (!scope.ids.size) return ids;
+    const colleagues = await this.usersRepository
+      .createQueryBuilder('colleague')
+      .select('colleague.id')
+      .innerJoin('colleague.schools', 'colleagueSchool')
+      .where('colleagueSchool.id IN (:...tenantSchoolIds)', { tenantSchoolIds: [...scope.ids] })
+      .getMany();
+    for (const c of colleagues) ids.add(c.id);
+    const creators = await this.schoolsRepository.find({
+      where: { id: In([...scope.ids]) },
+      select: ['id', 'createdById'],
+    });
+    for (const s of creators) if (s.createdById) ids.add(s.createdById);
+    return ids;
   }
 
   async logActivity(params: {
@@ -291,6 +374,7 @@ export class UsersService {
     searchName?: string,
     searchPhone?: string,
     searchEmail?: string,
+    actorId?: string,
   ) {
     // Clamp paging inputs: an unbounded `limit` turns this heavy multi-join
     // query into a cheap DoS, and a zero/negative page yields a negative skip.
@@ -360,6 +444,45 @@ export class UsersService {
 
     if (conditions.length > 0) {
       query.where(conditions.join(' AND '), params);
+    }
+
+    // Tenant scope (OWASP A01): global admins and system callers see every
+    // user; anyone else sees themself, users sharing one of their schools,
+    // and school-less users strictly below their own privilege level (e.g.
+    // accounts they just created) — never other tenants' staff or admins.
+    if (actorId) {
+      const actor = await this.actorPower(actorId);
+      const scope = actor?.isSuperAdmin ? null : await this.schoolGrantScope(actorId);
+      if (actor && scope && !scope.global) {
+        const sharesSchool = this.usersRepository
+          .createQueryBuilder('scopeU')
+          .select('scopeU.id')
+          .innerJoin('scopeU.schools', 'scopeS')
+          .where('scopeS.id IN (:...scopeSchoolIds)');
+        const hasSchools = this.usersRepository
+          .createQueryBuilder('anyU')
+          .select('anyU.id')
+          .innerJoin('anyU.schools', 'anyS');
+        const notBelow = this.usersRepository
+          .createQueryBuilder('strongU')
+          .select('strongU.id')
+          .innerJoin('strongU.roles', 'strongR')
+          .where('strongR.hierarchy <= :actorBest');
+        query.andWhere(
+          new Brackets((w) => {
+            w.where('user.id = :scopeActorId', { scopeActorId: actorId });
+            if (scope.ids.size) {
+              w.orWhere(`user.id IN (${sharesSchool.getQuery()})`, {
+                scopeSchoolIds: [...scope.ids],
+              });
+            }
+            w.orWhere(
+              `(user.id NOT IN (${hasSchools.getQuery()}) AND user.id NOT IN (${notBelow.getQuery()}))`,
+              { actorBest: Number.isFinite(actor.best) ? actor.best : 2147483647 },
+            );
+          }),
+        );
+      }
     }
 
     query.orderBy('user.createdAt', 'DESC');
@@ -436,6 +559,23 @@ export class UsersService {
     });
     const isSuperAdmin = viewer?.roles?.some((r) => r.name === 'Super Admin');
     if (!isSuperAdmin) {
+      // Tenant/hierarchy scope for the detail view (same rules as the list
+      // and mutations): out-of-tenant users are invisible (404), and a
+      // more-privileged user's school footprint is not disclosed.
+      try {
+        await this.assertManageable(viewerId, await this.actorPower(viewerId), user);
+      } catch {
+        const scope = await this.schoolGrantScope(viewerId);
+        if (scope.global) {
+          (user as any).schools = undefined;
+        } else {
+          // Visible (as in the list) when the user shares one of the viewer's
+          // schools, but only the shared part of their footprint is shown.
+          const shared = (user.schools || []).filter((s) => scope.ids.has(s.id));
+          if (!shared.length) return null;
+          user.schools = shared;
+        }
+      }
       // The entity itself is safe: pin (like password/refreshToken) is
       // @Exclude()'d in the entity definition.
       return user as any;
@@ -491,11 +631,11 @@ export class UsersService {
     // Privilege guard: non-Super-Admins cannot edit more powerful users, nor
     // grant them stronger roles.
     const actor = await this.actorPower(actorId);
-    this.assertCanManageTarget(actor, user.roles);
+    await this.assertManageable(actorId, actor, user);
     let newRoles: Role[] | undefined;
     if (updateUserDto.roleIds) {
       newRoles = await this.findRolesWithPermissions(updateUserDto.roleIds);
-      this.assertCanAssignRoles(actor, newRoles);
+      this.assertCanAssignRoles(actor, newRoles, user.roles);
       this.assertRolesWithinActorGrants(actor, newRoles);
     }
 
@@ -554,8 +694,11 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
     // Non-Super-Admins cannot deactivate/activate more powerful users.
-    this.assertCanManageTarget(await this.actorPower(actorId), user.roles);
+    await this.assertManageable(actorId, await this.actorPower(actorId), user);
     user.isActive = isActive;
+    // Deactivation revokes the stored refresh token, so reactivating the
+    // account later does not resurrect sessions issued before it.
+    if (!isActive) user.refreshToken = null;
     const saved = await this.usersRepository.save(user);
     // Status change is recorded automatically by the global audit subscriber.
     return saved;
@@ -573,7 +716,7 @@ export class UsersService {
     // given, apply the same hierarchy rule as mutations; internal callers
     // (no actorId) and self-views pass through.
     if (actorId) {
-      this.assertCanManageTarget(await this.actorPower(actorId), user.roles);
+      await this.assertManageable(actorId, await this.actorPower(actorId), user);
     }
     return user.schools || [];
   }
@@ -646,7 +789,7 @@ export class UsersService {
     // School access widens data-collection/monitoring visibility, so treat it
     // like any other target-user mutation: hierarchy guard applies, and the
     // actor may only grant schools they can access themself (admins exempt).
-    this.assertCanManageTarget(await this.actorPower(actorId), user.roles);
+    await this.assertManageable(actorId, await this.actorPower(actorId), user);
     await this.assertCanGrantSchoolAccess(actorId, schoolIds);
     const newSchools = await this.schoolsRepository.findBy({ id: In(schoolIds) });
     const existingIds = new Set((user.schools || []).map((s) => s.id));
@@ -670,7 +813,7 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    this.assertCanManageTarget(await this.actorPower(actorId), user.roles);
+    await this.assertManageable(actorId, await this.actorPower(actorId), user);
     user.schools = (user.schools || []).filter((s) => s.id !== schoolId);
     await this.usersRepository.save(user);
     return user.schools;
@@ -687,7 +830,7 @@ export class UsersService {
     // A user's activity trail is privileged data: apply the same hierarchy
     // rule as getSchools() so a lower-tier manager cannot inspect the trail
     // of users more privileged than themselves (e.g. Admin → Super Admin).
-    this.assertCanManageTarget(await this.actorPower(actorId), user.roles);
+    await this.assertManageable(actorId, await this.actorPower(actorId), user);
     // Same privileged-module filter as AuditService: a plain admin with
     // users:read must not see how the platform's roles/permissions were
     // configured via another user's (e.g. a Super Admin's) activity trail.
@@ -723,7 +866,22 @@ export class UsersService {
     }
     // Privilege escalation guard: resetting a more powerful user's password
     // would hand their account to the caller.
-    this.assertCanManageTarget(await this.actorPower(actorId), user.roles);
+    const actor = await this.actorPower(actorId);
+    await this.assertManageable(actorId, actor, user);
+    // A reset returns the new password to the caller, i.e. it is an account
+    // TAKEOVER primitive. Stricter than other management actions: the target
+    // must be strictly less privileged (no Admin -> Admin peer takeover).
+    // Own password: use change-password, which requires the current password.
+    if (actor && !actor.isSuperAdmin) {
+      if (user.id === actorId) {
+        throw new ForbiddenException('Use "Change password" to change your own password');
+      }
+      if (!(this.targetBestHierarchy(user.roles) > actor.best)) {
+        throw new ForbiddenException(
+          'You can only reset passwords of users with fewer privileges than you',
+        );
+      }
+    }
     // Use cryptographically secure random bytes; `randomInt` draws uniformly
     // (byte % n is subtly biased when 256 is not divisible by n).
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -772,7 +930,10 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
     // Non-Super-Admins cannot delete more powerful users.
-    this.assertCanManageTarget(await this.actorPower(actorId), user.roles);
+    await this.assertManageable(actorId, await this.actorPower(actorId), user);
+    // Revoke sessions first so a later recycle-bin restore can't revive them.
+    await this.usersRepository.update(user.id, { refreshToken: null as any });
+    user.refreshToken = null;
     await this.usersRepository.softRemove(user);
     // Deletion is recorded automatically by the global audit subscriber.
   }
@@ -781,9 +942,9 @@ export class UsersService {
     userId: string,
     refreshToken: string | null,
   ): Promise<void> {
-    const hashedToken = refreshToken
-      ? await bcrypt.hash(refreshToken, 12)
-      : null;
+    // Full-length SHA-256, NOT bcrypt (72-byte truncation made all of a
+    // user's JWT refresh tokens collide) — see auth/refresh-token-hash.ts.
+    const hashedToken = refreshToken ? hashRefreshToken(refreshToken) : null;
     await this.usersRepository.update(userId, { refreshToken: hashedToken as any });
   }
 
@@ -825,8 +986,8 @@ export class UsersService {
     // than their own, roles carrying permissions they don't hold themselves,
     // nor change the roles of more powerful users.
     const actor = await this.actorPower(actorId);
-    this.assertCanManageTarget(actor, user.roles);
-    this.assertCanAssignRoles(actor, roles);
+    await this.assertManageable(actorId, actor, user);
+    this.assertCanAssignRoles(actor, roles, user.roles);
     this.assertRolesWithinActorGrants(actor, roles);
     user.roles = roles;
     return this.usersRepository.save(user);

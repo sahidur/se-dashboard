@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   S3Client,
@@ -141,6 +141,7 @@ export class FilesService {
   async uploadFile(
     file: Express.Multer.File,
     subfolder = 'uploads',
+    uploaderId?: string,
   ): Promise<{ url: string; key: string }> {
     if (!file?.buffer) {
       throw new BadRequestException('No file was uploaded');
@@ -155,7 +156,7 @@ export class FilesService {
     if (this.useLocal) {
       return this.uploadFileLocal(file, subfolder);
     }
-    return this.uploadFileS3(file, subfolder);
+    return this.uploadFileS3(file, subfolder, uploaderId);
   }
 
   /** Safe, server-controlled extension for a validated upload. */
@@ -284,6 +285,7 @@ export class FilesService {
   private async uploadFileS3(
     file: Express.Multer.File,
     subfolder: string,
+    uploaderId?: string,
   ): Promise<{ url: string; key: string }> {
     const ext = this.extensionFor(file);
     const key = `${this.folder}/${subfolder}/${uuid()}${ext}`;
@@ -293,6 +295,9 @@ export class FilesService {
         Bucket: this.bucket,
         Key: key,
         Body: file.buffer,
+        // Uploader is always allowed to read their own object back (see
+        // canReadObject); stored server-side, never taken from the client.
+        ...(uploaderId && { Metadata: { 'uploaded-by': uploaderId } }),
         // Server-validated type (magic bytes checked above), not a raw echo
         // of the client header.
         ContentType: this.contentTypeFor(file),
@@ -325,10 +330,65 @@ export class FilesService {
     return SERVE_TYPES[ext];
   }
 
-  async getPrivateObject(key: string): Promise<{ object: GetObjectCommandOutput; mime: string }> {
+  /**
+   * Object-level read policy for private S3 objects (OWASP A01).
+   *
+   * Keys are unguessable, but they are embedded in many records (monitoring
+   * attachments, survey answers, activity evidence), so "any authenticated
+   * user who learns a key may read it" is not an acceptable rule. Access is
+   * granted to: admin tier; the uploader (recorded as object metadata); or a
+   * holder of a permission belonging to the feature that owns the upload
+   * folder. Profile pictures and the generic folder remain readable by any
+   * authenticated user (they are shown across user lists). Unknown folders
+   * are uploader/admin-only.
+   */
+  static readonly FOLDER_READ_MODULES: Record<string, string[] | '*'> = {
+    'profile-pictures': '*',
+    uploads: '*',
+    'school-monitoring': ['school-monitoring', 'school-monitoring-edit'],
+    'survey-uploads': ['surveys', 'assigned-surveys', 'school-records'],
+    'activity-participation': ['data-collection', 'school-information', 'programme-overview'],
+  };
+
+  static folderOfKey(key: string, prefix: string): string {
+    const rest = key.startsWith(`${prefix}/`) ? key.slice(prefix.length + 1) : key;
+    const parts = rest.split('/');
+    return parts.length > 1 ? parts[0] : '';
+  }
+
+  static canReadObject(
+    folder: string,
+    uploaderId: string | undefined,
+    user: { id: string; roles?: Array<{ name: string; permissions?: Array<{ module: string }> }> },
+  ): boolean {
+    const roles = user.roles || [];
+    if (roles.some((r) => r.name === 'Super Admin' || r.name === 'Admin')) return true;
+    if (uploaderId && uploaderId === user.id) return true;
+    const policy = FilesService.FOLDER_READ_MODULES[folder];
+    if (policy === '*') return true;
+    if (!policy) return false;
+    return roles.some((r) => (r.permissions || []).some((p) => policy.includes(p.module)));
+  }
+
+  async getPrivateObject(
+    key: string,
+    reader?: Parameters<typeof FilesService.canReadObject>[2],
+  ): Promise<{ object: GetObjectCommandOutput; mime: string }> {
     if (this.useLocal) throw new BadRequestException('S3 storage is not configured');
     const mime = this.assertS3Key(key);
     const object = await this.s3Client!.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+    if (
+      reader &&
+      !FilesService.canReadObject(
+        FilesService.folderOfKey(key, this.folder),
+        object.Metadata?.['uploaded-by'],
+        reader,
+      )
+    ) {
+      if (object.Body && 'destroy' in object.Body) object.Body.destroy();
+      // Same response as a missing object: don't confirm existence.
+      throw new NotFoundException('File not found');
+    }
     if (object.ContentType?.toLowerCase() !== mime || !object.Body ||
         (object.ContentLength !== undefined && object.ContentLength > 10 * 1024 * 1024)) {
       if (object.Body && 'destroy' in object.Body) object.Body.destroy();
@@ -384,7 +444,8 @@ export class FilesService {
   async uploadMultipleFiles(
     files: Express.Multer.File[],
     folder = 'uploads',
+    uploaderId?: string,
   ): Promise<{ url: string; key: string }[]> {
-    return Promise.all(files.map((file) => this.uploadFile(file, folder)));
+    return Promise.all(files.map((file) => this.uploadFile(file, folder, uploaderId)));
   }
 }

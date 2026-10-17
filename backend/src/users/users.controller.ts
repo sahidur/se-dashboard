@@ -56,8 +56,10 @@ export class UsersController {
     @Query('searchName') searchName?: string,
     @Query('searchPhone') searchPhone?: string,
     @Query('searchEmail') searchEmail?: string,
+    @CurrentUser('id') actorId?: string,
   ) {
-    return this.usersService.findAll(page || 1, limit || 20, search, searchName, searchPhone, searchEmail);
+    // actorId scopes the list to the caller's tenant (admins see everyone).
+    return this.usersService.findAll(page || 1, limit || 20, search, searchName, searchPhone, searchEmail, actorId);
   }
 
   @Get('me')

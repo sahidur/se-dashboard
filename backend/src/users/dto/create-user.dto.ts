@@ -1,3 +1,4 @@
+import { IsSafeAssetUrl } from '../../common/validators/is-safe-asset-url';
 import {
   IsEmail,
   IsNotEmpty,
@@ -94,6 +95,7 @@ export class CreateUserDto {
   @ApiPropertyOptional({ description: 'URL of an already-uploaded profile picture (jpg/png)' })
   @IsString()
   @IsOptional()
+  @IsSafeAssetUrl()
   profilePicture?: string;
 
   @ApiPropertyOptional({ example: ['school-uuid-1'], description: 'Schools this user should have access to' })

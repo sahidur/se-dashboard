@@ -8,7 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { randomUUID, randomBytes } from 'crypto';
+import { randomUUID, createHmac } from 'crypto';
 import {
   generateRegistrationOptions,
   verifyRegistrationResponse,
@@ -102,12 +102,54 @@ export class WebAuthnService {
   }
 
   // ── Challenge helpers ────────────────────────────────────────────────
+  /** Hard cap: the login-options endpoint is public, so bound memory use. */
+  static readonly MAX_CHALLENGES = 10_000;
+
   private setChallenge(key: string, challenge: string, userId?: string) {
+    if (this.challenges.size >= WebAuthnService.MAX_CHALLENGES) {
+      const now = Date.now();
+      for (const [k, v] of this.challenges) {
+        if (v.expiresAt < now) this.challenges.delete(k);
+      }
+      // Still full of live entries: evict the oldest (Map keeps insertion order).
+      while (this.challenges.size >= WebAuthnService.MAX_CHALLENGES) {
+        const oldest = this.challenges.keys().next().value;
+        if (oldest === undefined) break;
+        this.challenges.delete(oldest);
+      }
+    }
     this.challenges.set(key, {
       challenge,
       userId,
       expiresAt: Date.now() + CHALLENGE_TTL_MS,
     });
+  }
+
+  /**
+   * Anti-enumeration decoys for emails without passkeys. They must be STABLE
+   * per email (random-per-call decoys changed between requests while real IDs
+   * didn't, revealing which accounts exist) and look like real entries
+   * (variable count, transports present). Derived via HMAC with a server key.
+   */
+  private decoyCredentials(
+    email: string,
+  ): { id: string; transports: AuthenticatorTransportFuture[] }[] {
+    const key =
+      this.configService.get<string>('WEBAUTHN_DECOY_SECRET') ||
+      `webauthn-decoy:${this.configService.get<string>('JWT_SECRET') || ''}`;
+    const seed = createHmac('sha256', key).update(email.trim().toLowerCase()).digest();
+    const count = 1 + (seed[0] % 2);
+    const transportSets: AuthenticatorTransportFuture[][] = [
+      ['internal'],
+      ['hybrid', 'internal'],
+      ['usb'],
+    ];
+    return Array.from({ length: count }, (_, i) => ({
+      id: isoBase64URL.fromBuffer(
+        createHmac('sha256', key).update(`${email.trim().toLowerCase()}:${i}`).digest(),
+      ),
+      transports: transportSets[seed[1 + i] % transportSets.length],
+    }));
   }
 
   private takeChallenge(key: string): StoredChallenge | undefined {
@@ -243,10 +285,7 @@ export class WebAuthnService {
             transports:
               (p.transports as AuthenticatorTransportFuture[]) ?? undefined,
           }))
-        : [
-            { id: isoBase64URL.fromBuffer(randomBytes(32)) },
-            { id: isoBase64URL.fromBuffer(randomBytes(32)) },
-          ];
+        : this.decoyCredentials(email);
     }
 
     const options = await generateAuthenticationOptions({

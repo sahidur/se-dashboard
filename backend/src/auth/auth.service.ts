@@ -13,6 +13,7 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
 import { getAuditContext } from '../common/audit/audit-context';
+import { refreshTokenMatches } from './refresh-token-hash';
 
 @Injectable()
 export class AuthService {
@@ -171,6 +172,23 @@ export class AuthService {
     this.failedLogins.delete(key);
   }
 
+  /**
+   * Race-free attempt accounting: synchronously re-checks the lockout and
+   * counts THIS attempt as a failure *before* the slow bcrypt compare (no
+   * await between check and increment). Previously the counter only moved
+   * after bcrypt, so a burst of parallel requests all passed the check and an
+   * attacker got far more than MAX_FAILED_ATTEMPTS guesses. A successful
+   * compare clears the counter again via clearFailedLogins().
+   * Returns whether this attempt is the one that triggered the lockout.
+   */
+  private reserveAttempt(key: string): { locked: boolean; justLocked: boolean } {
+    const entry = this.failedLogins.get(key);
+    if (entry?.lockedUntil && entry.lockedUntil > Date.now()) {
+      return { locked: true, justLocked: false };
+    }
+    return { locked: false, justLocked: this.recordFailedLogin(key) };
+  }
+
   async login(loginDto: LoginDto) {
     const key = this.normalizeEmailKey(loginDto.email);
     const loginCtx = getAuditContext();
@@ -204,12 +222,19 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    // Count this attempt BEFORE the slow compare (see reserveAttempt).
+    const attempt = this.reserveAttempt(key);
+    if (attempt.locked) {
+      await this.timingSafeDummyCompare(loginDto.password);
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
     const isPasswordValid = await bcrypt.compare(
       loginDto.password,
       user.password,
     );
     if (!isPasswordValid) {
-      const justLocked = this.recordFailedLogin(key);
+      const justLocked = attempt.justLocked;
       await logLoginFailure(user.id, 'invalid_password');
       if (justLocked) {
         await this.usersService.logActivity({
@@ -331,6 +356,9 @@ export class AuthService {
         secret: this.configService.get('JWT_REFRESH_SECRET'),
         algorithms: ['HS256'],
       });
+      if (payload?.typ !== 'refresh') {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
 
       const user = await this.usersService.findOneById(payload.sub);
       if (!user || !user.refreshToken) {
@@ -343,10 +371,7 @@ export class AuthService {
         throw new UnauthorizedException('Account is deactivated');
       }
 
-      const isTokenValid = await bcrypt.compare(
-        refreshToken,
-        user.refreshToken,
-      );
+      const isTokenValid = refreshTokenMatches(refreshToken, user.refreshToken);
       if (!isTokenValid) {
         // Grace window: a duplicate refresh sent an instant apart by another
         // tab/device must not force a logout (see retiredRefreshTokens).
@@ -354,7 +379,9 @@ export class AuthService {
           // The presented refresh token is well-formed but no longer the
           // stored one and not within the grace window — the classic reuse
           // signal of a stolen/rotated token. Log for auditing without ever
-          // logging the token itself.
+          // logging the token itself. (No family revocation: the app keeps a
+          // single refresh hash per user, so a stale token from a second
+          // device would otherwise log out the user's active device.)
           this.logger.warn(
             `Refresh token reuse rejected for user ${user.id} — possible token theft or stale session`,
           );
@@ -362,14 +389,52 @@ export class AuthService {
         }
       }
 
+      // Token version: refresh tokens minted before a password change/reset
+      // must not be able to mint a fresh (current-version) access token.
+      const currentPwv = user.passwordChangedAt
+        ? new Date(user.passwordChangedAt).getTime()
+        : 0;
+      if (typeof payload.pwv !== 'number' || payload.pwv < currentPwv) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
       const tokens = await this.generateTokens(user);
-      this.rememberRetiredRefreshToken(user.id, refreshToken);
+      // Only the token being rotated away from the stored hash enters the
+      // grace window. Re-recording a token accepted through the grace path
+      // would re-arm its timestamp and keep a stolen token alive forever.
+      if (isTokenValid) {
+        this.rememberRetiredRefreshToken(user.id, refreshToken);
+      }
       await this.usersService.updateRefreshToken(user.id, tokens.refreshToken);
 
       return tokens;
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
+  }
+
+  /**
+   * Logout must work even after the 15-minute access token has expired
+   * (otherwise the 7-day refresh session silently survives "logout" on a
+   * shared device). Revocation is keyed on whichever credential still
+   * verifies; a refresh token only revokes the session it belongs to.
+   */
+  async logoutWithRefreshToken(refreshToken: string | undefined): Promise<void> {
+    if (!refreshToken) return;
+    let sub: string | undefined;
+    try {
+      const payload = this.jwtService.verify(refreshToken, {
+        secret: this.configService.get('JWT_REFRESH_SECRET'),
+        algorithms: ['HS256'],
+      });
+      sub = payload?.typ === 'refresh' ? payload?.sub : undefined;
+    } catch {
+      return;
+    }
+    if (!sub) return;
+    const user = await this.usersService.findOneById(sub);
+    if (!user || !refreshTokenMatches(refreshToken, user.refreshToken)) return;
+    await this.logout(user.id);
   }
 
   async logout(userId: string) {
@@ -406,9 +471,14 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
+    const attempt = this.reserveAttempt(key);
+    if (attempt.locked) {
+      await this.timingSafeDummyCompare(password);
+      throw new UnauthorizedException('Invalid credentials');
+    }
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
-      await this.recordStepUpFailure(userId, 'step_up_verification');
+      await this.recordStepUpFailure(userId, 'step_up_verification', attempt.justLocked);
       // Same message class as login to avoid confirming the account state.
       throw new UnauthorizedException('Password verification failed');
     }
@@ -419,8 +489,11 @@ export class AuthService {
    * Persistent audit + lockout for failed step-up password checks (change
    * password / passkey management). Never logs the attempted password.
    */
-  private async recordStepUpFailure(userId: string, reason: string): Promise<void> {
-    const justLocked = this.recordFailedLogin(`stepup:${userId}`);
+  private async recordStepUpFailure(
+    userId: string,
+    reason: string,
+    justLocked: boolean,
+  ): Promise<void> {
     const ctx = getAuditContext();
     await this.usersService.logActivity({
       action: 'PASSWORD_VERIFY_FAILED',
@@ -463,12 +536,17 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
+    const attempt = this.reserveAttempt(stepUpKey);
+    if (attempt.locked) {
+      await this.timingSafeDummyCompare(currentPassword);
+      throw new UnauthorizedException('Invalid credentials');
+    }
     const isPasswordValid = await bcrypt.compare(
       currentPassword,
       user.password,
     );
     if (!isPasswordValid) {
-      await this.recordStepUpFailure(userId, 'change_password');
+      await this.recordStepUpFailure(userId, 'change_password', attempt.justLocked);
       throw new UnauthorizedException('Current password is incorrect');
     }
     this.clearFailedLogins(stepUpKey);
@@ -525,13 +603,13 @@ export class AuthService {
     }
 
     const [accessToken, refreshToken] = await Promise.all([
-      this.jwtService.signAsync(payload, {
+      this.jwtService.signAsync({ ...payload, typ: 'access' }, {
         secret: jwtSecret,
         // Short-lived access token; the frontend silently rotates it via
         // /auth/refresh, so a stolen one has a tiny window.
         expiresIn: this.configService.get('JWT_EXPIRES_IN', '15m'),
       }),
-      this.jwtService.signAsync(payload, {
+      this.jwtService.signAsync({ ...payload, typ: 'refresh' }, {
         secret: refreshSecret,
         // Matches the refresh-cookie TTL default in auth/cookies.ts.
         expiresIn: this.configService.get('JWT_REFRESH_EXPIRES_IN', '7d'),

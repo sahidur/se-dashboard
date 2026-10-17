@@ -1,3 +1,4 @@
+import { IsSafeAssetUrl } from '../../common/validators/is-safe-asset-url';
 import {
   IsString,
   IsOptional,
@@ -41,6 +42,7 @@ export class MonitoringAnswerDto {
 export class MonitoringAttachmentDto {
   @IsString()
   @MaxLength(2048)
+  @IsSafeAssetUrl()
   url: string;
 
   @IsString()

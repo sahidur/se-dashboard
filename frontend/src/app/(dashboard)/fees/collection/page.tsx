@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -91,6 +91,9 @@ export default function MonthlyCollectionPage() {
   const [message, setMessage] = useState('');
 
   const [collectTarget, setCollectTarget] = useState<CollectionRow | null>(null);
+  // One idempotency key per payment attempt on a fee: a double click or a
+  // retried request replays the original payment instead of posting twice.
+  const idempotencyRef = useRef<{ feeId: string; key: string } | null>(null);
   const [headDues, setHeadDues] = useState<HeadDue[]>([]);
   const [headAllocs, setHeadAllocs] = useState<Record<string, { checked: boolean; amount: string }>>({});
   const [loadingDues, setLoadingDues] = useState(false);
@@ -247,10 +250,15 @@ export default function MonthlyCollectionPage() {
         return;
       }
     }
+    const feeId = collectTarget.currentFee.id;
+    if (idempotencyRef.current?.feeId !== feeId && typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+      idempotencyRef.current = { feeId, key: crypto.randomUUID() };
+    }
     setCollecting(true);
     try {
       const { data } = await api.post('/fee-collection/payments', {
-        studentFeeId: collectTarget.currentFee.id,
+        studentFeeId: feeId,
+        idempotencyKey: idempotencyRef.current?.feeId === feeId ? idempotencyRef.current.key : undefined,
         amount: allocTotal,
         allocations: selectedAllocations.map((a) => ({ feeHeadId: a.feeHeadId, amount: a.amount })),
         paymentMethod: collectForm.paymentMethod,
@@ -258,6 +266,7 @@ export default function MonthlyCollectionPage() {
         bankName: collectForm.bankName || undefined,
         paymentDate: collectForm.paymentDate,
       });
+      idempotencyRef.current = null; // next payment on this fee is a new attempt
       setReceipt({
         receipt: data.receipt,
         payment: data.payment,

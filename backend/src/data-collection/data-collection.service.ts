@@ -283,10 +283,34 @@ export class DataCollectionService {
     return this.validateSchoolAccess(id, userId, roles);
   }
 
+  /**
+   * Identity/structural fields of a school: `code` is the admission-number
+   * prefix, `schoolCategory` decides which BA/BPS/BSS forms apply, and
+   * `isActive` takes the school out of service. Users merely ASSIGNED to a
+   * school may edit its descriptive data but not these (mass assignment,
+   * OWASP A01/A08); admins and the school's creator keep full control.
+   */
+  private static readonly SCHOOL_PROTECTED_FIELDS = ['code', 'schoolCategory', 'isActive'] as const;
+
   async updateSchool(id: string, dto: UpdateDcSchoolDto, userId: string, roles: string[]): Promise<DcSchool> {
     const school = await this.validateSchoolAccess(id, userId, roles);
+    const changed = DataCollectionService.SCHOOL_PROTECTED_FIELDS.filter(
+      (f) => dto[f] !== undefined && dto[f] !== school[f],
+    );
+    if (changed.length && !this.isAdminRole(roles) && school.createdById !== userId) {
+      throw new ForbiddenException(
+        `Only an administrator or the school's creator can change: ${changed.join(', ')}`,
+      );
+    }
+    if (dto.code !== undefined && dto.code !== school.code) {
+      // Same namespace rule as createSchool: codes must stay unique.
+      const existing = await this.schoolRepo.findOne({ where: { code: dto.code }, withDeleted: true });
+      if (existing && existing.id !== school.id) {
+        throw new ConflictException(`School code "${dto.code}" already exists`);
+      }
+    }
     Object.assign(school, dto);
-    return this.schoolRepo.save(school);
+    return this.saveGuarded(this.schoolRepo, school);
   }
 
   async deleteSchool(id: string, userId: string, roles: string[]): Promise<void> {
@@ -296,8 +320,45 @@ export class DataCollectionService {
 
   // ===================== Dashboard =====================
 
+  /**
+   * Which data-collection forms the caller may READ. The umbrella dashboard /
+   * profile routes accept any `data-collection:read` grant (AccessGuard treats
+   * resource-less requirements as satisfied by form-scoped grants), so the
+   * per-form restriction must be applied to the response here — otherwise a
+   * role granted only e.g. `alumni` would read teacher PII, revenue, etc.
+   * Admin tier, wildcard `data-collection:read`, and (when `allowModules` is
+   * given) any listed umbrella module grant (e.g. school-information:read for
+   * the school-information page, which is by design an all-forms view) see
+   * everything.
+   */
+  private async readableFormsPredicate(
+    userId: string,
+    roles: string[],
+    allowModules: string[] = [],
+  ): Promise<(resource: string) => boolean> {
+    if (this.isAdminRole(roles)) return () => true;
+    const fullUser = await this.usersService.findOneById(userId);
+    const perms = (fullUser?.roles || []).flatMap((r) => r.permissions || []);
+    const all = perms.some(
+      (p) =>
+        p.action === 'read' &&
+        ((p.module === 'data-collection' && !p.resource) ||
+          (allowModules.includes(p.module) && !p.resource)),
+    );
+    if (all) return () => true;
+    const granted = new Set(
+      perms
+        .filter((p) => p.module === 'data-collection' && p.action === 'read' && p.resource)
+        .map((p) => p.resource as string),
+    );
+    return (resource) => granted.has(resource);
+  }
+
   async getDashboard(schoolId: string, userId: string, roles: string[]) {
     const school = await this.validateSchoolAccess(schoolId, userId, roles);
+    // Completion status/counts are overview data; form CONTENTS are only
+    // returned for forms the caller may read (form-scoped grants).
+    const canRead = await this.readableFormsPredicate(userId, roles);
     const [basicInfo, infra, studentsCount, teacherIndividualCount, teachersDevCount, revenue, feeStructureCount, revBudgetTotal, revBudgetMonthlyCount, revActualTotal, revActualMonthlyCount, performance, alumni, pedagAchievCount, cocurricularCount, studentsPerfCount, studentPerfCount, activityPartCount, eventPartCount] =
       await Promise.all([
         this.basicInfoRepo.findOne({ where: { schoolId }, order: { academicYear: 'DESC' } }),
@@ -332,20 +393,20 @@ export class DataCollectionService {
     return {
       school,
       forms: {
-        basicInformation: { submitted: !!basicInfo, data: basicInfo },
-        infrastructure: { submitted: infraSubmitted, data: infra },
+        basicInformation: { submitted: !!basicInfo, data: canRead('basic-info') ? basicInfo : null },
+        infrastructure: { submitted: infraSubmitted, data: canRead('infrastructure') ? infra : null },
         classroomStatus: { submitted: classroomSubmitted },
         studentsInfo: { submitted: studentsCount > 0, count: studentsCount },
         teachersInfo: { submitted: teacherIndividualCount > 0, count: teacherIndividualCount },
         teachersDev: { submitted: teachersDevCount > 0, count: teachersDevCount },
-        revenue: { submitted: !!revenue, data: revenue },
+        revenue: { submitted: !!revenue, data: canRead('revenue') ? revenue : null },
         feeStructure: { submitted: feeStructureCount > 0, count: feeStructureCount },
         revenueBudgetTotal: { submitted: !!revBudgetTotal },
         revenueBudgetMonthly: { submitted: revBudgetMonthlyCount > 0, count: revBudgetMonthlyCount },
         revenueActualTotal: { submitted: !!revActualTotal },
         revenueActualMonthly: { submitted: revActualMonthlyCount > 0, count: revActualMonthlyCount },
-        performance: { submitted: !!performance, data: performance },
-        alumni: { submitted: alumni.length > 0, count: alumni.length, data: alumni },
+        performance: { submitted: !!performance, data: canRead('performance') ? performance : null },
+        alumni: { submitted: alumni.length > 0, count: alumni.length, data: canRead('alumni') ? alumni : [] },
         pedagogicalAchievements: { submitted: pedagAchievCount > 0, count: pedagAchievCount },
         cocurricular: { submitted: cocurricularCount > 0, count: cocurricularCount },
         studentsPerformance: { submitted: studentsPerfCount > 0, count: studentsPerfCount },
@@ -420,6 +481,9 @@ export class DataCollectionService {
     const record = await this.infraRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Infrastructure record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
+    // Deleting submitted data is an edit of submitted data: without this, a
+    // delete followed by a fresh submit bypassed "Edit Submitted Data".
+    await this.assertCanEditExisting(true, userId, roles);
     await this.infraRepo.softRemove(record);
   }
 
@@ -462,6 +526,9 @@ export class DataCollectionService {
     const record = await this.studentsRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Student record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
+    // Deleting submitted data is an edit of submitted data: without this, a
+    // delete followed by a fresh submit bypassed "Edit Submitted Data".
+    await this.assertCanEditExisting(true, userId, roles);
     await this.studentsRepo.softRemove(record);
   }
 
@@ -518,6 +585,9 @@ export class DataCollectionService {
     });
     if (!record) throw new NotFoundException('Teacher record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
+    // Deleting submitted data is an edit of submitted data: without this, a
+    // delete followed by a fresh submit bypassed "Edit Submitted Data".
+    await this.assertCanEditExisting(true, userId, roles);
     await this.teacherIndividualRepo.softRemove(record);
   }
 
@@ -552,6 +622,9 @@ export class DataCollectionService {
     const record = await this.teachersDevRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Development record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
+    // Deleting submitted data is an edit of submitted data: without this, a
+    // delete followed by a fresh submit bypassed "Edit Submitted Data".
+    await this.assertCanEditExisting(true, userId, roles);
     await this.teachersDevRepo.softRemove(record);
   }
 
@@ -643,6 +716,9 @@ export class DataCollectionService {
     const record = await this.alumniRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Alumni record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
+    // Deleting submitted data is an edit of submitted data: without this, a
+    // delete followed by a fresh submit bypassed "Edit Submitted Data".
+    await this.assertCanEditExisting(true, userId, roles);
     await this.alumniRepo.softRemove(record);
   }
 
@@ -704,6 +780,9 @@ export class DataCollectionService {
     const record = await this.feeStructureRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Fee structure record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
+    // Deleting submitted data is an edit of submitted data: without this, a
+    // delete followed by a fresh submit bypassed "Edit Submitted Data".
+    await this.assertCanEditExisting(true, userId, roles);
     await this.feeStructureRepo.softRemove(record);
   }
 
@@ -737,6 +816,9 @@ export class DataCollectionService {
     const record = await this.revBudgetTotalRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Revenue record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
+    // Deleting submitted data is an edit of submitted data: without this, a
+    // delete followed by a fresh submit bypassed "Edit Submitted Data".
+    await this.assertCanEditExisting(true, userId, roles);
     await this.revBudgetTotalRepo.softRemove(record);
   }
 
@@ -798,6 +880,9 @@ export class DataCollectionService {
     const record = await this.revBudgetMonthlyRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Revenue record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
+    // Deleting submitted data is an edit of submitted data: without this, a
+    // delete followed by a fresh submit bypassed "Edit Submitted Data".
+    await this.assertCanEditExisting(true, userId, roles);
     await this.revBudgetMonthlyRepo.softRemove(record);
   }
 
@@ -831,6 +916,9 @@ export class DataCollectionService {
     const record = await this.revActualTotalRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Revenue record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
+    // Deleting submitted data is an edit of submitted data: without this, a
+    // delete followed by a fresh submit bypassed "Edit Submitted Data".
+    await this.assertCanEditExisting(true, userId, roles);
     await this.revActualTotalRepo.softRemove(record);
   }
 
@@ -872,6 +960,9 @@ export class DataCollectionService {
     const record = await this.revActualMonthlyRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Revenue record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
+    // Deleting submitted data is an edit of submitted data: without this, a
+    // delete followed by a fresh submit bypassed "Edit Submitted Data".
+    await this.assertCanEditExisting(true, userId, roles);
     await this.revActualMonthlyRepo.softRemove(record);
   }
 
@@ -902,6 +993,9 @@ export class DataCollectionService {
     const record = await this.pedagAchievRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
+    // Deleting submitted data is an edit of submitted data: without this, a
+    // delete followed by a fresh submit bypassed "Edit Submitted Data".
+    await this.assertCanEditExisting(true, userId, roles);
     await this.pedagAchievRepo.softRemove(record);
   }
 
@@ -932,6 +1026,9 @@ export class DataCollectionService {
     const record = await this.cocurricularRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
+    // Deleting submitted data is an edit of submitted data: without this, a
+    // delete followed by a fresh submit bypassed "Edit Submitted Data".
+    await this.assertCanEditExisting(true, userId, roles);
     await this.cocurricularRepo.softRemove(record);
   }
 
@@ -962,6 +1059,9 @@ export class DataCollectionService {
     const record = await this.studentsPerfRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
+    // Deleting submitted data is an edit of submitted data: without this, a
+    // delete followed by a fresh submit bypassed "Edit Submitted Data".
+    await this.assertCanEditExisting(true, userId, roles);
     await this.studentsPerfRepo.softRemove(record);
   }
 
@@ -1085,6 +1185,9 @@ export class DataCollectionService {
     const record = await this.studentPerfRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
+    // Deleting submitted data is an edit of submitted data: without this, a
+    // delete followed by a fresh submit bypassed "Edit Submitted Data".
+    await this.assertCanEditExisting(true, userId, roles);
     await this.studentPerfRepo.softRemove(record);
   }
 
@@ -1115,6 +1218,9 @@ export class DataCollectionService {
     const record = await this.activityPartRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
+    // Deleting submitted data is an edit of submitted data: without this, a
+    // delete followed by a fresh submit bypassed "Edit Submitted Data".
+    await this.assertCanEditExisting(true, userId, roles);
     await this.activityPartRepo.softRemove(record);
   }
 
@@ -1148,6 +1254,9 @@ export class DataCollectionService {
     const record = await this.eventPartRepo.findOne({ where: { id } });
     if (!record) throw new NotFoundException('Event participation record not found');
     await this.validateSchoolAccess(record.schoolId, userId, roles);
+    // Deleting submitted data is an edit of submitted data: without this, a
+    // delete followed by a fresh submit bypassed "Edit Submitted Data".
+    await this.assertCanEditExisting(true, userId, roles);
     await this.eventPartRepo.softRemove(record);
   }
 
@@ -2050,25 +2159,34 @@ export class DataCollectionService {
       }
     }
 
+    const canRead = await this.readableFormsPredicate(userId, roles, ['school-information']);
+    const pick = <T, D>(resource: string, value: T, denied: D): T | D =>
+      canRead(resource) ? value : denied;
+    const teachersVisible = canRead('teachers-individual') || canRead('teachers');
+    const zeroStudents = { boys: 0, girls: 0, pwd: 0, ethnic: 0, total: 0 };
+
     return {
       school,
-      infrastructure,
-      students: studentsByGrade,
-      studentTotals,
-      teachers,
-      teacherTotals,
-      teachersDevelopment,
-      feeStructures,
-      revenueBudgetTotal,
-      revenueActualTotal,
-      feeCollection,
-      pedagogicalAchievements,
-      performance,
-      cocurricular,
-      studentsPerformance,
-      activityParticipation,
-      eventParticipation,
-      alumni,
+      infrastructure: pick('infrastructure', infrastructure, null),
+      students: pick('students', studentsByGrade, []),
+      studentTotals: pick('students', studentTotals, zeroStudents),
+      teachers: teachersVisible ? teachers : [],
+      teacherTotals: teachersVisible ? teacherTotals : { male: 0, female: 0, total: 0 },
+      teachersDevelopment: pick('teachers-development', teachersDevelopment, []),
+      feeStructures: pick('fee-structure', feeStructures, []),
+      revenueBudgetTotal: pick('revenue-budget-total', revenueBudgetTotal, null),
+      revenueActualTotal: pick('revenue-actual-total', revenueActualTotal, null),
+      feeCollection:
+        canRead('revenue') || canRead('revenue-actual-total') || canRead('revenue-budget-total')
+          ? feeCollection
+          : null,
+      pedagogicalAchievements: pick('pedagogical-achievements', pedagogicalAchievements, []),
+      performance: pick('performance', performance, null),
+      cocurricular: pick('cocurricular', cocurricular, []),
+      studentsPerformance: pick('students-performance', studentsPerformance, []),
+      activityParticipation: pick('activity-participation', activityParticipation, []),
+      eventParticipation: pick('event-participation', eventParticipation, []),
+      alumni: pick('alumni', alumni, []),
       meta: {
         categoriesWithData,
         totalCategories: 6,

@@ -2,6 +2,8 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  HttpException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
@@ -36,6 +38,8 @@ import { computeHeadWisePaid } from './head-wise-paid';
 
 @Injectable()
 export class FeeCollectionService {
+  private readonly logger = new Logger(FeeCollectionService.name);
+
   constructor(
     @InjectRepository(StudentFee)
     private readonly feesRepo: Repository<StudentFee>,
@@ -165,9 +169,16 @@ export class FeeCollectionService {
             skipped++;
             continue;
           }
+          // Only our own (HttpException) messages are client-safe; raw DB /
+          // runtime errors would disclose table/column/constraint names.
+          if (!(error instanceof HttpException)) {
+            this.logger.error(
+              `Fee generation failed for student ${student.id}: ${(error as Error)?.message ?? error}`,
+            );
+          }
           failed.push({
             admissionNumber: student.admissionNumber,
-            reason: error instanceof Error ? error.message : 'Unknown error',
+            reason: error instanceof HttpException ? error.message : 'Could not generate fee',
           });
         }
       }
@@ -364,8 +375,10 @@ export class FeeCollectionService {
         month,
         ...(classId ? { classId } : {}),
       });
-    } catch {
-      // sync is best-effort — the read below still returns the stored rows
+    } catch (error) {
+      // sync is best-effort — the read below still returns the stored rows,
+      // but a failure must leave a trace (OWASP A09).
+      this.logger.warn(`Fee recalculation (monthly view) failed: ${(error as Error)?.message ?? error}`);
     }
     const students = await this.studentsRepo.find({
       where: {
@@ -443,7 +456,11 @@ export class FeeCollectionService {
   private async nextReceiptNumber(
     manager: EntityManager,
   ): Promise<string> {
-    const year = new Date().getFullYear();
+    // Business year in Bangladesh time (payments are dated in Asia/Dhaka); the
+    // server's UTC year mislabelled receipts issued 00:00–05:59 on 1 January.
+    const year = Number(
+      new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka', year: 'numeric' }).format(new Date()),
+    );
     // Serialize concurrent numbering — two simultaneous payments for different
     // students must never compute the same receipt number.
     await manager.query(`SELECT pg_advisory_xact_lock(hashtext('edu_receipts_${year}'))`);
@@ -495,6 +512,30 @@ export class FeeCollectionService {
         .where('f.id = :id', { id: dto.studentFeeId })
         .getOne();
       if (!fee) throw new NotFoundException('Student fee record not found');
+
+      // Idempotent replay (double click / retried request): checked under the
+      // fee row lock, so a concurrent duplicate waits for the first insert and
+      // then finds it here instead of posting a second payment + receipt.
+      if (dto.idempotencyKey) {
+        const previous = await manager.findOne(Payment, {
+          where: { idempotencyKey: dto.idempotencyKey },
+        });
+        if (previous) {
+          if (
+            previous.studentFeeId !== fee.id ||
+            previous.collectedById !== userId ||
+            toMoney(parseFloat(previous.amount)) !== amount
+          ) {
+            throw new BadRequestException('Idempotency key was already used for a different payment');
+          }
+          const previousReceipt = await manager.findOne(Receipt, {
+            where: { paymentId: previous.id },
+            relations: ['student', 'student.school', 'student.schoolClass', 'student.section'],
+          });
+          return { payment: previous, receipt: previousReceipt, fee };
+        }
+      }
+
       if (fee.status === StudentFeeStatus.CANCELLED) {
         throw new BadRequestException('This fee record is cancelled');
       }
@@ -548,6 +589,7 @@ export class FeeCollectionService {
           paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : new Date(),
           collectedById: userId,
           status: PaymentStatus.COMPLETED,
+          idempotencyKey: dto.idempotencyKey ?? null,
         }),
       );
 
@@ -812,8 +854,10 @@ export class FeeCollectionService {
       for (const yearId of [...new Set(rows.map((r) => r.academicYearId))]) {
         await this.recalculateStudentFees(studentId, yearId);
       }
-    } catch {
-      // sync is best-effort — the reads below still return the stored rows
+    } catch (error) {
+      // sync is best-effort — the reads below still return the stored rows,
+      // but a failure must leave a trace (OWASP A09).
+      this.logger.warn(`Fee recalculation for student ${studentId} failed: ${(error as Error)?.message ?? error}`);
     }
   }
 

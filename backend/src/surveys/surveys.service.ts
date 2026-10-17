@@ -120,7 +120,12 @@ export class SurveysService {
     userId: string,
   ): Promise<void> {
     if (response.respondentId === userId) return;
-    if (await this.hasPermission(userId, 'surveys', 'update')) return;
+    // Object-level: the coarse surveys:update grant is NOT enough to read
+    // another creator's respondents (same rule as assertSurveyWriteAccess).
+    const surveyCreatorId =
+      response.survey?.createdById ??
+      (await this.surveysRepository.findOne({ where: { id: response.surveyId } }))?.createdById;
+    if (surveyCreatorId && surveyCreatorId === userId) return;
     const user = await this.usersService.findOneById(userId);
     if (user?.roles?.some((r) => this.isAdminRole([r.name]))) return;
     throw new NotFoundException('Response not found');
@@ -128,28 +133,30 @@ export class SurveysService {
 
   /**
    * Management-level access for BULK response/assignment listings. These
-   * endpoints expose every respondent's identity + answers, so the coarse
-   * `surveys:read` grant alone is NOT sufficient — holders of that grant
-   * (e.g. Teacher-tier respondents) must not be able to dump everyone's PII.
-   * Allowed: the survey's creator, admin-tier roles (Super Admin/Admin), or
-   * a `surveys:update` (management) grant. `surveyId` may be null for
-   * cross-survey listings (creator scoping not possible there).
+   * endpoints expose every respondent's identity + answers, so neither the
+   * coarse `surveys:read` nor `surveys:update` grant is sufficient on its
+   * own: only the survey's creator or admin-tier roles (Super Admin/Admin)
+   * qualify — mirroring assertSurveyWriteAccess, so peer Survey Creators
+   * cannot dump each other's respondents' PII. For cross-survey listings
+   * (`surveyId` null) non-admins are scoped to their own surveys by the
+   * caller; this returns whether the caller is admin-tier.
    */
   private async assertResponseManagementAccess(
     surveyId: string | null,
     userId: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
+    const fullUser = await this.usersService.findOneById(userId);
+    const roles = fullUser?.roles?.map((r) => r.name) ?? [];
+    if (this.isAdminRole(roles)) return true;
     if (surveyId) {
       const survey = await this.surveysRepository.findOne({
         where: { id: surveyId },
       });
       if (!survey) throw new NotFoundException('Survey not found');
-      if (survey.createdById === userId) return;
+      if (survey.createdById === userId) return false;
+    } else if (await this.hasPermission(userId, 'surveys', 'update')) {
+      return false;
     }
-    const fullUser = await this.usersService.findOneById(userId);
-    const roles = fullUser?.roles?.map((r) => r.name) ?? [];
-    if (this.isAdminRole(roles)) return;
-    if (await this.hasPermission(userId, 'surveys', 'update')) return;
     throw new ForbiddenException(
       'You do not have access to survey responses',
     );
@@ -164,7 +171,13 @@ export class SurveysService {
     userId: string,
   ): Promise<void> {
     if (record.createdById === userId) return;
-    if (await this.hasPermission(userId, 'school-records', 'read')) return;
+    // school-records:read is a module grant, not a tenant grant: outside the
+    // admin tier it only covers records created within the reader's own
+    // schools (creator shares a school with them).
+    if (await this.hasPermission(userId, 'school-records', 'read')) {
+      const tenant = await this.usersService.findTenantUserIds(userId);
+      if (!tenant || tenant.has(record.createdById)) return;
+    }
     throw new NotFoundException('School record not found');
   }
 
@@ -1090,9 +1103,11 @@ export class SurveysService {
     },
     userId?: string,
   ) {
-    // Cross-survey respondent listing — require management access.
+    // Cross-survey respondent listing — admins see all; survey managers only
+    // the responses to surveys they created themselves.
+    let ownSurveysOnly = false;
     if (userId) {
-      await this.assertResponseManagementAccess(null, userId);
+      ownSurveysOnly = !(await this.assertResponseManagementAccess(null, userId));
     }
     const query = this.responsesRepository
       .createQueryBuilder('response')
@@ -1108,6 +1123,10 @@ export class SurveysService {
         'respondent.email',
       ])
       .where('response.isComplete = :isComplete', { isComplete: true });
+
+    if (ownSurveysOnly) {
+      query.andWhere('survey.createdById = :ownerId', { ownerId: userId });
+    }
 
     if (filters?.startDate) {
       query.andWhere('response.createdAt >= :startDate', {
@@ -1167,14 +1186,18 @@ export class SurveysService {
    * the export (DDE/WEBSERVICE exfil or command execution in the admin's
    * context). Prefixing an apostrophe forces text interpretation; the
    * apostrophe is not displayed by Excel/LibreOffice.
+   *
+   * Every cell is ALSO wrapped in double quotes (RFC 4180): unquoted cells
+   * let a respondent's comma / newline split one answer into extra columns
+   * or rows whose content (e.g. `ok,=HYPERLINK(...)`) escaped the formula
+   * check, which only looked at the first character of the whole value.
    */
   private static csvCell(value: unknown): string {
     let s = value === null || value === undefined ? '' : String(value);
-    s = s.replace(/"/g, '""');
-    if (/^[=+\-@\t\r]/.test(s)) {
+    if (/^[=+\-@\t\r\n]/.test(s)) {
       s = `'${s}`;
     }
-    return s;
+    return `"${s.replace(/"/g, '""')}"`;
   }
 
   async exportResponsesCsv(surveyId: string, userId?: string): Promise<string> {
@@ -1344,7 +1367,19 @@ export class SurveysService {
     });
   }
 
-  async getAllSchoolRecords(): Promise<SchoolRecord[]> {
+  async getAllSchoolRecords(requesterId?: string): Promise<SchoolRecord[]> {
+    // Tenant scope: non-admin readers only see records created within their
+    // own schools (see assertSchoolRecordReadAccess).
+    const tenant = requesterId
+      ? await this.usersService.findTenantUserIds(requesterId)
+      : null;
+    if (tenant) {
+      return this.schoolRecordRepository.find({
+        where: { isActive: true, createdById: In([...tenant]) },
+        relations: ['school', 'createdBy'],
+        order: { createdAt: 'DESC' },
+      });
+    }
     return this.schoolRecordRepository.find({
       where: { isActive: true },
       relations: ['school', 'createdBy'],

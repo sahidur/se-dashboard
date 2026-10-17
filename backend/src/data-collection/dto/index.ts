@@ -1,3 +1,4 @@
+import { IsSafeAssetUrl } from '../../common/validators/is-safe-asset-url';
 import {
   IsString,
   IsOptional,
@@ -819,7 +820,7 @@ export class UpsertActivityParticipationDto {
   grade: string;
 
   @IsOptional() @IsString() activityName?: string;
-  @IsOptional() @IsString() photoUrl?: string;
+  @IsOptional() @IsString() @IsSafeAssetUrl() photoUrl?: string;
   @IsOptional() @IsString() photoKey?: string;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) conductedCount?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(100) participationRate?: number;

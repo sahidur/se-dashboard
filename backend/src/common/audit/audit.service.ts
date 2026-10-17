@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import { AuditLog } from '../entities/audit-log.entity';
@@ -24,6 +24,8 @@ export interface PaginatedAuditLogs {
 
 @Injectable()
 export class AuditService {
+  private readonly logger = new Logger(AuditService.name);
+
   constructor(
     @InjectRepository(AuditLog)
     private readonly auditLogRepository: Repository<AuditLog>,
@@ -77,8 +79,12 @@ export class AuditService {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
       });
-    } catch {
-      // Logging must never break the primary operation.
+    } catch (error) {
+      // Logging must never break the primary operation — but a lost entry of
+      // the privileged audit trail must raise an operator-visible alert.
+      this.logger.error(
+        `AUDIT WRITE FAILED (${entry.action} ${entry.module} ${entry.entityId ?? ''}): ${(error as Error)?.message ?? error}`,
+      );
     }
   }
 

@@ -21,10 +21,10 @@ async function bootstrap() {
    */
   const hasSessionJwt = (req: Request): boolean => {
     try {
-      jwt.verify(req.cookies?.se360_at ?? '', process.env.JWT_SECRET || '', {
+      const payload = jwt.verify(req.cookies?.se360_at ?? '', process.env.JWT_SECRET || '', {
         algorithms: ['HS256'],
-      });
-      return true;
+      }) as { typ?: string };
+      return payload?.typ === undefined || payload.typ === 'access';
     } catch {
       return false;
     }
@@ -51,6 +51,12 @@ async function bootstrap() {
       process.exit(1);
     }
   }
+  // Access and refresh tokens carry the same claims; with identical secrets a
+  // 7-day refresh token would be accepted as a bearer access token.
+  if (jwtSecret === refreshSecret) {
+    logger.error('JWT_SECRET and JWT_REFRESH_SECRET must be different values.');
+    process.exit(1);
+  }
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     // Suppress the default NestJS startup logs that mention port/host info
@@ -64,7 +70,10 @@ async function bootstrap() {
     bodyParser: false,
   });
   app.useBodyParser('json', { limit: '2mb' });
-  app.useBodyParser('urlencoded', { limit: '2mb', extended: true });
+  // No urlencoded parser on purpose (CSRF defence): HTML forms can POST
+  // application/x-www-form-urlencoded cross-site WITHOUT a CORS preflight,
+  // which allowed login CSRF against the @Public() /auth/login route. The
+  // frontend only ever sends JSON (which always requires a preflight).
 
   // Reverse-proxy awareness. Only enable when the app really sits behind a
   // trusted proxy (nginx): with `trust proxy` off, a spoofed X-Forwarded-For is

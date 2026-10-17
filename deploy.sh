@@ -188,7 +188,15 @@ fi
 
 if [[ "$INSTALLED_NODE_MAJOR" -lt "$NODE_MAJOR" ]]; then
   info "Node ${INSTALLED_NODE_MAJOR:-none} found – installing Node ${NODE_MAJOR}.x from NodeSource"
-  curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - >/dev/null
+  # Signed apt repository instead of `curl | bash`: packages are verified
+  # against NodeSource's signing key by apt, and no remote script runs as root.
+  apt-get install -y -qq ca-certificates gnupg >/dev/null
+  install -d -m 0755 /etc/apt/keyrings
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    | gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
+  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" \
+    > /etc/apt/sources.list.d/nodesource.list
+  apt-get update -qq
   apt-get install -y -qq nodejs
 fi
 ok "Node $(node --version)  /  npm $(npm --version)"
@@ -620,11 +628,17 @@ else
     openssl dhparam -out /etc/letsencrypt/ssl-dhparams.pem 2048 2>/dev/null
   fi
 
-  # Download Certbot's recommended options-ssl-nginx.conf if missing
+  # Certbot's recommended TLS options, written inline (same content as
+  # redeploy.sh). Previously downloaded from certbot's moving `master` branch
+  # as root and included into nginx without any pinning/verification.
   if [[ ! -f /etc/letsencrypt/options-ssl-nginx.conf ]]; then
-    curl -fsSL \
-      https://raw.githubusercontent.com/certbot/certbot/master/certbot-nginx/certbot_nginx/_internal/tls_configs/options-ssl-nginx.conf \
-      -o /etc/letsencrypt/options-ssl-nginx.conf
+    cat > /etc/letsencrypt/options-ssl-nginx.conf << 'OPTS'
+ssl_session_cache shared:le_nginx_SSL:10m;
+ssl_session_timeout 1440m;
+ssl_session_tickets off;
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_prefer_server_ciphers off;
+OPTS
   fi
 fi
 
@@ -667,12 +681,9 @@ server {
     include             /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam         /etc/letsencrypt/ssl-dhparams.pem;
 
-    # Modern TLS settings (Mozilla Intermediate profile)
-    ssl_protocols       TLSv1.2 TLSv1.3;
-    ssl_prefer_server_ciphers off;
-    ssl_session_timeout 1d;
-    ssl_session_cache   shared:SSL:10m;
-    ssl_session_tickets off;
+    # Protocols / session cache / tickets come from the include above (Mozilla
+    # Intermediate). Repeating them here made nginx -t fail with
+    # "directive is duplicate".
 
     # OCSP stapling
     ssl_stapling        on;

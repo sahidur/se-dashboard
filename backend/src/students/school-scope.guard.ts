@@ -1,4 +1,5 @@
-import { CanActivate, ExecutionContext, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, CanActivate, ExecutionContext, Injectable, NotFoundException } from '@nestjs/common';
+import { isUUID } from 'class-validator';
 import { DataSource, In } from 'typeorm';
 import { UsersService } from '../users/users.service';
 import { DcSchool } from '../data-collection/entities/dc-school.entity';
@@ -24,14 +25,24 @@ export class SchoolScopeGuard implements CanActivate {
     if (user.roles?.includes('Super Admin') || user.roles?.includes('Admin')) return true;
 
     const schoolIds = new Set<string>();
-    const add = (schoolId?: string | null) => { if (schoolId) schoolIds.add(schoolId); };
+    // Guards run BEFORE validation pipes: reject malformed ids here so they
+    // become a 400 instead of a Postgres "invalid input syntax for uuid" 500.
+    const assertId = (value: unknown): string => {
+      if (typeof value !== 'string' || !isUUID(value)) {
+        throw new BadRequestException('Invalid identifier');
+      }
+      return value;
+    };
+    const add = (schoolId?: string | null) => { if (schoolId) schoolIds.add(assertId(schoolId)); };
     const lookup = async (entity: any, recordId: string, field = 'schoolId') => {
+      assertId(recordId);
       const record = await this.db.getRepository(entity).findOne({ where: { id: recordId } });
       if (!record) throw new NotFoundException('Record not found or access denied');
       add(record[field]);
       return record;
     };
     const lookupSection = async (sectionId: string) => {
+      assertId(sectionId);
       const section = await this.db.getRepository(SchoolSection).findOne({ where: { id: sectionId } });
       if (!section) throw new NotFoundException('Record not found or access denied');
       await lookup(SchoolClass, section.classId);
@@ -58,6 +69,8 @@ export class SchoolScopeGuard implements CanActivate {
       }
       if (path === '/sections' && query.classId) await lookup(SchoolClass, query.classId);
       if (body.studentIds?.length) {
+        if (!Array.isArray(body.studentIds)) throw new BadRequestException('Invalid identifier');
+        body.studentIds.forEach(assertId);
         const students = await this.db.getRepository(Student).find({ where: { id: In(body.studentIds) } });
         if (students.length !== new Set(body.studentIds).size) throw new NotFoundException('Students not found or access denied');
         students.forEach((s) => add(s.schoolId));
@@ -102,6 +115,16 @@ export class SchoolScopeGuard implements CanActivate {
       (controller === 'StudentsController' && ['/', '/classes', '/sections'].includes(path)) ||
       (controller === 'FeeCollectionController' && path === '/payments')
     )) throw new NotFoundException('School not found or access denied');
+
+    // Payment history must be listed per school: filtering only by studentId
+    // validated just the student's CURRENT school, which exposed a
+    // transferred-in student's payments made at their previous school.
+    if (
+      controller === 'FeeCollectionController' &&
+      path === '/payments' &&
+      req.method === 'GET' &&
+      !query.schoolId
+    ) throw new NotFoundException('School not found or access denied');
 
     if (!schoolIds.size) return true; // global catalog (academic years, fee heads)
     const fullUser = await this.users.findOneById(user.id);

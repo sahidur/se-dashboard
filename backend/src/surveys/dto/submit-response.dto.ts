@@ -1,3 +1,4 @@
+import { IsSafeAssetUrl } from '../../common/validators/is-safe-asset-url';
 import {
   IsNotEmpty,
   IsArray,
@@ -39,6 +40,7 @@ export class SubmitAnswerDto {
   @ApiPropertyOptional()
   @IsString()
   @IsOptional()
+  @IsSafeAssetUrl()
   fileUrl?: string;
 }
 

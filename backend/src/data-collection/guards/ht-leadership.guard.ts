@@ -9,6 +9,9 @@ import { UsersService } from '../../users/users.service';
  */
 export const HT_LEADERSHIP_RESOURCE = 'ht-leadership';
 
+/** Body fields that set (or clear) the HT leadership assessment. */
+const HT_LEADERSHIP_FIELDS = ['headTeacherLeadership', 'headTeacherLeadershipGood'];
+
 /**
  * Per-question access guard for the "Leadership Status of HT" field.
  *
@@ -29,10 +32,16 @@ export class HtLeadershipGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    const dto = request.body as { headTeacherLeadership?: string | null };
+    const dto = request.body as Record<string, unknown> | undefined;
 
-    // Field not present in the payload → nothing to police.
-    if (!dto || dto.headTeacherLeadership == null) return true;
+    // Both the current field and its legacy boolean predecessor drive the
+    // displayed leadership status, and an explicit `null` CLEARS a stored
+    // assessment — so any presence of either key (null included) is policed.
+    const present =
+      !!dto &&
+      typeof dto === 'object' &&
+      HT_LEADERSHIP_FIELDS.some((f) => Object.prototype.hasOwnProperty.call(dto, f));
+    if (!present) return true;
 
     const userId = request.user?.id;
     if (!userId) return false;
@@ -56,7 +65,7 @@ export class HtLeadershipGuard implements CanActivate {
 
     // Exclusive field without the grant: strip the value so the rest of the
     // form saves, keeping any existing leadership assessment intact.
-    delete dto.headTeacherLeadership;
+    for (const f of HT_LEADERSHIP_FIELDS) delete (dto as Record<string, unknown>)[f];
     return true;
   }
 }

@@ -28,6 +28,7 @@ export class PasskeyLoginOptionsDto {
   @ApiPropertyOptional({ description: 'Email to scope the credential list to' })
   @IsOptional()
   @IsString()
+  @MaxLength(254)
   email?: string;
 }
 
