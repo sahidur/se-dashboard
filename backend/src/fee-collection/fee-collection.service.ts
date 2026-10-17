@@ -259,9 +259,17 @@ export class FeeCollectionService {
     studentId: string,
     academicYearId?: string,
   ): Promise<{ updated: number; skipped: number }> {
+    // Scope recalculation to the student's current school so a discount added
+    // after a cross-school transfer never rewrites unpaid snapshots belonging
+    // to the student's previous school.
+    const student = await manager.findOne(Student, {
+      where: { id: studentId },
+      select: ['id', 'schoolId'],
+    });
     const fees = await manager.find(StudentFee, {
       where: {
         studentId,
+        ...(student?.schoolId ? { schoolId: student.schoolId } : {}),
         paidAmount: '0.00',
         status: StudentFeeStatus.DUE,
         ...(academicYearId ? { academicYearId } : {}),
@@ -311,6 +319,7 @@ export class FeeCollectionService {
       // belongs to the class at generation time, not the student's current one.
       const rows = structures.filter(
         (s) =>
+          s.schoolId === fee.schoolId &&
           s.classId === fee.classId &&
           s.academicYearId === fee.academicYearId &&
           s.month === fee.month &&

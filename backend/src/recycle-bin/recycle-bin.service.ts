@@ -580,11 +580,13 @@ export class RecycleBinService {
     actorId: string,
     roles: string[],
   ): Promise<void> {
-    if (this.isAdminRole(roles)) return;
     if (entityType === 'user') {
+      // Hierarchy guard applies even to plain Admins (a non-Super-Admin must
+      // never restore or permanently delete a Super Admin or peer Admin).
       await this.assertCanManageDeletedUser(entity.id, actorId);
       return;
     }
+    if (this.isAdminRole(roles)) return;
     if (entityType === 'survey' || entityType === 'school-record') {
       if (entity.createdById !== actorId) {
         throw new NotFoundException('Deleted item not found');

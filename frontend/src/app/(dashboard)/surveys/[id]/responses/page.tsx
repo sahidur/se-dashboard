@@ -16,7 +16,7 @@ import {
   Users,
   Filter,
 } from 'lucide-react';
-import { formatDate, formatDateTime, FIELD_TYPE_LABELS } from '@/lib/utils';
+import { formatDate, formatDateTime, FIELD_TYPE_LABELS, resolveAssetUrl } from '@/lib/utils';
 import api, { getErrorMessage } from '@/lib/api';
 import type { Survey, SurveyResponse as SurveyResponseType } from '@/types';
 
@@ -374,7 +374,17 @@ export default function SurveyResponsesPage() {
                       )}
                     </p>
                     <p className="text-sm mt-0.5">
-                      {answer.textValue ||
+                      {answer.fileUrl && resolveAssetUrl(answer.fileUrl) ? (
+                        <a
+                          href={resolveAssetUrl(answer.fileUrl)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-brand-600 underline"
+                        >
+                          View uploaded file
+                        </a>
+                      ) : (
+                        answer.textValue ||
                         (answer.numberValue !== undefined &&
                         answer.numberValue !== null
                           ? String(answer.numberValue)
@@ -387,8 +397,8 @@ export default function SurveyResponsesPage() {
                         (answer.jsonValue
                           ? JSON.stringify(answer.jsonValue, null, 2)
                           : '') ||
-                        answer.fileUrl ||
-                        '—'}
+                        '—'
+                      )}
                     </p>
                   </div>
                 );

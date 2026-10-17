@@ -127,7 +127,8 @@ export class SurveysController {
   async getAssignedSurveys(@CurrentUser('id') userId: string) {
     const fullUser = await this.usersService.findOneById(userId);
     const roleIds = fullUser?.roles?.map((r) => r.id) || [];
-    return this.surveysService.findAssignedSurveys(userId, roleIds);
+    const schoolIds = fullUser?.schools?.map((s) => s.id) || [];
+    return this.surveysService.findAssignedSurveys(userId, roleIds, schoolIds);
   }
 
   // =========== School Records ===========

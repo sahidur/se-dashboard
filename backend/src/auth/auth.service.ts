@@ -7,7 +7,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
-import { randomBytes, createHash } from 'crypto';
+import { randomBytes, randomUUID, createHash } from 'crypto';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -603,13 +603,13 @@ export class AuthService {
     }
 
     const [accessToken, refreshToken] = await Promise.all([
-      this.jwtService.signAsync({ ...payload, typ: 'access' }, {
+      this.jwtService.signAsync({ ...payload, typ: 'access', jti: randomUUID() }, {
         secret: jwtSecret,
         // Short-lived access token; the frontend silently rotates it via
         // /auth/refresh, so a stolen one has a tiny window.
         expiresIn: this.configService.get('JWT_EXPIRES_IN', '15m'),
       }),
-      this.jwtService.signAsync({ ...payload, typ: 'refresh' }, {
+      this.jwtService.signAsync({ ...payload, typ: 'refresh', jti: randomUUID() }, {
         secret: refreshSecret,
         // Matches the refresh-cookie TTL default in auth/cookies.ts.
         expiresIn: this.configService.get('JWT_REFRESH_EXPIRES_IN', '7d'),

@@ -2,9 +2,11 @@ import { IsSafeAssetUrl } from '../../common/validators/is-safe-asset-url';
 import {
   IsNotEmpty,
   IsArray,
+  ArrayMaxSize,
   ValidateNested,
   IsOptional,
   IsString,
+  MaxLength,
   IsNumber,
   IsBoolean,
   IsUUID,
@@ -20,6 +22,7 @@ export class SubmitAnswerDto {
 
   @ApiPropertyOptional()
   @IsString()
+  @MaxLength(50000)
   @IsOptional()
   textValue?: string;
 
@@ -73,6 +76,7 @@ export class SubmitSurveyResponseDto {
 
   @ApiProperty({ type: [SubmitAnswerDto] })
   @IsArray()
+  @ArrayMaxSize(500)
   @ValidateNested({ each: true })
   @Type(() => SubmitAnswerDto)
   answers: SubmitAnswerDto[];

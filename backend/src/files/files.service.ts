@@ -38,39 +38,46 @@ const ALLOWED_MIME_EXTENSIONS: Record<string, string> = {
  * signature exists. Multer's `file.mimetype` is whatever the CLIENT declared
  * in the multipart header, so without this check anyone could upload an
  * arbitrary payload (HTML, EXE, ZIP polyglot) labelled `image/png`.
- * `text/csv` has no meaningful signature and is exempt.
+ *
+ * Outer array = alternative valid signatures (OR); inner array = required
+ * byte sequences that must ALL match (AND) for a single signature (e.g.
+ * WebP requires BOTH 'RIFF' at offset 0 AND 'WEBP' at offset 8).
  */
 const MIME_MAGIC_BYTES: Record<
   string,
-  Array<{ offset: number; bytes: number[] }>
+  Array<Array<{ offset: number; bytes: number[] }>>
 > = {
-  'image/jpeg': [{ offset: 0, bytes: [0xff, 0xd8, 0xff] }],
+  'image/jpeg': [[{ offset: 0, bytes: [0xff, 0xd8, 0xff] }]],
   'image/png': [
-    {
-      offset: 0,
-      bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
-    },
+    [
+      {
+        offset: 0,
+        bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+      },
+    ],
   ],
   'image/gif': [
-    { offset: 0, bytes: [...'GIF87a'].map((c) => c.charCodeAt(0)) },
-    { offset: 0, bytes: [...'GIF89a'].map((c) => c.charCodeAt(0)) },
+    [{ offset: 0, bytes: [...'GIF87a'].map((c) => c.charCodeAt(0)) }],
+    [{ offset: 0, bytes: [...'GIF89a'].map((c) => c.charCodeAt(0)) }],
   ],
-  // RIFF container with WEBP form marker at offset 8.
+  // RIFF container with WEBP form marker at offset 8 (both must match).
   'image/webp': [
-    { offset: 0, bytes: [...'RIFF'].map((c) => c.charCodeAt(0)) },
-    { offset: 8, bytes: [...'WEBP'].map((c) => c.charCodeAt(0)) },
+    [
+      { offset: 0, bytes: [...'RIFF'].map((c) => c.charCodeAt(0)) },
+      { offset: 8, bytes: [...'WEBP'].map((c) => c.charCodeAt(0)) },
+    ],
   ],
   'application/pdf': [
-    { offset: 0, bytes: [...'%PDF-'].map((c) => c.charCodeAt(0)) },
+    [{ offset: 0, bytes: [...'%PDF-'].map((c) => c.charCodeAt(0)) }],
   ],
   // XLSX is a ZIP container (OOXML); legacy XLS is the OLE2 compound format.
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': [
-    { offset: 0, bytes: [0x50, 0x4b, 0x03, 0x04] },
-    { offset: 0, bytes: [0x50, 0x4b, 0x05, 0x06] },
-    { offset: 0, bytes: [0x50, 0x4b, 0x07, 0x08] },
+    [{ offset: 0, bytes: [0x50, 0x4b, 0x03, 0x04] }],
+    [{ offset: 0, bytes: [0x50, 0x4b, 0x05, 0x06] }],
+    [{ offset: 0, bytes: [0x50, 0x4b, 0x07, 0x08] }],
   ],
   'application/vnd.ms-excel': [
-    { offset: 0, bytes: [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1] },
+    [{ offset: 0, bytes: [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1] }],
   ],
 };
 
@@ -174,16 +181,27 @@ export class FilesService {
 
   /** Reject files whose leading bytes don't match the declared type. */
   private assertMagicBytes(file: Express.Multer.File): void {
-    const signatures = MIME_MAGIC_BYTES[file.mimetype];
-    if (!signatures?.length) return; // e.g. text/csv
     const buf = file.buffer;
     if (!buf || buf.length === 0) {
       throw new BadRequestException('Uploaded file is empty');
     }
-    const matches = signatures.some(
-      (sig) =>
-        sig.offset + sig.bytes.length <= buf.length &&
-        sig.bytes.every((byte, i) => buf[sig.offset + i] === byte),
+    if (file.mimetype === 'text/csv') {
+      // CSV is plain text: reject binary payloads containing NUL bytes.
+      if (buf.includes(0x00)) {
+        throw new BadRequestException(
+          'File content does not match its declared type',
+        );
+      }
+      return;
+    }
+    const signatures = MIME_MAGIC_BYTES[file.mimetype];
+    if (!signatures?.length) return;
+    const matches = signatures.some((parts) =>
+      parts.every(
+        (sig) =>
+          sig.offset + sig.bytes.length <= buf.length &&
+          sig.bytes.every((byte, i) => buf[sig.offset + i] === byte),
+      ),
     );
     if (!matches) {
       throw new BadRequestException(

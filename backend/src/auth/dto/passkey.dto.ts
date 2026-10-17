@@ -14,6 +14,7 @@ export class VerifyRegistrationDto {
   })
   @IsString()
   @MinLength(1)
+  @MaxLength(128)
   password: string;
 
   @ApiPropertyOptional({ description: 'Friendly label for the passkey' })
@@ -60,5 +61,6 @@ export class DeletePasskeyDto {
   })
   @IsString()
   @MinLength(1)
+  @MaxLength(128)
   password: string;
 }

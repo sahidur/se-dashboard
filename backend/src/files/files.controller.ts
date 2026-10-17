@@ -182,6 +182,8 @@ export class FilesController {
     }
     // Same locked-down header set as the static mount in main.ts / nginx:
     // nothing served here may execute or be framed in the API origin.
+    const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext);
+    res.setHeader('Content-Disposition', isImage ? 'inline' : 'attachment');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader(
       'Content-Security-Policy',

@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
   ParseUUIDPipe,
+  ParseEnumPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { GeoLocationsService } from './geo-locations.service';
@@ -37,8 +38,8 @@ export class GeoLocationsController {
   @ApiQuery({ name: 'type', required: false, enum: GeoLocationType })
   @ApiQuery({ name: 'parentId', required: false })
   findAll(
-    @Query('type') type?: GeoLocationType,
-    @Query('parentId') parentId?: string,
+    @Query('type', new ParseEnumPipe(GeoLocationType, { optional: true })) type?: GeoLocationType,
+    @Query('parentId', new ParseUUIDPipe({ optional: true })) parentId?: string,
   ) {
     return this.geoService.findAll(type, parentId);
   }

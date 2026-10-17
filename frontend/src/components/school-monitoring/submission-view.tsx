@@ -42,7 +42,7 @@ function AttachmentTile({ attachment, compact }: { attachment: MonitoringAttachm
   const href = resolveAssetUrl(attachment.url);
   const h = compact ? 'h-16' : 'h-28';
 
-  if (failed) {
+  if (failed || !href) {
     return (
       <div
         className={cn('flex w-full flex-col items-center justify-center rounded-xl border border-dashed border-amber-300 bg-amber-50 p-2 text-center', h)}

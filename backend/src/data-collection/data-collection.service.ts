@@ -315,6 +315,11 @@ export class DataCollectionService {
 
   async deleteSchool(id: string, userId: string, roles: string[]): Promise<void> {
     const school = await this.validateSchoolAccess(id, userId, roles);
+    if (!this.isAdminRole(roles) && school.createdById !== userId) {
+      throw new ForbiddenException(
+        "Only an administrator or the school's creator can delete this school",
+      );
+    }
     await this.schoolRepo.softRemove(school);
   }
 
@@ -2204,27 +2209,37 @@ export class DataCollectionService {
   // read/write their OWN drafts, and drafts are never exposed to other users
   // or reflected in real form responses/dashboards.
 
+  private assertFormKey(formKey: string): string {
+    const trimmed = String(formKey ?? '').trim();
+    if (!trimmed || trimmed.length > 100) {
+      throw new BadRequestException('Invalid formKey');
+    }
+    return trimmed;
+  }
+
   async getFormDraft(
     schoolId: string,
     formKey: string,
     userId: string,
     roles: string[],
   ): Promise<DcFormDraft | null> {
+    const safeKey = this.assertFormKey(formKey);
     await this.validateSchoolAccess(schoolId, userId, roles);
-    return this.formDraftRepo.findOne({ where: { schoolId, formKey, userId } });
+    return this.formDraftRepo.findOne({ where: { schoolId, formKey: safeKey, userId } });
   }
 
   async saveFormDraft(dto: UpsertFormDraftDto, userId: string, roles: string[]): Promise<DcFormDraft> {
+    const safeKey = this.assertFormKey(dto.formKey);
     await this.validateSchoolAccess(dto.schoolId, userId, roles);
     let draft = await this.formDraftRepo.findOne({
-      where: { schoolId: dto.schoolId, formKey: dto.formKey, userId },
+      where: { schoolId: dto.schoolId, formKey: safeKey, userId },
     });
     if (draft) {
       draft.data = dto.data;
     } else {
       draft = this.formDraftRepo.create({
         schoolId: dto.schoolId,
-        formKey: dto.formKey,
+        formKey: safeKey,
         userId,
         data: dto.data,
       });
@@ -2238,8 +2253,9 @@ export class DataCollectionService {
     userId: string,
     roles: string[],
   ): Promise<{ success: boolean }> {
+    const safeKey = this.assertFormKey(formKey);
     await this.validateSchoolAccess(schoolId, userId, roles);
-    await this.formDraftRepo.delete({ schoolId, formKey, userId });
+    await this.formDraftRepo.delete({ schoolId, formKey: safeKey, userId });
     return { success: true };
   }
 }

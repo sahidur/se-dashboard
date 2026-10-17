@@ -212,7 +212,30 @@ export class SurveysService {
     throw new ForbiddenException('You are not assigned to this survey');
   }
 
-  // ===================== Survey CRUD =====================
+  /** Clamp pagination parameters to prevent negative OFFSET or unbounded queries. */
+  private sanitizePaging(
+    page = 1,
+    limit = 20,
+    maxLimit = 200,
+  ): { numPage: number; numLimit: number } {
+    const rawPage = Number(page);
+    const rawLimit = Number(limit);
+    const numPage = Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 1;
+    const numLimit =
+      Number.isFinite(rawLimit) && rawLimit > 0
+        ? Math.min(Math.floor(rawLimit), maxLimit)
+        : 20;
+    return { numPage, numLimit };
+  }
+
+  private assertValidDateParam(raw: string | undefined, name: string): Date | undefined {
+    if (!raw) return undefined;
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new BadRequestException(`Invalid ${name}`);
+    }
+    return parsed;
+  }
 
   async create(
     createSurveyDto: CreateSurveyDto,
@@ -352,6 +375,9 @@ export class SurveysService {
       });
     }
     if (filters?.status) {
+      if (!Object.values(SurveyStatus).includes(filters.status)) {
+        throw new BadRequestException('Invalid survey status');
+      }
       query.andWhere('survey.status = :status', { status: filters.status });
     }
     if (filters?.search) {
@@ -366,8 +392,7 @@ export class SurveysService {
       .addOrderBy('section.order', 'ASC')
       .addOrderBy('field.order', 'ASC');
 
-    const numPage = Number(page) || 1;
-    const numLimit = Number(limit) || 20;
+    const { numPage, numLimit } = this.sanitizePaging(page, limit, 200);
     query.skip((numPage - 1) * numLimit).take(numLimit);
 
     const [data, total] = await query.getManyAndCount();
@@ -424,16 +449,25 @@ export class SurveysService {
     return survey;
   }
 
-  async findAssignedSurveys(userId: string, userRoleIds: string[]) {
+  async findAssignedSurveys(
+    userId: string,
+    userRoleIds: string[],
+    userSchoolIds: string[] = [],
+  ) {
+    const NIL_UUID = '00000000-0000-0000-0000-000000000000';
     const query = this.surveysRepository
       .createQueryBuilder('survey')
       .leftJoinAndSelect('survey.fields', 'field')
       .leftJoinAndSelect('survey.sections', 'section')
-      .leftJoin('survey.assignments', 'assignment')
+      .leftJoinAndSelect('survey.assignments', 'assignment')
       .where('survey.status = :status', { status: SurveyStatus.PUBLISHED })
       .andWhere(
-        '(assignment.userId = :userId OR assignment.roleId IN (:...roleIds))',
-        { userId, roleIds: userRoleIds.length ? userRoleIds : ['none'] },
+        '(assignment.userId = :userId OR assignment.roleId IN (:...roleIds) OR assignment.schoolId IN (:...schoolIds))',
+        {
+          userId,
+          roleIds: userRoleIds.length ? userRoleIds : [NIL_UUID],
+          schoolIds: userSchoolIds.length ? userSchoolIds : [NIL_UUID],
+        },
       )
       .andWhere(
         '(survey.endDate IS NULL OR survey.endDate >= :now)',
@@ -443,7 +477,27 @@ export class SurveysService {
       .addOrderBy('section.order', 'ASC')
       .addOrderBy('field.order', 'ASC');
 
-    return query.getMany();
+    const surveys = await query.getMany();
+    const roleSet = new Set(userRoleIds);
+    const schoolSet = new Set(userSchoolIds);
+    return surveys
+      .filter((s) =>
+        (s.assignments || []).some((a) => {
+          if (a.userId && a.userId === userId) return true;
+          if (Array.isArray(a.excludeUserIds) && a.excludeUserIds.includes(userId)) {
+            return false;
+          }
+          if (a.roleId && roleSet.has(a.roleId)) return true;
+          if (a.schoolId && schoolSet.has(a.schoolId)) return true;
+          return false;
+        }),
+      )
+      .map((s) => {
+        // Don't leak the survey's full assignment list to respondents.
+        const copy = { ...s };
+        delete (copy as Partial<Survey>).assignments;
+        return copy as Survey;
+      });
   }
 
   async update(
@@ -859,6 +913,13 @@ export class SurveysService {
     if (survey.status !== SurveyStatus.PUBLISHED) {
       throw new ForbiddenException('Survey is not accepting responses');
     }
+    const now = new Date();
+    if (survey.startDate && new Date(survey.startDate) > now) {
+      throw new ForbiddenException('Survey has not started yet');
+    }
+    if (survey.endDate && new Date(survey.endDate) < now) {
+      throw new ForbiddenException('Survey response period has ended');
+    }
 
     // Business rule: only assigned users may respond (direct, role or school
     // assignment; managers with surveys:update are allowed through to preview).
@@ -1067,19 +1128,20 @@ export class SurveysService {
       .andWhere('response.isComplete = :isComplete', { isComplete: true });
 
     if (filters?.startDate) {
+      const start = this.assertValidDateParam(filters.startDate, 'startDate');
       query.andWhere('response.createdAt >= :startDate', {
-        startDate: filters.startDate,
+        startDate: start,
       });
     }
     if (filters?.endDate) {
+      const end = this.assertValidDateParam(filters.endDate, 'endDate');
       query.andWhere('response.createdAt <= :endDate', {
-        endDate: filters.endDate,
+        endDate: end,
       });
     }
 
     query.orderBy('response.createdAt', 'DESC');
-    const numPage = Number(page) || 1;
-    const numLimit = Number(limit) || 20;
+    const { numPage, numLimit } = this.sanitizePaging(page, limit, 10000);
     query.skip((numPage - 1) * numLimit).take(numLimit);
 
     const [data, total] = await query.getManyAndCount();
@@ -1129,19 +1191,20 @@ export class SurveysService {
     }
 
     if (filters?.startDate) {
+      const start = this.assertValidDateParam(filters.startDate, 'startDate');
       query.andWhere('response.createdAt >= :startDate', {
-        startDate: filters.startDate,
+        startDate: start,
       });
     }
     if (filters?.endDate) {
+      const end = this.assertValidDateParam(filters.endDate, 'endDate');
       query.andWhere('response.createdAt <= :endDate', {
-        endDate: filters.endDate,
+        endDate: end,
       });
     }
 
     query.orderBy('response.createdAt', 'DESC');
-    const numPage = Number(page) || 1;
-    const numLimit = Number(limit) || 20;
+    const { numPage, numLimit } = this.sanitizePaging(page, limit, 200);
     query.skip((numPage - 1) * numLimit).take(numLimit);
 
     const [data, total] = await query.getManyAndCount();

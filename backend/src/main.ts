@@ -197,7 +197,9 @@ async function bootstrap() {
     // Uploads are user-supplied content served from the API origin. Even
     // though the upload allowlist only permits images/pdf/spreadsheets, these
     // headers make sure nothing here can execute in that origin.
-    setHeaders: (res) => {
+    setHeaders: (res, filePath) => {
+      const isImage = /\.(jpe?g|png|gif|webp)$/i.test(filePath || '');
+      res.setHeader('Content-Disposition', isImage ? 'inline' : 'attachment');
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader(
         'Content-Security-Policy',

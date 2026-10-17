@@ -851,7 +851,7 @@ export class UpdateEventParticipationDto extends PartialType(CreateEventParticip
 export class UpsertFormDraftDto {
   @IsUUID() schoolId: string;
 
-  @IsString() @IsNotEmpty() formKey: string;
+  @IsString() @IsNotEmpty() @MaxLength(100) formKey: string;
 
   // NOTE: must have at least one class-validator decorator or the global
   // ValidationPipe's `whitelist`/`forbidNonWhitelisted` options strip/reject

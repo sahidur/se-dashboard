@@ -161,8 +161,8 @@ export class AuditService {
   ): Promise<PaginatedAuditLogs> {
     const { page, limit } = this.resolvePaging(dto);
     const qb = this.applyFilters(this.baseQuery(), dto).andWhere(
-      '(log.userId = :userId OR (log.module = :userModule AND log.entityId = CAST(:userId AS varchar)))',
-      { userId, userModule: 'User' },
+      '(log.userId = :userId OR (log.module IN (:...userModules) AND log.entityId = CAST(:userId AS varchar)))',
+      { userId, userModules: ['User', 'users'] },
     );
     this.applyPrivilegedFilter(qb, await this.isSuperAdmin(actorId));
     qb.orderBy('log.createdAt', 'DESC')
@@ -200,8 +200,8 @@ export class AuditService {
     this.applyPrivilegedFilter(qb, await this.isSuperAdmin(actorId));
     if (userId) {
       qb.andWhere(
-        '(log.userId = :userId OR (log.module = :userModule AND log.entityId = CAST(:userId AS varchar)))',
-        { userId, userModule: 'User' },
+        '(log.userId = :userId OR (log.module IN (:...userModules) AND log.entityId = CAST(:userId AS varchar)))',
+        { userId, userModules: ['User', 'users'] },
       );
     }
     const rows = await qb.getRawMany<{ action: string; count: string }>();

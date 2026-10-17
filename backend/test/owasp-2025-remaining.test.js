@@ -457,3 +457,140 @@ test('no urlencoded body parser is registered (login CSRF via HTML forms)', () =
   assert.doesNotMatch(src, /useBodyParser\(\s*['"]urlencoded/);
   assert.match(src, /bodyParser:\s*false/);
 });
+
+// ── Round 3 audit regression tests ─────────────────────────────────────────
+
+test('WebP magic-byte check requires BOTH RIFF at 0 and WEBP at 8; CSV rejects NUL bytes', () => {
+  const svc = Object.create(FilesService.prototype);
+  // Only RIFF (e.g. WAV audio) must be rejected as image/webp
+  assert.throws(
+    () => svc.assertMagicBytes({ mimetype: 'image/webp', buffer: Buffer.from('RIFF1234WAVEfmt ') }),
+    BadRequestException,
+  );
+  // Only WEBP at offset 8 (e.g. HTML payload `<html>\n\nWEBP...`) must be rejected
+  assert.throws(
+    () => svc.assertMagicBytes({ mimetype: 'image/webp', buffer: Buffer.from('<html>\n\nWEBP<script>') }),
+    BadRequestException,
+  );
+  // Valid WebP container passes
+  assert.doesNotThrow(() =>
+    svc.assertMagicBytes({ mimetype: 'image/webp', buffer: Buffer.from('RIFF\x00\x00\x00\x00WEBPvp8 ') }),
+  );
+  // Binary payload disguised as text/csv is rejected
+  assert.throws(
+    () => svc.assertMagicBytes({ mimetype: 'text/csv', buffer: Buffer.from('a,b\x00c,d') }),
+    BadRequestException,
+  );
+  assert.doesNotThrow(() =>
+    svc.assertMagicBytes({ mimetype: 'text/csv', buffer: Buffer.from('name,roll\nAlice,1\n') }),
+  );
+});
+
+test('deleteSchool blocks assigned (non-creator, non-admin) users', async () => {
+  const svc = Object.create(DataCollectionService.prototype);
+  let deleted = false;
+  svc.validateSchoolAccess = async () => ({ id: S1, createdById: 'creator' });
+  svc.schoolRepo = { softRemove: async () => { deleted = true; } };
+
+  await assert.rejects(svc.deleteSchool(S1, 'assigned-user', ['School Admin']), ForbiddenException);
+  assert.equal(deleted, false);
+
+  await svc.deleteSchool(S1, 'creator', ['School Admin']);
+  assert.equal(deleted, true);
+});
+
+test('recalculateStudentInManager scopes unpaid fee recalculation to the student current school', async () => {
+  const svc = Object.create(FeeCollectionService.prototype);
+  let feeWhere;
+  const manager = {
+    findOne: async () => ({ id: 'student-1', schoolId: S2 }),
+    find: async (_entity, opts) => {
+      feeWhere = opts.where;
+      return [];
+    },
+  };
+  await svc.recalculateStudentInManager(manager, 'student-1', 'year-1');
+  assert.equal(feeWhere.schoolId, S2);
+});
+
+test('refresh tokens include a unique jti so same-second rotations never collide', async () => {
+  const user = { id: 'u1', isActive: true, passwordChangedAt: null };
+  const auth = new AuthService(
+    { findOneById: async () => user, updateRefreshToken: async (_id, rt) => { user.refreshToken = hashRefreshToken(rt); } },
+    new JwtService({}),
+    config,
+  );
+  const initial = jwt.sign({ sub: 'u1', pwv: 0, typ: 'refresh', jti: 'init' }, REFRESH);
+  user.refreshToken = hashRefreshToken(initial);
+  const first = await auth.refreshTokens(initial);
+  const second = await auth.refreshTokens(first.refreshToken);
+  assert.notEqual(first.refreshToken, second.refreshToken);
+  assert.ok(jwt.decode(first.refreshToken).jti);
+  assert.notEqual(jwt.decode(first.refreshToken).jti, jwt.decode(second.refreshToken).jti);
+});
+
+test('passkey step-up DTOs bound password length and audit query DTO validates UUID and dates', () => {
+  const { VerifyRegistrationDto, DeletePasskeyDto } = require('../src/auth/dto/passkey.dto');
+  const { QueryAuditLogDto } = require('../src/common/audit/dto/query-audit-log.dto');
+
+  const overlong = 'p'.repeat(129);
+  assert.ok(
+    validateSync(plainToInstance(VerifyRegistrationDto, { response: {}, password: overlong })).some(
+      (e) => e.property === 'password',
+    ),
+  );
+  assert.ok(
+    validateSync(plainToInstance(DeletePasskeyDto, { password: overlong })).some(
+      (e) => e.property === 'password',
+    ),
+  );
+  const badAuditQuery = plainToInstance(QueryAuditLogDto, {
+    userId: 'not-a-uuid',
+    startDate: 'not-a-date',
+  });
+  const props = validateSync(badAuditQuery).map((e) => e.property);
+  assert.ok(props.includes('userId'));
+  assert.ok(props.includes('startDate'));
+});
+
+test('surveys: findAssignedSurveys handles empty roles & exclusions, and submitResponse enforces date windows', async () => {
+  const svc = Object.create(SurveysService.prototype);
+  let capturedParams;
+  const qb = {
+    leftJoinAndSelect() { return qb; },
+    where() { return qb; },
+    andWhere(_cond, params) {
+      if (params && params.roleIds) capturedParams = params;
+      return qb;
+    },
+    orderBy() { return qb; },
+    addOrderBy() { return qb; },
+    getMany: async () => [
+      {
+        id: 's-excluded',
+        assignments: [{ roleId: 'r1', excludeUserIds: ['u1'] }],
+      },
+      {
+        id: 's-included',
+        assignments: [{ schoolId: S1, excludeUserIds: [] }],
+      },
+    ],
+  };
+  svc.surveysRepository = {
+    createQueryBuilder: () => qb,
+    findOne: async () => ({
+      id: 's1',
+      status: 'published',
+      startDate: new Date(Date.now() + 86400000),
+    }),
+  };
+  const assigned = await svc.findAssignedSurveys('u1', [], [S1]);
+  assert.notEqual(capturedParams.roleIds[0], 'none');
+  assert.deepEqual(assigned.map((s) => s.id), ['s-included']);
+  assert.equal(assigned[0].assignments, undefined);
+
+  await assert.rejects(
+    svc.submitResponse({ surveyId: 's1', answers: [] }, 'u1'),
+    /not started yet/,
+  );
+});

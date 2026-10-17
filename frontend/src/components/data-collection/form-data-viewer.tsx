@@ -183,8 +183,9 @@ function PercentValue({ value, align = 'left' }: { value: number; align?: 'left'
 
 function PhotoValue({ url }: { url: string }) {
   const src = resolveAssetUrl(url);
+  if (!src) return <span className="text-gray-300">—</span>;
   return (
-    <a href={src} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-indigo-600 hover:underline">
+    <a href={src} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-indigo-600 hover:underline">
       <Image src={src} alt="" width={40} height={40} unoptimized className="h-10 w-10 rounded-lg border border-gray-200 object-cover" />
       <span className="text-xs font-medium">View</span>
     </a>

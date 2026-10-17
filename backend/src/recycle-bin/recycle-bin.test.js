@@ -129,3 +129,23 @@ test('restore/permanent delete of another tenant item is denied with a 404', asy
     /Deleted item not found/,
   );
 });
+
+test('plain Admin cannot restore or permanently delete a Super Admin or peer Admin user', async () => {
+  const service = Object.create(RecycleBinService.prototype);
+  service.usersRepo = {
+    findOne: async ({ where }) => {
+      if (where.id === actorId) {
+        return { id: actorId, roles: [{ name: 'Admin', hierarchy: 1 }] };
+      }
+      return { id: userId, deletedAt: new Date(), roles: [{ name: 'Super Admin', hierarchy: 0 }] };
+    },
+  };
+  await assert.rejects(
+    service.restore('user', userId, actorId, ['Admin']),
+    /more privileges/,
+  );
+  await assert.rejects(
+    service.permanentDelete('user', userId, actorId, ['Admin']),
+    /more privileges/,
+  );
+});
