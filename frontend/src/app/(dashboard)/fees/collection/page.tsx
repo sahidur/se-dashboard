@@ -525,6 +525,7 @@ export default function MonthlyCollectionPage() {
                                     value={alloc?.amount ?? ''}
                                     disabled={!alloc?.checked}
                                     onChange={(e) => updateAlloc(h.feeHeadId, { amount: e.target.value })}
+                                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                     className={`h-7 w-24 rounded border px-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 disabled:bg-gray-50 disabled:text-gray-400 ${
                                       installment ? '' : 'bg-gray-50'
                                     }`}
