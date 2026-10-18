@@ -4,6 +4,7 @@ import { FeeCollectionService } from './fee-collection.service';
 import { FeeReconcileService } from './fee-reconcile.service';
 import { FeeAdjustment } from './entities/fee-adjustment.entity';
 import { FeeCollectionController } from './fee-collection.controller';
+import { FeeMigrationReportsController } from './fee-migration-reports.controller';
 import { FinanceReportsService } from './finance-reports.service';
 import { FinanceReportsController } from './finance-reports.controller';
 import { StudentFee } from './entities/student-fee.entity';
@@ -40,7 +41,7 @@ import { SchoolScopeGuard } from '../students/school-scope.guard';
     ]),
     UsersModule,
   ],
-  controllers: [FeeCollectionController, FinanceReportsController],
+  controllers: [FeeCollectionController, FeeMigrationReportsController, FinanceReportsController],
   providers: [FeeCollectionService, FeeReconcileService, FinanceReportsService, SchoolScopeGuard],
   exports: [FinanceReportsService, FeeCollectionService, FeeReconcileService],
 })

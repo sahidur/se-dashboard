@@ -749,14 +749,16 @@ esac
 # The migration never changes payments or receipts, and is safe to re-run.
 step "Fee admission-date rules"
 ensure_env FEE_ADMISSION_RULES "off"
+# Where the migration writes its review CSVs; the admin-only download page reads them from here.
+FEE_REPORT_DIR="${LOG_DIR}/fee-migration"
+mkdir -p "$FEE_REPORT_DIR"
+chown "$APP_USER":"$APP_USER" "$FEE_REPORT_DIR"
+chmod 750 "$FEE_REPORT_DIR"
+ensure_env FEE_REPORT_DIR "$FEE_REPORT_DIR"
 _fee_rules="$(grep -E '^FEE_ADMISSION_RULES=' "$BACKEND_ENV_FILE" | tail -n 1 | cut -d'=' -f2- || true)"
 if [[ "$_fee_rules" == "on" ]]; then
   ok "Admission-date fee rules are on"
 else
-  FEE_REPORT_DIR="${LOG_DIR}/fee-migration"
-  mkdir -p "$FEE_REPORT_DIR"
-  chown "$APP_USER":"$APP_USER" "$FEE_REPORT_DIR"
-  chmod 750 "$FEE_REPORT_DIR"
   if [[ "$FEE_MIGRATE" == "apply" ]]; then
     info "Applying the fee migration (back up the database first if you have not)"
     if ! sudo -u "$APP_USER" bash -c "cd ${APP_DIR}/backend && node dist/reconcile-admission-fees.js --apply --out=${FEE_REPORT_DIR}"; then

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
-import { ClipboardCheck } from 'lucide-react';
+import { ClipboardCheck, Download } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import { Select, useSchools, MonthSelect, monthName, formatBDT } from '@/components/fee/filters';
 
@@ -46,6 +46,12 @@ const STATUS_BADGE: Record<string, string> = {
   dismissed: 'bg-gray-100 text-gray-600',
 };
 
+interface MigrationFile {
+  name: string;
+  size: number;
+  modifiedAt: string;
+}
+
 const RESOLUTIONS = [
   { value: 'refunded', label: 'Refunded to guardian' },
   { value: 'applied_manually', label: 'Applied to another due manually' },
@@ -68,6 +74,34 @@ export default function FeeAdjustmentsPage() {
   const [saving, setSaving] = useState(false);
 
   const activeSchoolId = schoolId || (schools[0]?.id ?? '');
+
+  // TEMPORARY: review files written by the fee migration (admins only; the
+  // list stays empty for everyone else).
+  const [files, setFiles] = useState<MigrationFile[]>([]);
+  useEffect(() => {
+    void Promise.resolve()
+      .then(() => api.get('/fee-collection/migration-reports'))
+      .then(({ data }) => setFiles(Array.isArray(data) ? data : []))
+      .catch(() => setFiles([]));
+  }, []);
+
+  const downloadFile = async (name: string) => {
+    try {
+      const { data } = await api.get(`/fee-collection/migration-reports/${encodeURIComponent(name)}`, {
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(data as Blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      alert(getErrorMessage(error, 'Download failed'));
+    }
+  };
 
   const fetchRows = async () => {
     if (!activeSchoolId) return;
@@ -133,6 +167,29 @@ export default function FeeAdjustmentsPage() {
         subtitle="Money collected for months or heads that no longer apply after an admission-date change - decide how each is settled"
       />
       <div className="page-container space-y-4">
+        {files.length > 0 && (
+          <Card className="border-0 shadow-sm">
+            <CardContent className="p-4">
+              <h3 className="text-sm font-semibold text-gray-800">Fee migration review files</h3>
+              <p className="mb-3 text-xs text-gray-400">
+                Admin only, temporary. Contains student names - do not share.
+              </p>
+              <ul className="divide-y divide-gray-100">
+                {files.map((f) => (
+                  <li key={f.name} className="flex items-center justify-between gap-3 py-2 text-sm">
+                    <span className="min-w-0 truncate font-mono text-xs text-gray-700">{f.name}</span>
+                    <span className="flex shrink-0 items-center gap-3">
+                      <span className="text-xs text-gray-400">{(f.size / 1024).toFixed(1)} KB</span>
+                      <Button size="sm" variant="outline" onClick={() => downloadFile(f.name)} className="gap-1.5">
+                        <Download size={13} /> Download
+                      </Button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
         <Card className="border-0 shadow-sm">
           <CardContent className="p-4">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
