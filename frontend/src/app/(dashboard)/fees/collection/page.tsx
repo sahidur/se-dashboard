@@ -97,6 +97,7 @@ export default function MonthlyCollectionPage() {
   const [headDues, setHeadDues] = useState<HeadDue[]>([]);
   const [headAllocs, setHeadAllocs] = useState<Record<string, { checked: boolean; amount: string }>>({});
   const [loadingDues, setLoadingDues] = useState(false);
+  const [amountNotice, setAmountNotice] = useState('');
   const [collectForm, setCollectForm] = useState({
     paymentMethod: 'cash',
     transactionRef: '',
@@ -176,6 +177,7 @@ export default function MonthlyCollectionPage() {
     setCollectTarget(row);
     setHeadDues([]);
     setHeadAllocs({});
+    setAmountNotice('');
     setCollectForm({
       paymentMethod: 'cash',
       transactionRef: '',
@@ -521,10 +523,21 @@ export default function MonthlyCollectionPage() {
                                   <input
                                     type="number"
                                     min="0"
+                                    max={h.due}
                                     step="0.01"
                                     value={alloc?.amount ?? ''}
                                     disabled={!alloc?.checked}
-                                    onChange={(e) => updateAlloc(h.feeHeadId, { amount: e.target.value })}
+                                    onChange={(e) => {
+                                      const raw = e.target.value;
+                                      const val = parseFloat(raw);
+                                      if (raw !== '' && !Number.isNaN(val) && val > h.due) {
+                                        updateAlloc(h.feeHeadId, { amount: String(h.due) });
+                                        setAmountNotice(`"${h.feeHeadName}" amount cannot exceed its due (${formatBDT(h.due)}) — set to the full due`);
+                                      } else {
+                                        updateAlloc(h.feeHeadId, { amount: raw });
+                                        setAmountNotice('');
+                                      }
+                                    }}
                                     onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                     className={`h-7 w-24 rounded border px-2 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 disabled:bg-gray-50 disabled:text-gray-400 ${
                                       installment ? '' : 'bg-gray-50'
@@ -539,6 +552,9 @@ export default function MonthlyCollectionPage() {
                         )}
                       </tbody>
                     </table>
+                  )}
+                  {amountNotice && (
+                    <p className="mt-2 text-xs font-medium text-red-600">{amountNotice}</p>
                   )}
                   {headDues.length > 0 && (
                     <div className="mt-2 flex items-center justify-between">
