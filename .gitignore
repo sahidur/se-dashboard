@@ -1,5 +1,8 @@
 # Dev server / tool logs at the repo root
 *.log
+
+# Database backups
+backups/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
