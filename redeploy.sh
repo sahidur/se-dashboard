@@ -39,17 +39,61 @@ DOMAIN="${DOMAIN:-se.somadhanhobe.com}"
 #  Fix -1 – NodeSource apt signing key (must run before any apt-get update)
 #  NodeSource rotates its repo signing key periodically; a keyring downloaded
 #  by an earlier deploy then makes `apt-get update` fail with NO_PUBKEY and,
-#  under `set -e`, aborts the whole script. Refreshing the keyring on every
-#  run is idempotent and keeps the repo verifiable.
+#  under `set -e`, aborts the whole script.
+#
+#  A stale copy can live at more than one location: this script's
+#  /etc/apt/keyrings/nodesource.gpg, /usr/share/keyrings/, or a deb822
+#  *.sources entry (written by NodeSource's own setup script, e.g. when it was
+#  run manually). apt verifies every entry independently, so a stale keyring
+#  at ANY referenced path breaks `apt-get update` even when the default one is
+#  current. This function therefore refreshes every keyring any nodesource apt
+#  source references, and prunes deb822 duplicates.
 # =============================================================================
-if [[ -f /etc/apt/sources.list.d/nodesource.list ]]; then
-  step "Refreshing NodeSource apt signing key"
-  apt-get install -y -qq ca-certificates gnupg >/dev/null
+refresh_nodesource_keyrings() {
+  apt-get install -y -qq ca-certificates curl gnupg >/dev/null
+  curl -fsSL --retry 3 --retry-all-errors \
+    https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    -o /tmp/nodesource-repo.asc
+  [[ -s /tmp/nodesource-repo.asc ]] || die "NodeSource repo key download failed (empty response)"
+  gpg --show-keys /tmp/nodesource-repo.asc >/dev/null 2>&1 \
+    || die "Downloaded NodeSource key is not a valid PGP key (proxy/cache interference?)"
   install -d -m 0755 /etc/apt/keyrings
   rm -f /etc/apt/keyrings/nodesource.gpg
-  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
-    | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
-  ok "NodeSource keyring refreshed"
+  gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg < /tmp/nodesource-repo.asc
+  chmod 0644 /etc/apt/keyrings/nodesource.gpg
+  ok "NodeSource keyring refreshed: /etc/apt/keyrings/nodesource.gpg"
+
+  # deb822 duplicates shadow the one-line nodesource.list this script manages.
+  if [[ -f /etc/apt/sources.list.d/nodesource.list ]]; then
+    local _dup
+    for _dup in /etc/apt/sources.list.d/*.sources; do
+      [[ -f "$_dup" ]] || continue
+      grep -qi nodesource "$_dup" || continue
+      rm -f "$_dup"
+      ok "Removed duplicate deb822 source ${_dup} (nodesource.list manages this repo)"
+    done
+  fi
+
+  # Refresh any other keyring a nodesource source pins via signed-by=…
+  local _src _path
+  for _src in /etc/apt/sources.list /etc/apt/sources.list.d/*.list; do
+    [[ -f "$_src" ]] || continue
+    grep -q "deb.nodesource.com" "$_src" || continue
+    while IFS= read -r _path; do
+      [[ -n "$_path" ]] || continue
+      install -d -m 0755 "$(dirname "$_path")"
+      rm -f "$_path"
+      gpg --dearmor --yes -o "$_path" < /tmp/nodesource-repo.asc
+      chmod 0644 "$_path"
+      ok "NodeSource keyring refreshed: ${_path}"
+    done < <(grep -oh 'signed-by=[^] ]*' "$_src" | sed 's/^signed-by=//' | sort -u)
+  done
+  rm -f /tmp/nodesource-repo.asc
+}
+
+if [[ -f /etc/apt/sources.list.d/nodesource.list ]]; then
+  step "Refreshing NodeSource apt signing key"
+  refresh_nodesource_keyrings
 fi
 
 # Upload URL enforcement (see the "Reconciling backend environment file" step):
@@ -120,11 +164,7 @@ if [[ "$INSTALLED_NODE_MAJOR" -lt "$NODE_MAJOR" ]]; then
   export DEBIAN_FRONTEND=noninteractive
   # Signed apt repository instead of `curl | bash`: packages are verified
   # against NodeSource's signing key by apt, and no remote script runs as root.
-  apt-get install -y -qq ca-certificates gnupg >/dev/null
-  install -d -m 0755 /etc/apt/keyrings
-  rm -f /etc/apt/keyrings/nodesource.gpg
-  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
-    | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+  refresh_nodesource_keyrings
   echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" \
     > /etc/apt/sources.list.d/nodesource.list
   apt-get update -qq
