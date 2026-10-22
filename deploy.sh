@@ -82,6 +82,20 @@ WEBAUTHN_RP_ID="${WEBAUTHN_RP_ID:-${DOMAIN}}"
 WEBAUTHN_RP_NAME="${WEBAUTHN_RP_NAME:-SE360}"
 WEBAUTHN_ORIGIN="${WEBAUTHN_ORIGIN:-https://${DOMAIN}}"
 
+# NodeSource rotates its repo signing key periodically; a keyring downloaded
+# by an earlier run then makes the first `apt-get update` fail with NO_PUBKEY
+# and, under `set -e`, aborts the script. Refresh it up-front when the repo
+# is already configured (idempotent, cheap).
+if [[ -f /etc/apt/sources.list.d/nodesource.list ]]; then
+  step "Refreshing NodeSource apt signing key"
+  apt-get install -y -qq ca-certificates gnupg >/dev/null
+  install -d -m 0755 /etc/apt/keyrings
+  rm -f /etc/apt/keyrings/nodesource.gpg
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+  ok "NodeSource keyring refreshed"
+fi
+
 # =============================================================================
 #  Step 0 – Collect secrets interactively (skip if already exported)
 # =============================================================================
@@ -192,8 +206,9 @@ if [[ "$INSTALLED_NODE_MAJOR" -lt "$NODE_MAJOR" ]]; then
   # against NodeSource's signing key by apt, and no remote script runs as root.
   apt-get install -y -qq ca-certificates gnupg >/dev/null
   install -d -m 0755 /etc/apt/keyrings
+  rm -f /etc/apt/keyrings/nodesource.gpg
   curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
-    | gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
+    | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
   echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" \
     > /etc/apt/sources.list.d/nodesource.list
   apt-get update -qq

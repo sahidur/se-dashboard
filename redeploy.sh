@@ -35,6 +35,23 @@ BACKEND_PORT="${BACKEND_PORT:-4000}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 DOMAIN="${DOMAIN:-se.somadhanhobe.com}"
 
+# =============================================================================
+#  Fix -1 – NodeSource apt signing key (must run before any apt-get update)
+#  NodeSource rotates its repo signing key periodically; a keyring downloaded
+#  by an earlier deploy then makes `apt-get update` fail with NO_PUBKEY and,
+#  under `set -e`, aborts the whole script. Refreshing the keyring on every
+#  run is idempotent and keeps the repo verifiable.
+# =============================================================================
+if [[ -f /etc/apt/sources.list.d/nodesource.list ]]; then
+  step "Refreshing NodeSource apt signing key"
+  apt-get install -y -qq ca-certificates gnupg >/dev/null
+  install -d -m 0755 /etc/apt/keyrings
+  rm -f /etc/apt/keyrings/nodesource.gpg
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+  ok "NodeSource keyring refreshed"
+fi
+
 # Upload URL enforcement (see the "Reconciling backend environment file" step):
 #   true (default) -> flips UPLOADS_ALLOW_UNSIGNED to false: anonymous access
 #                     requires a valid signature; logged-in users are unaffected.
@@ -105,8 +122,9 @@ if [[ "$INSTALLED_NODE_MAJOR" -lt "$NODE_MAJOR" ]]; then
   # against NodeSource's signing key by apt, and no remote script runs as root.
   apt-get install -y -qq ca-certificates gnupg >/dev/null
   install -d -m 0755 /etc/apt/keyrings
+  rm -f /etc/apt/keyrings/nodesource.gpg
   curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
-    | gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
+    | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
   echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" \
     > /etc/apt/sources.list.d/nodesource.list
   apt-get update -qq
