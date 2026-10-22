@@ -2,7 +2,7 @@
 # =============================================================================
 #  SE360 – One-Click DigitalOcean Deployment
 #  Domain  : se.somadhanhobe.com
-#  OS      : Ubuntu 22.04 | 24.04 LTS  (Node 24 needs glibc >= 2.28)
+#  OS      : Ubuntu 22.04 | 24.04 LTS  (Node 26 needs glibc >= 2.28)
 #  Run as  : sudo bash deploy.sh
 #  Re-run  : safe – the script is fully idempotent
 # =============================================================================
@@ -44,7 +44,7 @@ APP_BRANCH="${APP_BRANCH:-main}"  # Git branch to deploy
 APP_USER="${APP_USER:-se360}"       # Dedicated OS user for the app
 APP_DIR="${APP_DIR:-/opt/se360}" # Installation directory
 LOG_DIR="${LOG_DIR:-/var/log/se360}"
-NODE_MAJOR="${NODE_MAJOR:-24}"    # Node.js Active LTS major version
+NODE_MAJOR="${NODE_MAJOR:-26}"    # Node.js LTS major version (must match repo engines)
 BACKEND_PORT="${BACKEND_PORT:-4000}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 SKIP_SSL="${SKIP_SSL:-false}"     # Set to 'true' to skip certbot (CI/testing)

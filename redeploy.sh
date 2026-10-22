@@ -30,7 +30,7 @@ APP_USER="${APP_USER:-se360}"
 APP_DIR="${APP_DIR:-/opt/se360}"
 APP_BRANCH="${APP_BRANCH:-main}"
 LOG_DIR="${LOG_DIR:-/var/log/se360}"
-NODE_MAJOR="${NODE_MAJOR:-24}"
+NODE_MAJOR="${NODE_MAJOR:-26}"
 BACKEND_PORT="${BACKEND_PORT:-4000}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 DOMAIN="${DOMAIN:-se.somadhanhobe.com}"
@@ -90,7 +90,7 @@ unset _legacy_file LEGACY_APP_DIR LEGACY_LOG_DIR
 [[ -d "$APP_DIR/backend" ]] || die "App directory not found: ${APP_DIR}"
 
 # =============================================================================
-#  Fix 0 – Node.js runtime (Next 16 requires >= 20.9, we target Active LTS 24)
+#  Fix 0 – Node.js runtime (must match the repo's engines: >= 26, current LTS)
 # =============================================================================
 step "Checking Node.js runtime"
 INSTALLED_NODE_MAJOR=0
