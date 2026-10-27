@@ -9,8 +9,8 @@
 #
 #  Usage: sudo bash redeploy.sh
 #         sudo STRICT_UPLOADS=false bash redeploy.sh  # temporary legacy URL grace
-#         sudo FEE_MIGRATE=apply bash redeploy.sh     # apply the fee-rules migration
-#                                                     # (a plain run only previews it)
+#         sudo FEE_MIGRATE=preview bash redeploy.sh   # preview the fee migration (writes nothing)
+#         sudo FEE_MIGRATE=apply bash redeploy.sh     # apply it (safe to repeat)
 # =============================================================================
 set -euo pipefail
 IFS=$'\n\t'
@@ -102,9 +102,10 @@ fi
 #   false          -> temporarily preserve an existing legacy unsigned setting.
 STRICT_UPLOADS="${STRICT_UPLOADS:-true}"
 
-# Fee admission-date rules migration: "preview" (default, writes nothing) or "apply".
-FEE_MIGRATE="${FEE_MIGRATE:-preview}"
-[[ "$FEE_MIGRATE" == "preview" || "$FEE_MIGRATE" == "apply" ]] || die "FEE_MIGRATE must be 'preview' or 'apply'"
+# Fee admission-date rules migration. Unset: preview it only while the rules are still off.
+# "preview" / "apply": run it now, even if the rules are already on (it is safe to re-run).
+FEE_MIGRATE="${FEE_MIGRATE:-}"
+[[ -z "$FEE_MIGRATE" || "$FEE_MIGRATE" == "preview" || "$FEE_MIGRATE" == "apply" ]] || die "FEE_MIGRATE must be 'preview' or 'apply'"
 
 # =============================================================================
 #  Migration – legacy "bep-*" naming → "se360-*"
@@ -814,7 +815,7 @@ chown "$APP_USER":"$APP_USER" "$FEE_REPORT_DIR"
 chmod 750 "$FEE_REPORT_DIR"
 ensure_env FEE_REPORT_DIR "$FEE_REPORT_DIR"
 _fee_rules="$(grep -E '^FEE_ADMISSION_RULES=' "$BACKEND_ENV_FILE" | tail -n 1 | cut -d'=' -f2- || true)"
-if [[ "$_fee_rules" == "on" ]]; then
+if [[ "$_fee_rules" == "on" && -z "$FEE_MIGRATE" ]]; then
   ok "Admission-date fee rules are on"
 else
   if [[ "$FEE_MIGRATE" == "apply" ]]; then
@@ -823,7 +824,7 @@ else
       die "Fee migration did not finish cleanly. Nothing was turned on - fix the problem above and re-run (it is safe to repeat)."
     fi
     sed -i 's|^FEE_ADMISSION_RULES=.*|FEE_ADMISSION_RULES=on|' "$BACKEND_ENV_FILE"
-    ok "Fee migration applied - admission-date fee rules are now on"
+    ok "Fee migration applied - admission-date fee rules are on"
   else
     # A preview problem must never block a deploy.
     sudo -u "$APP_USER" bash -c "cd ${APP_DIR}/backend && node dist/reconcile-admission-fees.js --out=${FEE_REPORT_DIR}" \

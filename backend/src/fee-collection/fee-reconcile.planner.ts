@@ -92,6 +92,15 @@ export type ReconcileAction =
       previousPayable: number;
     } & Computed)
   | ({
+      type: 'adjust_heads';
+      feeId: string;
+      academicYearId: string;
+      month: number;
+      previousPayable: number;
+      added: string[];
+      removed: string[];
+    } & Computed)
+  | ({
       type: 'create';
       academicYearId: string;
       month: number;
@@ -135,8 +144,14 @@ function collected(fee: PlannerFee): number {
 
 /**
  * Decides, without touching the database, what must change so one student's
- * fee rows follow the admission-date rules. Rows with money collected are
- * never modified - they only produce review flags.
+ * fee rows follow the admission-date rules.
+ *
+ * Money is never touched: months with payments keep their paid amount, payments
+ * and receipts. For those months only the billed side may change (heads that
+ * now apply are added, unpaid heads that no longer apply are dropped) and
+ * anything that needs a Finance decision becomes a review flag. Months before
+ * the admission month that already have payments are only flagged. Closed
+ * academic years are skipped entirely.
  */
 export function planStudentReconcile(input: PlannerInput): ReconcileAction[] {
   const { student } = input;
@@ -168,7 +183,7 @@ export function planStudentReconcile(input: PlannerInput): ReconcileAction[] {
 
   for (const yearId of yearIds) {
     const year = yearById.get(yearId);
-    if (!year) continue;
+    if (!year || year.status === 'closed') continue;
     const ctx = resolveStudentFeeContext(student, year);
     const first = ctx.firstBillableMonth;
     const discounts = input.discounts.filter((d) => d.academicYearId === yearId);
@@ -246,42 +261,80 @@ export function planStudentReconcile(input: PlannerInput): ReconcileAction[] {
         continue;
       }
 
-      // Money already collected: never rewrite. Flag heads that do not apply.
-      const bad = (fee.breakdown ?? []).filter(
-        (b) =>
-          !headApplies(
-            { applicableTo: input.headApplicability.get(b.feeHeadId) ?? FeeApplicability.ALL },
-            ctx.isNew,
-          ),
+      // Money already collected. Paid amounts, payments and receipts are never
+      // touched; only the BILLED side changes:
+      //  - an inapplicable head with nothing paid on it is dropped;
+      //  - an applicable head the row lacks (e.g. Session Fee for an old
+      //    student, or January-only heads for a late joiner) is added;
+      //  - an inapplicable head that already has money stays and is flagged.
+      const current = fee.breakdown ?? [];
+      const headPaid = computeHeadWisePaid(current, fee.payments);
+      const applicableOf = (headId: string) =>
+        input.structures.find((s) => s.feeHeadId === headId)?.feeHead?.applicableTo ??
+        input.headApplicability.get(headId) ??
+        FeeApplicability.ALL;
+      const inapplicable = (headId: string) =>
+        !headApplies({ applicableTo: applicableOf(headId) }, ctx.isNew);
+
+      const paidOn = (b: { feeHeadId: string }) => toMoney(headPaid.get(b.feeHeadId) ?? 0);
+      const dropped = current.filter((b) => inapplicable(b.feeHeadId) && paidOn(b) <= 0.009);
+      const kept = current.filter((b) => !dropped.includes(b));
+
+      const expected = compute(structuresOf(fee.classId), discounts, ctx, student.id, fee.month);
+      const have = new Set(kept.map((b) => b.feeHeadId));
+      const ruleDriven = (headId: string) =>
+        applicableOf(headId) !== FeeApplicability.ALL || (first! > 1 && fee.month === first);
+      const added = expected.breakdown.filter(
+        (b) => !have.has(b.feeHeadId) && ruleDriven(b.feeHeadId),
       );
-      if (bad.length === 0) continue;
-      const headPaid = computeHeadWisePaid(fee.breakdown ?? [], fee.payments);
-      const lines = bad.map((b) => {
-        const paid = toMoney(headPaid.get(b.feeHeadId) ?? 0);
-        return {
+
+      // Only adjust a row whose bill lines add up to its payable amount; an
+      // inconsistent legacy row is left for a human rather than recomputed.
+      const consistent =
+        toMoney(current.reduce((s, b) => s + b.payable, 0)) ===
+        toMoney(parseFloat(fee.payableAmount));
+      if ((added.length || dropped.length) && consistent) {
+        const nextBreakdown = [...kept, ...added];
+        const t = computeFeeTotals(nextBreakdown);
+        actions.push({
+          type: 'adjust_heads',
+          feeId: fee.id,
+          academicYearId: yearId,
+          month: fee.month,
+          previousPayable: toMoney(parseFloat(fee.payableAmount)),
+          added: added.map((b) => b.feeHeadName),
+          removed: dropped.map((b) => b.feeHeadName),
+          breakdown: nextBreakdown,
+          baseAmount: t.baseAmount.toFixed(2),
+          discountAmount: t.discountAmount.toFixed(2),
+          payableAmount: t.payableAmount.toFixed(2),
+        });
+      }
+
+      const paidInapplicable = kept.filter((b) => inapplicable(b.feeHeadId));
+      if (paidInapplicable.length) {
+        const lines = paidInapplicable.map((b) => ({
           feeHeadId: b.feeHeadId,
           feeHeadName: b.feeHeadName,
           payable: b.payable,
-          paid,
-          due: toMoney(b.payable - paid),
-        };
-      });
-      const paidOnBad = toMoney(lines.reduce((s, l) => s + l.paid, 0));
-      const dueOnBad = toMoney(lines.reduce((s, l) => s + Math.max(l.due, 0), 0));
-      const details = {
-        reason: ctx.isNew
-          ? 'Head is for existing students but the student is new for this year'
-          : 'Head is for new students but the student is not new for this year',
-        isNew: ctx.isNew,
-        heads: lines,
-      };
-      if (paidOnBad > 0) {
-        pushFlag(fee, FeeAdjustmentKind.INAPPLICABLE_HEAD_PAYMENT, paidOnBad, details);
-      } else if (dueOnBad > 0) {
-        pushFlag(fee, FeeAdjustmentKind.INAPPLICABLE_HEAD_DUE, dueOnBad, details);
+          paid: paidOn(b),
+          due: toMoney(b.payable - paidOn(b)),
+        }));
+        pushFlag(
+          fee,
+          FeeAdjustmentKind.INAPPLICABLE_HEAD_PAYMENT,
+          toMoney(lines.reduce((s, l) => s + l.paid, 0)),
+          {
+            reason: ctx.isNew
+              ? 'Paid for a head that is for existing students, but the student is new for this year'
+              : 'Paid for a head that is for new students, but the student is not new for this year',
+            isNew: ctx.isNew,
+            heads: lines,
+            nowBilled: added.map((b) => ({ feeHeadName: b.feeHeadName, payable: b.payable })),
+          },
+        );
       }
     }
-
     // Late admission: create the months the rest of the class already has.
     const isCurrentYear = student.academicYearId === yearId;
     const latest = input.latestGeneratedMonth.get(yearId) ?? 0;
@@ -309,7 +362,9 @@ export function planStudentReconcile(input: PlannerInput): ReconcileAction[] {
 
   // Flags whose cause has gone away (e.g. the admission date was corrected).
   const processedFeeIds = new Set(
-    input.fees.filter((f) => !f.deleted && yearById.has(f.academicYearId)).map((f) => f.id),
+    input.fees
+      .filter((f) => !f.deleted && yearById.has(f.academicYearId) && yearById.get(f.academicYearId)!.status !== 'closed')
+      .map((f) => f.id),
   );
   for (const a of input.openAdjustments) {
     if (!processedFeeIds.has(a.studentFeeId)) continue;

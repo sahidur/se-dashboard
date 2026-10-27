@@ -35,6 +35,7 @@ export interface ReconcileSummary {
   voided: number;
   reinstated: number;
   rebuilt: number;
+  adjusted: number;
   created: number;
   flagged: number;
   dismissed: number;
@@ -50,6 +51,7 @@ const emptySummary = (): ReconcileSummary => ({
   voided: 0,
   reinstated: 0,
   rebuilt: 0,
+  adjusted: 0,
   created: 0,
   flagged: 0,
   dismissed: 0,
@@ -284,6 +286,25 @@ export class FeeReconcileService {
           result.summary.rebuilt++;
           break;
         }
+        case 'adjust_heads': {
+          // Billed side only: paid amount, payments and receipts stay as they are.
+          const fee = feeById.get(action.feeId)!;
+          fee.breakdown = action.breakdown;
+          fee.baseAmount = action.baseAmount;
+          fee.discountAmount = action.discountAmount;
+          fee.payableAmount = action.payableAmount;
+          const paid = parseFloat(fee.paidAmount);
+          const payable = parseFloat(action.payableAmount);
+          fee.status =
+            paid >= payable
+              ? StudentFeeStatus.PAID
+              : paid > 0
+                ? StudentFeeStatus.PARTIAL
+                : StudentFeeStatus.DUE;
+          await manager.save(fee);
+          result.summary.adjusted++;
+          break;
+        }
         case 'create': {
           // A concurrent generateFees may win the unique (student, year,
           // month) insert; recover without aborting the surrounding transaction.
@@ -358,16 +379,19 @@ export class FeeReconcileService {
       .getRepository(FeeAdjustment)
       .createQueryBuilder('a')
       .leftJoinAndSelect('a.student', 'student')
-      .where('a.school_id = :schoolId', { schoolId: query.schoolId })
-      .orderBy('a.created_at', 'DESC')
+      .leftJoinAndSelect('student.school', 'school')
+      // PROPERTY names only: with skip/take TypeORM crashes on raw column
+      // names in orderBy (same rule as the students list).
+      .orderBy('a.createdAt', 'DESC')
       .addOrderBy('a.id', 'ASC')
       .skip((page - 1) * limit)
       .take(limit);
+    if (query.schoolId) qb.andWhere('a.schoolId = :schoolId', { schoolId: query.schoolId });
     if (query.status) qb.andWhere('a.status = :status', { status: query.status });
     if (query.academicYearId) {
-      qb.andWhere('a.academic_year_id = :yearId', { yearId: query.academicYearId });
+      qb.andWhere('a.academicYearId = :yearId', { yearId: query.academicYearId });
     }
-    if (query.studentId) qb.andWhere('a.student_id = :studentId', { studentId: query.studentId });
+    if (query.studentId) qb.andWhere('a.studentId = :studentId', { studentId: query.studentId });
     const [rows, total] = await qb.getManyAndCount();
     return {
       items: rows.map((a) => ({
@@ -375,6 +399,7 @@ export class FeeReconcileService {
         studentId: a.studentId,
         studentName: a.student?.name ?? null,
         admissionNumber: a.student?.admissionNumber ?? null,
+        schoolName: a.student?.school?.name ?? null,
         studentFeeId: a.studentFeeId,
         academicYearId: a.academicYearId,
         month: a.month,

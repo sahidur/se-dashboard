@@ -325,11 +325,69 @@ test('planner: paid Admission Fee of a student who is not new is flagged, not re
     payments: [payment(500, [{ feeHeadId: ADMISSION.id, feeHeadName: 'Admission Fee', amount: 500 }])],
   });
   const actions = plan({ admissionDate: '2023-02-01' }, [january]);
-  assert.equal(actions.length, 1);
-  assert.equal(actions[0].type, 'flag');
-  assert.equal(actions[0].kind, 'inapplicable_head_payment');
-  assert.equal(actions[0].amount, 500);
+  // The paid Admission Fee stays (money is never undone) and is flagged for Finance;
+  // the Session Fee the old student owes is added to the bill.
+  assert.deepEqual(actions.map((a) => a.type).sort(), ['adjust_heads', 'flag']);
+  const flag = actions.find((a) => a.type === 'flag');
+  assert.equal(flag.kind, 'inapplicable_head_payment');
+  assert.equal(flag.amount, 500);
+  assert.deepEqual(flag.details.nowBilled.map((b) => b.feeHeadName), ['Session Fee']);
+  const adjust = actions.find((a) => a.type === 'adjust_heads');
+  assert.deepEqual(adjust.added, ['Session Fee']);
+  assert.deepEqual(adjust.removed, []);
+  assert.deepEqual(adjust.breakdown.map((b) => b.feeHeadName), ['Tuition', 'Admission Fee', 'Session Fee']);
+  assert.equal(adjust.payableAmount, '1800.00');
 });
+
+test('planner: an unpaid Admission Fee line in a part-paid month of an old student is dropped, Session Fee added', () => {
+  const january = fee(1, {
+    status: 'partial',
+    paidAmount: '400.00',
+    breakdown: [
+      { feeHeadId: TUITION.id, feeHeadName: 'Tuition', base: 1000, discount: 0, payable: 1000 },
+      { feeHeadId: ADMISSION.id, feeHeadName: 'Admission Fee', base: 500, discount: 0, payable: 500 },
+    ],
+    baseAmount: '1500.00',
+    payableAmount: '1500.00',
+    payments: [payment(400, [{ feeHeadId: TUITION.id, feeHeadName: 'Tuition', amount: 400 }])],
+  });
+  const actions = plan({ admissionDate: '2023-02-01' }, [january]);
+  assert.deepEqual(actions.map((a) => a.type), ['adjust_heads']); // nothing paid on it -> no review item
+  assert.deepEqual(actions[0].breakdown.map((b) => b.feeHeadName), ['Tuition', 'Session Fee']);
+  assert.deepEqual(actions[0].removed, ['Admission Fee']);
+  assert.equal(actions[0].payableAmount, '1300.00');
+});
+
+test('planner: a late joiner who already paid the admission month gets the January-only heads billed', () => {
+  const july = fee(7, {
+    status: 'paid',
+    paidAmount: '1000.00',
+    payments: [payment(1000, [{ feeHeadId: TUITION.id, feeHeadName: 'Tuition', amount: 1000 }])],
+  });
+  const actions = plan({ admissionDate: '2026-07-10' }, [july]);
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].type, 'adjust_heads');
+  assert.deepEqual(actions[0].added.sort(), ['Admission Fee', 'Term Fee']);
+  assert.equal(actions[0].payableAmount, '1700.00');
+});
+
+test('planner: adjusting a paid month is idempotent', () => {
+  const adjusted = fee(1, {
+    status: 'partial',
+    paidAmount: '500.00',
+    breakdown: [
+      { feeHeadId: TUITION.id, feeHeadName: 'Tuition', base: 1000, discount: 0, payable: 1000 },
+      { feeHeadId: ADMISSION.id, feeHeadName: 'Admission Fee', base: 500, discount: 0, payable: 500 },
+      { feeHeadId: SESSION.id, feeHeadName: 'Session Fee', base: 300, discount: 0, payable: 300 },
+    ],
+    baseAmount: '1800.00',
+    payableAmount: '1800.00',
+    payments: [payment(500, [{ feeHeadId: ADMISSION.id, feeHeadName: 'Admission Fee', amount: 500 }])],
+  });
+  const open = [{ id: 'adj-1', studentFeeId: adjusted.id, kind: 'inapplicable_head_payment' }];
+  assert.deepEqual(plan({ admissionDate: '2023-02-01' }, [adjusted], { openAdjustments: open }), []);
+});
+
 
 test('planner: an explicit "existing" marker overrides an in-year admission date', () => {
   const january = fee(7, {
@@ -417,4 +475,34 @@ test('a head that gains a second month is recurring, no longer a one-time catch-
   const structure = [row(TUITION, 5, 1000), row(FUND, 1, 100), row(FUND, 5, 100)];
   const pick = (m) => names(selectStructureRows(structure, resolveStudentFeeContext({ admissionDate: '2026-05-02' }, YEAR), m));
   assert.deepEqual(pick(5), ['Fund', 'Tuition']); // billed because month 5 has its own row, once
+});
+
+test('planner leaves closed academic years untouched', () => {
+  const closed = { ...YEAR, status: 'closed' };
+  const actions = planStudentReconcile({
+    student: {
+      id: 'st1', schoolId: 's1', classId: 'c1', sectionId: null, academicYearId: YEAR.id,
+      isActive: true, admissionDate: '2026-07-10', studentType: null, studentTypeAcademicYearId: null,
+    },
+    years: [closed],
+    fees: [fee(1), fee(7)],
+    structures: STRUCTURE,
+    discounts: [],
+    headApplicability: new Map(),
+    openAdjustments: [{ id: 'adj-1', studentFeeId: 'fee-1', kind: 'pre_admission_payment' }],
+    latestGeneratedMonth: new Map([[YEAR.id, 12]]),
+    createMissing: true,
+  });
+  assert.deepEqual(actions, []);
+});
+
+test('planner does not adjust a paid month whose lines do not add up to its payable amount', () => {
+  const odd = fee(1, {
+    status: 'partial',
+    paidAmount: '400.00',
+    payableAmount: '1500.00', // lines only sum to 1000
+    payments: [payment(400, [{ feeHeadId: TUITION.id, feeHeadName: 'Tuition', amount: 400 }])],
+  });
+  const actions = plan({ admissionDate: '2023-02-01' }, [odd]);
+  assert.equal(actions.some((a) => a.type === 'adjust_heads'), false);
 });

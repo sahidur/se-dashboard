@@ -450,7 +450,11 @@ export class FeeCollectionService {
 
     const feeByStudentMonth = new Map<string, StudentFee>();
     for (const fee of fees) {
-      if (fee.month === month) feeByStudentMonth.set(fee.studentId, fee);
+      // A voided (cancelled) month is not billed: it shows as no fee and never
+      // adds to the student's total due.
+      if (fee.month === month && fee.status !== StudentFeeStatus.CANCELLED) {
+        feeByStudentMonth.set(fee.studentId, fee);
+      }
     }
 
     // previous arrear: total due from all months before the selected month
@@ -949,7 +953,7 @@ export class FeeCollectionService {
       payableAmount,
       paidAmount,
       dueAmount: toMoney(payableAmount - paidAmount),
-      months: fees
+      months: active
         .sort((a, b) => a.month - b.month)
         .map((f) => ({
           id: f.id,

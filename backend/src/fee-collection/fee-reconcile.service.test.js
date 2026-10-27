@@ -126,7 +126,7 @@ test('reconcile voids unpaid pre-admission rows, flags paid ones and never touch
   assert.equal(created.payableAmount, '1500.00'); // tuition + admission fee (catch-up)
   assert.equal(created.paidAmount, '0.00');
 
-  assert.deepEqual(result.summary, { voided: 1, reinstated: 0, rebuilt: 0, created: 1, flagged: 1, dismissed: 0 });
+  assert.deepEqual(result.summary, { voided: 1, reinstated: 0, rebuilt: 0, adjusted: 0, created: 1, flagged: 1, dismissed: 0 });
 });
 
 test('reconcile is a no-op for a student whose dues already follow the rules', async () => {
@@ -260,4 +260,101 @@ test('preview can assume fee-head settings that are not saved yet', async () => 
   });
   assert.equal(withOverride.actions[0].type, 'rebuild');
   assert.deepEqual(withOverride.actions[0].breakdown.map((b) => b.feeHeadName), ['Tuition']);
+});
+
+// ---------------- voided (cancelled) rows never count as dues ----------------
+
+const voided = (month) => ({
+  ...feeEntity(month, { status: 'cancelled', voidSource: 'admission_date', payableAmount: '1500.00' }),
+});
+
+test('monthly collection treats a voided month as not billed and adds nothing to total due', async () => {
+  const svc = Object.create(FeeCollectionService.prototype);
+  svc.logger = { warn() {} };
+  svc.dataSource = { transaction: async () => ({}) };
+  svc.studentsRepo = { find: async () => [{ id: 'st1', admissionNumber: 'A', name: 'N', schoolClass: null, section: null }] };
+  svc.feesRepo = { find: async () => [voided(3), feeEntity(7)] };
+
+  const march = await svc.monthlyCollection('s1', YEAR.id, 3);
+  assert.equal(march[0].currentFee, null);
+  assert.equal(march[0].totalDue, 0);
+  assert.equal(march[0].previousDue, 0);
+
+  // July: the earlier voided month is not an arrear either.
+  const july = await svc.monthlyCollection('s1', YEAR.id, 7);
+  assert.equal(july[0].previousDue, 0);
+  assert.equal(july[0].totalDue, 1000);
+});
+
+test('student fee summary leaves voided months out of totals and the month list', async () => {
+  const svc = Object.create(FeeCollectionService.prototype);
+  svc.logger = { warn() {} };
+  svc.feesRepo = { find: async () => [voided(3), feeEntity(7)] };
+  svc.syncStudentFeeSnapshots = async () => undefined;
+  const summary = await svc.studentFeeSummary('st1');
+  assert.equal(summary.payableAmount, 1000);
+  assert.equal(summary.dueAmount, 1000);
+  assert.deepEqual(summary.months.map((m) => m.month), [7]);
+});
+
+test('adjustments list orders by property names (raw column names crash TypeORM paging) and works without a school', async () => {
+  const calls = { orderBy: [], where: [] };
+  const qb = {
+    leftJoinAndSelect: () => qb,
+    orderBy: (...a) => { calls.orderBy.push(a[0]); return qb; },
+    addOrderBy: (...a) => { calls.orderBy.push(a[0]); return qb; },
+    skip: () => qb,
+    take: () => qb,
+    andWhere: (sql) => { calls.where.push(sql); return qb; },
+    getManyAndCount: async () => [[{ id: 'a1', amount: '500.00', student: { name: 'N', admissionNumber: 'A-1', school: { name: 'School X' } }, details: {} }], 1],
+  };
+  const svc = new FeeReconcileService({ getRepository: () => ({ createQueryBuilder: () => qb }) });
+  const result = await svc.listAdjustments({ status: 'open' });
+  assert.deepEqual(calls.orderBy, ['a.createdAt', 'a.id']);
+  assert.ok(calls.orderBy.every((c) => !c.includes('_')));
+  assert.deepEqual(calls.where, ['a.status = :status']); // no school filter => all schools
+  assert.equal(result.items[0].schoolName, 'School X');
+  assert.equal(result.total, 1);
+});
+
+test('reconcile bills Session Fee to an old student who paid only the Admission Fee, without touching the payment', async () => {
+  const paidJan = feeEntity(1, {
+    status: 'paid',
+    paidAmount: '1500.00',
+    breakdown: [line(TUITION, 1000), line(ADMISSION, 500)],
+    baseAmount: '1500.00',
+    payableAmount: '1500.00',
+  });
+  const payments = [
+    { id: 'p1', studentFeeId: 'fee-1', amount: '1500.00', status: 'completed', allocations: [
+      { feeHeadId: TUITION.id, feeHeadName: 'Tuition', amount: 1000 },
+      { feeHeadId: ADMISSION.id, feeHeadName: 'Admission Fee', amount: 500 },
+    ] },
+  ];
+  const manager = fakeManager({
+    Student: student({ admissionDate: '2023-02-01' }),
+    StudentFee: [paidJan],
+    AcademicYear: [YEAR],
+    FeeStructure: STRUCTURE,
+    Payment: payments,
+    FeeHead: [ADMISSION, TUITION],
+    latestMonth: 1,
+  });
+  const result = await service().reconcileStudentInManager(manager, 'st1', {});
+
+  // Billed side: Session Fee added, so the month is no longer fully paid.
+  assert.deepEqual(paidJan.breakdown.map((b) => b.feeHeadName), ['Tuition', 'Admission Fee', 'Session Fee']);
+  assert.equal(paidJan.payableAmount, '1800.00');
+  assert.equal(paidJan.status, 'partial');
+  // Money side: untouched.
+  assert.equal(paidJan.paidAmount, '1500.00');
+  assert.equal(manager.saved.some((e) => ['Payment', 'Receipt'].includes(e.constructor.name)), false);
+  assert.equal(payments[0].amount, '1500.00');
+  // The paid Admission Fee is queued for Finance, noting what is now billed.
+  const adjustment = manager.saved.find((e) => e.constructor.name === 'FeeAdjustment');
+  assert.equal(adjustment.kind, 'inapplicable_head_payment');
+  assert.equal(adjustment.amount, '500.00');
+  assert.deepEqual(adjustment.details.nowBilled.map((b) => b.feeHeadName), ['Session Fee']);
+  assert.equal(result.summary.adjusted, 1);
+  assert.equal(result.summary.flagged, 1);
 });

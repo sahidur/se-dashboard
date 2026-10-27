@@ -21,6 +21,7 @@ interface HeadLine {
 
 interface AdjustmentRow {
   id: string;
+  schoolName?: string | null;
   studentName: string | null;
   admissionNumber: string | null;
   month: number;
@@ -67,13 +68,15 @@ export default function FeeAdjustmentsPage() {
   const [rows, setRows] = useState<AdjustmentRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   const [target, setTarget] = useState<AdjustmentRow | null>(null);
   const [resolution, setResolution] = useState('refunded');
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const activeSchoolId = schoolId || (schools[0]?.id ?? '');
+  // Empty = all schools (admins). Non-admins must pick one of their schools.
+  const activeSchoolId = schoolId;
 
   // TEMPORARY: review files written by the fee migration (admins only; the
   // list stays empty for everyone else).
@@ -104,21 +107,22 @@ export default function FeeAdjustmentsPage() {
   };
 
   const fetchRows = async () => {
-    if (!activeSchoolId) return;
     setLoading(true);
+    setLoadError('');
     try {
       const params = new URLSearchParams({
-        schoolId: activeSchoolId,
         page: String(page),
         limit: String(PAGE_SIZE),
       });
+      if (activeSchoolId) params.set('schoolId', activeSchoolId);
       if (status) params.set('status', status);
       const { data } = await api.get(`/fee-collection/adjustments?${params.toString()}`);
       const items: AdjustmentRow[] = data.items ?? [];
       setRows(month ? items.filter((r) => String(r.month) === month) : items);
       setTotal(data.total ?? 0);
-    } catch {
+    } catch (error) {
       setRows([]);
+      setLoadError(getErrorMessage(error, 'Could not load adjustments'));
     } finally {
       setLoading(false);
     }
@@ -200,7 +204,7 @@ export default function FeeAdjustmentsPage() {
                   setSchoolId(v);
                   setPage(1);
                 }}
-                placeholder="Select school"
+                placeholder="All schools"
                 options={schools.map((s) => ({ value: s.id, label: s.name }))}
               />
               <Select
@@ -241,6 +245,7 @@ export default function FeeAdjustmentsPage() {
               <table className="modern-table text-sm">
                 <thead className="border-b bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500">
                   <tr>
+                    <th className="px-4 py-3 font-semibold">School</th>
                     <th className="px-4 py-3 font-semibold">Student</th>
                     <th className="px-4 py-3 font-semibold">Month</th>
                     <th className="px-4 py-3 font-semibold">Issue</th>
@@ -252,19 +257,26 @@ export default function FeeAdjustmentsPage() {
                 <tbody className="divide-y divide-gray-100">
                   {loading ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-10 text-center text-gray-400">
+                      <td colSpan={7} className="px-4 py-10 text-center text-gray-400">
                         Loading…
+                      </td>
+                    </tr>
+                  ) : loadError ? (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-16 text-center text-sm text-red-600">
+                        {loadError}
                       </td>
                     </tr>
                   ) : rows.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-16 text-center text-sm text-gray-400">
+                      <td colSpan={7} className="px-4 py-16 text-center text-sm text-gray-400">
                         Nothing to review
                       </td>
                     </tr>
                   ) : (
                     rows.map((r) => (
                       <tr key={r.id} className="hover:bg-indigo-50/50">
+                        <td className="px-4 py-3 text-xs text-gray-600">{r.schoolName ?? '-'}</td>
                         <td className="px-4 py-3">
                           <p className="font-medium text-gray-800">{r.studentName ?? '-'}</p>
                           <p className="font-mono text-[11px] text-gray-400">{r.admissionNumber}</p>

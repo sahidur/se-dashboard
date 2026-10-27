@@ -31,6 +31,8 @@ export interface FeeRuleYear {
   name?: string | null;
   startDate?: Date | string | null;
   endDate?: Date | string | null;
+  /** 'closed' years are history: reconciliation never changes them. */
+  status?: string | null;
 }
 export interface StudentFeeContext {
   /** 1-12, or null when the student is admitted after the year ends. */

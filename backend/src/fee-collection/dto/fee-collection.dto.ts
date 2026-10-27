@@ -164,9 +164,10 @@ export class ListPaymentsQueryDto {
 }
 
 export class ListFeeAdjustmentsQueryDto {
-  @ApiProperty()
+  @ApiPropertyOptional({ description: 'Omit for all schools (admins only)' })
+  @IsOptional()
   @IsUUID()
-  schoolId: string;
+  schoolId?: string;
 
   @ApiPropertyOptional({ enum: FeeAdjustmentStatus })
   @IsOptional()

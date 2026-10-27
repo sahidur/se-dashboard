@@ -63,6 +63,7 @@ interface FeeReconcileSummary {
   voided: number;
   reinstated: number;
   rebuilt: number;
+  adjusted: number;
   created: number;
   flagged: number;
   dismissed: number;
@@ -386,13 +387,14 @@ export default function StudentsPage() {
       }
       setShowModal(false);
       const fee = saved?.feeReconcile;
-      if (fee && (fee.voided || fee.reinstated || fee.rebuilt || fee.created || fee.flagged)) {
+      if (fee && (fee.voided || fee.reinstated || fee.rebuilt || fee.adjusted || fee.created || fee.flagged)) {
         alert(
           'Fee dues were recalculated for this student: ' +
             [
               fee.voided && `${fee.voided} month(s) before admission removed`,
               fee.reinstated && `${fee.reinstated} month(s) restored`,
               fee.rebuilt && `${fee.rebuilt} month(s) updated`,
+              fee.adjusted && `${fee.adjusted} paid month(s) had fee heads corrected`,
               fee.created && `${fee.created} month(s) added`,
               fee.flagged &&
                 `${fee.flagged} month(s) already have payments and need Finance review (Fees > Adjustments)`,

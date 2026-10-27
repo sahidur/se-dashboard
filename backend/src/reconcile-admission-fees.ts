@@ -96,7 +96,7 @@ async function run(): Promise<number> {
     const ids = await reconcile.listStudentIds(SCHOOL);
     console.log(`\nChecking ${ids.length} students...`);
 
-    const totals = { voided: 0, reinstated: 0, rebuilt: 0, created: 0, flagged: 0, dismissed: 0 };
+    const totals = { voided: 0, reinstated: 0, rebuilt: 0, adjusted: 0, created: 0, flagged: 0, dismissed: 0 };
     const changed: { studentId: string; actions: Awaited<ReturnType<typeof reconcile.previewStudent>>['actions'] }[] = [];
     const failed: string[] = [];
     let payableChange = 0;
@@ -108,7 +108,7 @@ async function run(): Promise<number> {
         for (const k of Object.keys(totals) as (keyof typeof totals)[]) totals[k] += result.summary[k];
         for (const a of result.actions) {
           if (a.type === 'void') payableChange -= a.previousPayable;
-          else if (a.type === 'rebuild' || a.type === 'reinstate') payableChange += parseFloat(a.payableAmount) - a.previousPayable;
+          else if (a.type === 'rebuild' || a.type === 'reinstate' || a.type === 'adjust_heads') payableChange += parseFloat(a.payableAmount) - a.previousPayable;
           else if (a.type === 'create') payableChange += parseFloat(a.payableAmount);
         }
       } catch (error) {
@@ -135,7 +135,7 @@ async function run(): Promise<number> {
         if (a.type === 'dismiss_flag') continue;
         if (a.type === 'flag') lines.push(csv([...who, a.month, 'NEEDS FINANCE REVIEW', '', a.amount, a.kind]));
         else if (a.type === 'create') lines.push(csv([...who, a.month, 'add month', '', a.payableAmount, '']));
-        else lines.push(csv([...who, a.month, a.type, a.previousPayable, a.type === 'void' ? '0.00' : a.payableAmount, a.type === 'void' ? a.reason : '']));
+        else lines.push(csv([...who, a.month, a.type === 'adjust_heads' ? 'heads adjusted (has payments)' : a.type, a.previousPayable, a.type === 'void' ? '0.00' : a.payableAmount, a.type === 'void' ? a.reason : a.type === 'adjust_heads' ? [a.added.length ? 'added: ' + a.added.join(' + ') : '', a.removed.length ? 'removed: ' + a.removed.join(' + ') : ''].filter(Boolean).join('; ') : '']));
       }
     }
     fs.mkdirSync(OUT_DIR, { recursive: true });
@@ -144,6 +144,7 @@ async function run(): Promise<number> {
 
     console.log(`\nDues before the admission month removed : ${totals.voided}`);
     console.log(`Unpaid months corrected                 : ${totals.rebuilt + totals.reinstated}`);
+    console.log(`Months with payments, heads adjusted    : ${totals.adjusted}`);
     console.log(`Months added for late admissions        : ${totals.created}`);
     console.log(`Items for Finance review (have payments): ${totals.flagged}`);
     console.log(`Change in outstanding dues              : ${payableChange.toFixed(2)}`);
