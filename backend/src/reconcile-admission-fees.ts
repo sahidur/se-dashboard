@@ -9,6 +9,7 @@
  *
  *   npm run fees:reconcile                  preview only, writes nothing
  *   npm run fees:reconcile -- --apply       apply the changes
+ *   npm run fees:reconcile -- --student=<admission number>   explain one student
  *   npm run fees:reconcile:prod [-- --apply]   same, from the compiled build
  *
  * Options: --school=<id> limit to one school, --out=<dir> CSV folder.
@@ -20,7 +21,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { AppModule } from './app.module';
 import { FeeReconcileService, ReconcileOptions } from './fee-collection/fee-reconcile.service';
+import { isUUID } from 'class-validator';
 import { Student } from './students/entities/student.entity';
+import { StudentFee } from './fee-collection/entities/student-fee.entity';
+import { AcademicYear } from './fee-management/entities/academic-year.entity';
+import { FeeStructure } from './fee-management/entities/fee-structure.entity';
+import { resolveStudentFeeContext } from './fee-management/fee-calculation';
 import { FeeHead, FeeApplicability } from './fee-management/entities/fee-head.entity';
 
 const flags = process.argv.slice(2);
@@ -28,6 +34,7 @@ const flagValue = (name: string) => flags.find((f) => f.startsWith(`--${name}=`)
 const APPLY = flags.includes('--apply');
 const SCHOOL = flagValue('school');
 const OUT_DIR = flagValue('out') ?? './reconcile-output';
+const STUDENT = flagValue('student'); // admission number or id: explain one student
 
 const csv = (cells: unknown[]) =>
   cells
@@ -52,6 +59,80 @@ async function planHeadChanges(ds: DataSource) {
     changes.push({ head, applicableTo });
   }
   return changes;
+}
+
+/** Explains, for one student, what the rules decide and what would change. */
+async function inspectStudent(
+  ds: DataSource,
+  reconcile: FeeReconcileService,
+  ref: string,
+  opts: ReconcileOptions,
+): Promise<number> {
+  const student = await ds.getRepository(Student).findOne({
+    where: isUUID(ref) ? { id: ref } : { admissionNumber: ref },
+    withDeleted: true,
+    relations: ['schoolClass', 'academicYear'],
+  });
+  if (!student) {
+    console.log(`Student not found: ${ref}`);
+    return 1;
+  }
+  console.log(`\nStudent ${student.name} (${student.admissionNumber})`);
+  console.log(`  school/class     : ${student.schoolId} / ${student.schoolClass?.name ?? '-'}`);
+  console.log(`  status           : ${student.status}`);
+  console.log(`  admission date   : ${student.admissionDate ? String(student.admissionDate).slice(0, 10) : '(none)'}`);
+  console.log(`  academic year    : ${student.academicYear?.name ?? '-'}`);
+  console.log(`  student type set : ${student.studentType ?? '(automatic)'}` +
+    (student.studentType ? ` for year ${student.studentTypeAcademicYearId}` : ''));
+
+  const fees = await ds.getRepository(StudentFee).find({
+    where: { studentId: student.id },
+    order: { academicYearId: 'ASC', month: 'ASC' },
+  });
+  const yearIds = [...new Set([...fees.map((f) => f.academicYearId), student.academicYearId].filter(Boolean))] as string[];
+  const years = yearIds.length ? await ds.getRepository(AcademicYear).find({ where: { id: In(yearIds) } }) : [];
+  for (const y of years) {
+    const ctx = resolveStudentFeeContext(student, y);
+    console.log(`\nAcademic year ${y.name} (${y.status})`);
+    console.log(`  first billable month : ${ctx.firstBillableMonth ?? 'none (admitted after the year)'}`);
+    console.log(`  counted as           : ${ctx.isNew ? 'NEW student -> pays Admission Fee, not Session Fee' : 'OLD student -> pays Session Fee, not Admission Fee'}`);
+    for (const f of fees.filter((x) => x.academicYearId === y.id)) {
+      const heads = (f.breakdown ?? []).map((b) => ` ${b.payable}`).join(', ');
+      console.log(`  month ${f.month}: ${f.status}, payable ${f.payableAmount}, paid ${f.paidAmount} [${heads}]`);
+    }
+    if (student.classId) {
+      const rows = await ds.getRepository(FeeStructure).find({
+        where: { schoolId: student.schoolId, academicYearId: y.id, classId: student.classId },
+        relations: ['feeHead'],
+      });
+      const byHead = new Map<string, { head: FeeHead; months: number[] }>();
+      for (const r of rows) {
+        const e = byHead.get(r.feeHeadId) ?? { head: r.feeHead, months: [] };
+        e.months.push(r.month);
+        byHead.set(r.feeHeadId, e);
+      }
+      console.log('  heads in this class fee structure (charged to / schedule / months):');
+      for (const { head, months } of byHead.values()) {
+        const shown = opts.headOverrides?.get(head.id)?.applicableTo ?? head.applicableTo;
+        console.log(`    ${head.name}: ${shown} / ${head.feeSchedule} / months ${months.sort((a, b) => a - b).join(',')}`);
+      }
+    }
+  }
+
+  const result = APPLY ? await reconcile.reconcileStudent(student.id, opts) : await reconcile.previewStudent(student.id, opts);
+  console.log(`\n${APPLY ? 'Applied' : 'Would change'}: ${result.actions.length} action(s)`);
+  for (const a of result.actions) {
+    if (a.type === 'dismiss_flag') console.log(`  - close review item`);
+    else if (a.type === 'flag') console.log(`  - month ${a.month}: FINANCE REVIEW ${a.kind} ${a.amount}`);
+    else if (a.type === 'adjust_heads') console.log(`  - month ${a.month}: heads adjusted (added: ${a.added.join(', ') || '-'}; removed: ${a.removed.join(', ') || '-'}), payable ${a.previousPayable} -> ${a.payableAmount}`);
+    else if (a.type === 'void') console.log(`  - month ${a.month}: void (${a.reason})`);
+    else console.log(`  - month ${a.month}: ${a.type}`);
+  }
+  if (result.actions.length === 0) {
+    console.log('  Nothing to change. If this is not what you expect, check the lines above:');
+    console.log('  counted as NEW/OLD, and whether the Session/Admission heads exist for this class and month.');
+  }
+  return 0;
 }
 
 async function moneyTotals(ds: DataSource) {
@@ -90,6 +171,9 @@ async function run(): Promise<number> {
         headChanges.map((c) => [c.head.id, { applicableTo: c.applicableTo }]),
       );
     }
+
+    // One student only: explain and stop.
+    if (STUDENT) return inspectStudent(ds, reconcile, STUDENT, opts);
 
     // 2. Student fee rows
     const before = await moneyTotals(ds);
