@@ -131,6 +131,11 @@ export default function DuesPage() {
     const selectedMonth = parseInt(month, 10);
     return sum + (row.months.find((m) => m.month === selectedMonth)?.due ?? 0);
   }, 0);
+  // Outstanding across every month (ignores the month filter)
+  const allMonthsTotalDue = rows.reduce((sum, row) => sum + row.due, 0);
+  const outstandingLabel = month
+    ? `${monthName(parseInt(month, 10))} total outstanding`
+    : 'Total outstanding';
 
   return (
     <>
@@ -167,9 +172,13 @@ export default function DuesPage() {
               <AlertTriangle size={20} />
             </span>
             <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-red-500">Total outstanding</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-red-500">{outstandingLabel}</p>
               <p className="text-xl font-bold tracking-tight text-red-700 sm:text-2xl">BDT {formatBDT(visibleTotalDue)}</p>
             </div>
+          </div>
+          <div className="text-left sm:text-right">
+            <p className="text-xs font-medium uppercase tracking-wide text-red-500">Total outstanding (all months)</p>
+            <p className="text-xl font-bold tracking-tight text-red-700 sm:text-2xl">BDT {formatBDT(allMonthsTotalDue)}</p>
           </div>
           <span className="rounded-full bg-white/70 px-3 py-1 text-xs font-medium text-red-600 ring-1 ring-red-100">
             {visibleRows.length} student(s) with dues
