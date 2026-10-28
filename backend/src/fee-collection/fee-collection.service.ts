@@ -817,12 +817,14 @@ export class FeeCollectionService {
       payment.cancelledAt = new Date();
       await manager.save(payment);
 
-      await manager
-        .createQueryBuilder()
-        .update(Receipt)
-        .set({ status: ReceiptStatus.CANCELLED, cancelledAt: new Date() })
-        .where('payment_id = :paymentId', { paymentId })
-        .execute();
+      // Saved through the entity (not a bulk UPDATE) so the receipt
+      // cancellation lands in the audit trail like the payment's does.
+      const receipts = await manager.find(Receipt, { where: { paymentId } });
+      for (const receipt of receipts) {
+        receipt.status = ReceiptStatus.CANCELLED;
+        receipt.cancelledAt = new Date();
+        await manager.save(receipt);
+      }
 
       const paidFromActive = await manager
         .createQueryBuilder(Payment, 'p')

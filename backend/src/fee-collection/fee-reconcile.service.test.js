@@ -483,3 +483,34 @@ test('monthly collection keeps dropouts only while they have a bill or arrears',
   assert.equal(june.find((r) => r.student.id === 'billed').previousDue, 1000);
   assert.equal(june.find((r) => r.student.status === 'dropout' && r.student.id === 'gone'), undefined);
 });
+
+// ---------------- cancelled payments never count ----------------
+
+test('cancelling a payment audits payment and receipt, and rolls the month paid amount back from COMPLETED payments only', async () => {
+  const payment = { id: 'p1', studentFeeId: 'fee-1', status: 'completed', amount: '3500.00' };
+  const fee = { id: 'fee-1', payableAmount: '3500.00', paidAmount: '3500.00', status: 'paid' };
+  const receipt = { id: 'r1', paymentId: 'p1', status: 'active' };
+  const saved = [];
+  const qb = (result) => {
+    const q = { setLock: () => q, where: () => q, andWhere: () => q, select: () => q, getOne: async () => result, getRawOne: async () => ({ total: '0' }) };
+    return q;
+  };
+  const manager = {
+    createQueryBuilder: (Entity) => (Entity.name === 'Payment' ? qb(payment) : qb(fee)),
+    find: async () => [receipt],
+    save: async (e) => { saved.push({ ...e }); return e; },
+  };
+  const svc = Object.create(FeeCollectionService.prototype);
+  svc.dataSource = { transaction: async (cb) => cb(manager) };
+
+  await svc.cancelPayment('p1', 'duplicate', 'user-1');
+
+  assert.equal(payment.status, 'cancelled');
+  assert.equal(payment.cancelReason, 'duplicate');
+  assert.equal(payment.cancelledById, 'user-1');
+  assert.ok(payment.cancelledAt instanceof Date);
+  assert.equal(receipt.status, 'cancelled');
+  assert.ok(saved.some((e) => e.id === 'r1' && e.status === 'cancelled'), 'receipt change goes through save() so it is audited');
+  assert.equal(fee.paidAmount, '0.00'); // nothing completed is left
+  assert.equal(fee.status, 'due');
+});
