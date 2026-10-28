@@ -33,6 +33,7 @@ interface CollectionRow {
     admissionNumber: string;
     name: string;
     rollNumber: number | null;
+    status?: string;
     className: string | null;
     sectionName: string | null;
   };
@@ -398,7 +399,14 @@ export default function MonthlyCollectionPage() {
                       rows.map((row) => (
                         <tr key={row.student.id} className="hover:bg-gray-50">
                           <td className="px-4 py-3">
-                            <p className="font-medium text-gray-900">{row.student.name}</p>
+                            <p className="font-medium text-gray-900">
+                              {row.student.name}
+                              {row.student.status === 'dropout' && (
+                                <span className="ml-2 rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-800">
+                                  Dropout
+                                </span>
+                              )}
+                            </p>
                             <p className="text-xs text-gray-400">
                               {row.student.admissionNumber}
                               {row.student.rollNumber != null ? ` · Roll ${row.student.rollNumber}` : ''}

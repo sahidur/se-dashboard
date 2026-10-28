@@ -67,6 +67,30 @@ export function academicYearRange(year: FeeRuleYear): { start: string; end: stri
 }
 
 /**
+ * True when the fee month (1-12 of the academic year) starts after the
+ * calendar month of `cutoffDate` ('YYYY-MM-DD'). Whole months count: a cutoff
+ * of 17 May 2026 keeps May 2026 and drops June 2026 onwards. Returns false
+ * when the year range or the date cannot be resolved (nothing is cancelled).
+ */
+export function isFeeMonthAfterDate(
+  year: FeeRuleYear,
+  month: number,
+  cutoffDate: string,
+): boolean {
+  const range = academicYearRange(year);
+  const cutoff = toDateOnly(cutoffDate);
+  if (!range || !cutoff) return false;
+  const startYear = Number(range.start.slice(0, 4));
+  const startMonth = Number(range.start.slice(5, 7));
+  // A year starting in January maps month m to the start year; otherwise
+  // months before the start month fall in the following calendar year.
+  const calendarYear = month >= startMonth ? startYear : startYear + 1;
+  const feeKey = calendarYear * 12 + (month - 1);
+  const cutoffKey = Number(cutoff.slice(0, 4)) * 12 + (Number(cutoff.slice(5, 7)) - 1);
+  return feeKey > cutoffKey;
+}
+
+/**
  * Resolves, for one student in one academic year:
  *  - firstBillableMonth: admission month if admitted inside the year; month 1
  *    if admitted before it (or the date is missing); none if after it. Whole

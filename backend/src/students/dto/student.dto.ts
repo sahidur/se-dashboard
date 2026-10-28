@@ -304,6 +304,22 @@ export class CreateStudentDto {
   @IsOptional()
   @IsEnum(StudentStatus)
   status?: StudentStatus;
+
+  @ApiPropertyOptional({
+    example: '2026-05-17',
+    nullable: true,
+    description:
+      'Effective date of the status (dropout / transferred / withdrawn / graduated date). Required when the status changes to one of those.',
+  })
+  @IsOptional()
+  @IsDateString()
+  statusDate?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'Reason / remark for the status.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  statusComment?: string | null;
 }
 
 export class UpdateStudentDto {
@@ -516,6 +532,22 @@ export class UpdateStudentDto {
   @IsOptional()
   @IsEnum(StudentStatus)
   status?: StudentStatus;
+
+  @ApiPropertyOptional({
+    example: '2026-05-17',
+    nullable: true,
+    description:
+      'Effective date of the status (dropout / transferred / withdrawn / graduated date). Required when the status changes to one of those.',
+  })
+  @IsOptional()
+  @IsDateString()
+  statusDate?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'Reason / remark for the status.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  statusComment?: string | null;
 }
 
 export class PromoteStudentsDto {

@@ -19,6 +19,8 @@ import {
 import { computeHeadWisePaid } from './head-wise-paid';
 
 export const VOID_SOURCE_ADMISSION_DATE = 'admission_date';
+/** Rows cancelled because the student dropped out before that month. */
+export const VOID_SOURCE_DROPOUT = 'dropout';
 
 export interface PlannerFee {
   id: string;

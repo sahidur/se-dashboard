@@ -48,6 +48,14 @@ const statusBadge = (status: string) => {
   return map[status] ?? 'bg-gray-100 text-gray-700';
 };
 
+// Statuses that carry an effective date and a comment.
+const STATUS_DATE_LABEL: Record<string, string> = {
+  dropout: 'Dropout',
+  transferred: 'Transfer',
+  withdrawn: 'Withdrawal',
+  graduated: 'Graduation',
+};
+
 const YES_NO_OPTIONS = [
   { value: 'true', label: 'Yes' },
   { value: 'false', label: 'No' },
@@ -67,6 +75,14 @@ interface FeeReconcileSummary {
   created: number;
   flagged: number;
   dismissed: number;
+}
+
+interface DropoutFeeSummary {
+  cutoffDate: string | null;
+  voided: number;
+  reinstated: number;
+  retainedWithPayment: number;
+  flagged: number;
 }
 
 interface StudentRow {
@@ -95,6 +111,8 @@ const emptyForm = {
   admissionDate: '',
   studentType: '',
   status: 'active',
+  statusDate: '',
+  statusComment: '',
   referenceNumber: '',
   birthCertificateId: '',
   religion: '',
@@ -155,6 +173,10 @@ export default function StudentsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
   const [formLoading, setFormLoading] = useState(false);
+  // Status the student had when the modal opened (date is required on change).
+  const [originalStatus, setOriginalStatus] = useState('active');
+  const [originalStatusDate, setOriginalStatusDate] = useState('');
+  const [originalStatusComment, setOriginalStatusComment] = useState('');
   const [saving, setSaving] = useState(false);
 
   const [promoteModal, setPromoteModal] = useState(false);
@@ -243,6 +265,9 @@ export default function StudentsPage() {
 
   const openCreate = () => {
     setEditingId(null);
+    setOriginalStatus('active');
+    setOriginalStatusDate('');
+    setOriginalStatusComment('');
     setForm({ ...emptyForm });
     setShowModal(true);
   };
@@ -260,6 +285,9 @@ export default function StudentsPage() {
 
   const openEdit = (row: StudentRow) => {
     setEditingId(row.id);
+    setOriginalStatus(row.status);
+    setOriginalStatusDate('');
+    setOriginalStatusComment('');
     setFormLoading(true);
     setForm({
       ...emptyForm,
@@ -275,6 +303,8 @@ export default function StudentsPage() {
     // otherwise a save built from the partial list-row prefill would null out
     // every extended field it couldn't see yet.
     api.get(`/students/${row.id}`).then(({ data }) => {
+      setOriginalStatusDate(data.statusDate ? data.statusDate.slice(0, 10) : '');
+      setOriginalStatusComment(data.statusComment ?? '');
       setForm({
         ...emptyForm,
         name: data.name ?? '',
@@ -293,6 +323,8 @@ export default function StudentsPage() {
             ? data.studentType
             : '',
         status: data.status ?? 'active',
+        statusDate: data.statusDate ? data.statusDate.slice(0, 10) : '',
+        statusComment: data.statusComment ?? '',
         referenceNumber: data.referenceNumber ?? '',
         birthCertificateId: data.birthCertificateId ?? '',
         religion: data.religion ?? '',
@@ -331,6 +363,26 @@ export default function StudentsPage() {
       alert('Student name is required');
       return;
     }
+    const statusLabel = STATUS_DATE_LABEL[form.status];
+    if (statusLabel && form.status !== originalStatus && !form.statusDate) {
+      alert(`${statusLabel} date is required`);
+      return;
+    }
+    if (statusLabel && form.statusDate && form.admissionDate && form.statusDate < form.admissionDate) {
+      alert(`${statusLabel} date cannot be before the admission date`);
+      return;
+    }
+    if (
+      form.status === 'dropout' &&
+      form.statusDate &&
+      (form.status !== originalStatus || form.statusDate !== originalStatusDate) &&
+      !confirm(
+        `Fees after ${form.statusDate.slice(0, 7)} will be cancelled for this student ` +
+          '(months with payments are kept). Continue?',
+      )
+    ) {
+      return;
+    }
     setSaving(true);
     try {
       const payload: Record<string, unknown> = {
@@ -345,6 +397,8 @@ export default function StudentsPage() {
         sectionId: form.sectionId || null,
         rollNumber: form.rollNumber ? parseInt(form.rollNumber, 10) : null,
         status: form.status,
+        statusDate: STATUS_DATE_LABEL[form.status] ? form.statusDate || null : null,
+        statusComment: STATUS_DATE_LABEL[form.status] ? form.statusComment.trim() || null : null,
         referenceNumber: form.referenceNumber || null,
         birthCertificateId: form.birthCertificateId || null,
         religion: form.religion || null,
@@ -379,13 +433,30 @@ export default function StudentsPage() {
       // reassigned the student's academic year on every save.
       if (!editingId && academicYearId) payload.academicYearId = academicYearId;
 
-      let saved: { feeReconcile?: FeeReconcileSummary } | undefined;
+      let saved: { feeReconcile?: FeeReconcileSummary; dropoutFees?: DropoutFeeSummary } | undefined;
       if (editingId) {
         ({ data: saved } = await api.patch(`/students/${editingId}`, payload));
       } else {
         ({ data: saved } = await api.post('/students', { ...payload, schoolId: activeSchoolId }));
       }
       setShowModal(false);
+      const dropout = saved?.dropoutFees;
+      if (dropout && (dropout.voided || dropout.reinstated || dropout.retainedWithPayment)) {
+        alert(
+          'Dropout fee update: ' +
+            [
+              dropout.voided &&
+                `${dropout.voided} unpaid month(s) after ${dropout.cutoffDate?.slice(0, 7)} cancelled`,
+              dropout.reinstated && `${dropout.reinstated} month(s) restored`,
+              dropout.retainedWithPayment &&
+                `${dropout.retainedWithPayment} month(s) after the dropout month already have payments and were kept` +
+                  (dropout.flagged ? ' - sent to Finance review (Fees > Adjustments)' : ''),
+            ]
+              .filter(Boolean)
+              .join('; ') +
+            '.',
+        );
+      }
       const fee = saved?.feeReconcile;
       if (fee && (fee.voided || fee.reinstated || fee.rebuilt || fee.adjusted || fee.created || fee.flagged)) {
         alert(
@@ -731,9 +802,48 @@ export default function StudentsPage() {
               <Select
                 label="Status"
                 value={form.status}
-                onChange={(v) => setForm({ ...form, status: v })}
+                onChange={(v) =>
+                  setForm({
+                    ...form,
+                    status: v,
+                    // Each status has its own date/comment: restore the saved
+                    // ones only when going back to the original status.
+                    statusDate: v === originalStatus ? originalStatusDate : '',
+                    statusComment: v === originalStatus ? originalStatusComment : '',
+                  })
+                }
                 options={STATUS_OPTIONS.filter((o) => o.value !== '')}
               />
+              {STATUS_DATE_LABEL[form.status] && (
+                <>
+                  <Input
+                    label={`${STATUS_DATE_LABEL[form.status]} Date${form.status !== originalStatus ? ' *' : ''}`}
+                    type="date"
+                    min={form.admissionDate || undefined}
+                    value={form.statusDate}
+                    onChange={(e) => setForm({ ...form, statusDate: e.target.value })}
+                  />
+                  <div className="sm:col-span-2">
+                    <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                      {STATUS_DATE_LABEL[form.status]} Comment
+                    </label>
+                    <textarea
+                      rows={2}
+                      maxLength={2000}
+                      value={form.statusComment}
+                      onChange={(e) => setForm({ ...form, statusComment: e.target.value })}
+                      placeholder={`Reason / remarks for ${STATUS_DATE_LABEL[form.status].toLowerCase()}`}
+                      className="flex w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 transition-all duration-150 focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/15"
+                    />
+                    {form.status === 'dropout' && (
+                      <p className="mt-1 text-xs text-orange-700">
+                        Monthly fees apply up to the dropout month only. Unpaid fees for later
+                        months are cancelled and excluded from targets and achievements.
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
               <div className="sm:col-span-2">
                 <Input label="Residential Address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
               </div>

@@ -34,8 +34,11 @@ import {
   breakdownEquals,
   isAdmissionRulesEnabled,
   selectStructureRows,
+  isFeeMonthAfterDate,
+  toDateOnly,
   StudentFeeContext,
 } from '../fee-management/fee-calculation';
+import { AcademicYear } from '../fee-management/entities/academic-year.entity';
 import { loadFeeContexts, feeContextKey } from './fee-context';
 import { computeHeadWisePaid } from './head-wise-paid';
 
@@ -75,13 +78,25 @@ export class FeeCollectionService {
   }> {
     const rulesOn = isAdmissionRulesEnabled();
     return this.dataSource.transaction(async (manager) => {
-      const students = await manager.find(Student, {
+      // Dropouts are still billed up to and including their dropout month.
+      const candidates = await manager.find(Student, {
         where: {
           schoolId: dto.schoolId,
-          status: StudentStatus.ACTIVE,
+          status: In([StudentStatus.ACTIVE, StudentStatus.DROPOUT]),
           deletedAt: IsNull(),
           ...(dto.classId ? { classId: dto.classId } : {}),
         },
+      });
+      const year = candidates.some((s) => s.status === StudentStatus.DROPOUT)
+        ? await manager.findOne(AcademicYear, {
+            where: { id: dto.academicYearId },
+            withDeleted: true,
+          })
+        : null;
+      const students = candidates.filter((s) => {
+        if (s.status !== StudentStatus.DROPOUT) return true;
+        const dropoutDate = toDateOnly(s.statusDate);
+        return !!year && !!dropoutDate && !isFeeMonthAfterDate(year, dto.month, dropoutDate);
       });
       if (students.length === 0) return { created: 0, skipped: 0, notAdmitted: 0, failed: [] };
 
@@ -430,10 +445,12 @@ export class FeeCollectionService {
       // but a failure must leave a trace (OWASP A09).
       this.logger.warn(`Fee recalculation (monthly view) failed: ${(error as Error)?.message ?? error}`);
     }
-    const students = await this.studentsRepo.find({
+    const candidates = await this.studentsRepo.find({
       where: {
         schoolId,
-        status: StudentStatus.ACTIVE,
+        // Dropouts stay listed while they still have a bill for this month or
+        // dues from earlier months (filtered below).
+        status: In([StudentStatus.ACTIVE, StudentStatus.DROPOUT]),
         deletedAt: IsNull(),
         ...(classId ? { classId } : {}),
         ...(sectionId ? { sectionId } : {}),
@@ -441,9 +458,9 @@ export class FeeCollectionService {
       relations: ['schoolClass', 'section'],
       order: { rollNumber: 'ASC', name: 'ASC' },
     });
-    if (students.length === 0) return [];
+    if (candidates.length === 0) return [];
 
-    const studentIds = students.map((s) => s.id);
+    const studentIds = candidates.map((s) => s.id);
     const fees = await this.feesRepo.find({
       where: { academicYearId, studentId: In(studentIds) },
     });
@@ -470,6 +487,13 @@ export class FeeCollectionService {
       }
     }
 
+    const students = candidates.filter(
+      (s) =>
+        s.status !== StudentStatus.DROPOUT ||
+        feeByStudentMonth.has(s.id) ||
+        (previousDueByStudent.get(s.id) ?? 0) > 0,
+    );
+
     return students.map((student) => {
       const fee = feeByStudentMonth.get(student.id) ?? null;
       const currentFee = fee
@@ -490,6 +514,7 @@ export class FeeCollectionService {
           admissionNumber: student.admissionNumber,
           name: student.name,
           rollNumber: student.rollNumber,
+          status: student.status,
           className: student.schoolClass?.name ?? null,
           sectionName: student.section?.name ?? null,
         },
@@ -511,7 +536,7 @@ export class FeeCollectionService {
     manager: EntityManager,
   ): Promise<string> {
     // Business year in Bangladesh time (payments are dated in Asia/Dhaka); the
-    // server's UTC year mislabelled receipts issued 00:00–05:59 on 1 January.
+    // server's UTC year mislabelled receipts issued 00:00â€“05:59 on 1 January.
     const year = Number(
       new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka', year: 'numeric' }).format(new Date()),
     );
@@ -626,8 +651,10 @@ export class FeeCollectionService {
         where: { id: fee.studentId },
       });
       if (!student) throw new NotFoundException('Student not found');
-      if (student.status !== StudentStatus.ACTIVE) {
-        throw new BadRequestException('Payments can only be collected for active students');
+      // Dropouts still owe the months up to their dropout month (later months
+      // are cancelled and rejected above), so they can pay those dues.
+      if (student.status !== StudentStatus.ACTIVE && student.status !== StudentStatus.DROPOUT) {
+        throw new BadRequestException('Payments can only be collected for active or dropout students');
       }
 
       const payment = await manager.save(

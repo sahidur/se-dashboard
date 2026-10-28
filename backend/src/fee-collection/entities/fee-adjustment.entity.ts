@@ -19,6 +19,8 @@ export enum FeeAdjustmentKind {
   INAPPLICABLE_HEAD_PAYMENT = 'inapplicable_head_payment',
   // A partly paid month still lists a head that no longer applies and is unpaid.
   INAPPLICABLE_HEAD_DUE = 'inapplicable_head_due',
+  // Money was collected for a month after the student's dropout month.
+  POST_DROPOUT_PAYMENT = 'post_dropout_payment',
 }
 
 export enum FeeAdjustmentStatus {

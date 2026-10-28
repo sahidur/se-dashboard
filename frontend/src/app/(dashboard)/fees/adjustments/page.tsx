@@ -25,7 +25,11 @@ interface AdjustmentRow {
   studentName: string | null;
   admissionNumber: string | null;
   month: number;
-  kind: 'pre_admission_payment' | 'inapplicable_head_payment' | 'inapplicable_head_due';
+  kind:
+    | 'pre_admission_payment'
+    | 'inapplicable_head_payment'
+    | 'inapplicable_head_due'
+    | 'post_dropout_payment';
   amount: number;
   details: { reason?: string; heads?: HeadLine[] };
   status: string;
@@ -37,6 +41,7 @@ const KIND_LABEL: Record<AdjustmentRow['kind'], string> = {
   pre_admission_payment: 'Paid before admission month',
   inapplicable_head_payment: 'Paid for a head that does not apply',
   inapplicable_head_due: 'Unpaid head that does not apply',
+  post_dropout_payment: 'Paid after dropout month',
 };
 
 const STATUS_BADGE: Record<string, string> = {

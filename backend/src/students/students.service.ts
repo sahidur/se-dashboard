@@ -12,7 +12,11 @@ import { likeContains } from '../common/utils/like-utils';
 import { Student, StudentStatus, StudentGender } from './entities/student.entity';
 import { SchoolClass } from './entities/school-class.entity';
 import { SchoolSection } from './entities/section.entity';
-import { FeeReconcileService, ReconcileSummary } from '../fee-collection/fee-reconcile.service';
+import {
+  FeeReconcileService,
+  ReconcileSummary,
+  DropoutCutoffSummary,
+} from '../fee-collection/fee-reconcile.service';
 import { isAdmissionRulesEnabled, toDateOnly } from '../fee-management/fee-calculation';
 import {
   CreateClassDto,
@@ -354,6 +358,7 @@ export class StudentsService {
       classId: student.classId ?? null,
       academicYearId: student.academicYearId ?? null,
       status: student.status,
+      statusDate: toDateOnly(student.statusDate),
       studentType: student.studentType ?? null,
       studentTypeAcademicYearId: student.studentTypeAcademicYearId ?? null,
     };
@@ -361,6 +366,7 @@ export class StudentsService {
     const { studentType, ...rest } = dto;
     Object.assign(student, rest);
 
+    this.normalizeStatusDetails(student, dto, before.status);
     // Explicit new/existing marker. It belongs to one academic year, so a
     // marker left over from an earlier year is history: it is never cleared
     // by a form that shows the field as blank for the current year.
@@ -390,16 +396,71 @@ export class StudentsService {
       before.studentType !== (student.studentType ?? null) ||
       before.studentTypeAcademicYearId !== (student.studentTypeAcademicYearId ?? null);
 
-    if (!feeRelevantChange || !this.feeReconcile || !isAdmissionRulesEnabled()) {
+    // Dropout date set / moved / withdrawn: months after it are cancelled (or
+    // brought back). Independent of the admission-date rules flag.
+    const dropoutChange =
+      (before.status === StudentStatus.DROPOUT || student.status === StudentStatus.DROPOUT) &&
+      (before.status !== student.status || before.statusDate !== toDateOnly(student.statusDate));
+
+    const admissionRulesChange =
+      feeRelevantChange && !!this.feeReconcile && isAdmissionRulesEnabled();
+
+    if (!this.feeReconcile || (!dropoutChange && !admissionRulesChange)) {
       return this.studentsRepo.save(student);
     }
-    // Admission date / type / class / year changed: recalculate the student's
-    // dues in the same transaction so the two can never disagree.
+    // Admission date / type / class / year / dropout changed: recalculate the
+    // student's dues in the same transaction so the two can never disagree.
     return this.studentsRepo.manager.transaction(async (manager) => {
       const saved = await manager.save(student);
+      const dropoutFees = dropoutChange
+        ? await this.feeReconcile!.applyDropoutCutoff(manager, id, { actorId: userId ?? null })
+        : undefined;
       const feeReconcile = await this.reconcileFees(manager, id, userId);
-      return feeReconcile ? Object.assign(saved, { feeReconcile }) : saved;
+      const extra: { feeReconcile?: ReconcileSummary; dropoutFees?: DropoutCutoffSummary } = {};
+      if (feeReconcile) extra.feeReconcile = feeReconcile;
+      if (dropoutFees) extra.dropoutFees = dropoutFees;
+      return Object.assign(saved, extra);
     });
+  }
+
+  private static readonly STATUS_WITH_DATE: Partial<Record<StudentStatus, string>> = {
+    [StudentStatus.DROPOUT]: 'Dropout',
+    [StudentStatus.TRANSFERRED]: 'Transfer',
+    [StudentStatus.WITHDRAWN]: 'Withdrawal',
+    [StudentStatus.GRADUATED]: 'Graduation',
+  };
+
+  /**
+   * Dropout / transferred / withdrawn / graduated carry a date and a comment;
+   * other statuses carry neither. Changing the status never inherits the
+   * previous status's date or comment.
+   */
+  private normalizeStatusDetails(
+    student: Student,
+    dto: UpdateStudentDto,
+    previousStatus: StudentStatus,
+  ): void {
+    const label = StudentsService.STATUS_WITH_DATE[student.status];
+    if (!label) {
+      student.statusDate = null;
+      student.statusComment = null;
+      return;
+    }
+    const statusChanged = previousStatus !== student.status;
+    if (statusChanged) {
+      if (dto.statusDate === undefined) student.statusDate = null;
+      if (dto.statusComment === undefined) student.statusComment = null;
+    }
+    const date = toDateOnly(student.statusDate);
+    if (statusChanged && !date) {
+      throw new BadRequestException(`${label} date is required`);
+    }
+    const admission = toDateOnly(student.admissionDate);
+    if (date && admission && date < admission) {
+      throw new BadRequestException(`${label} date cannot be before the admission date`);
+    }
+    const comment = (student.statusComment ?? '').trim();
+    student.statusComment = comment ? comment : null;
   }
 
   async removeStudent(id: string): Promise<void> {
@@ -481,6 +542,9 @@ export class StudentsService {
       student.academicYearId = dto.targetAcademicYearId;
     }
     student.status = StudentStatus.TRANSFERRED;
+    // This endpoint has no date/comment input: the transfer happens today.
+    student.statusDate = new Date();
+    student.statusComment = null;
     return this.studentsRepo.save(student);
   }
 

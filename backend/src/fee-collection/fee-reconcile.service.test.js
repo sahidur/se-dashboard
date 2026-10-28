@@ -358,3 +358,128 @@ test('reconcile bills Session Fee to an old student who paid only the Admission 
   assert.equal(result.summary.adjusted, 1);
   assert.equal(result.summary.flagged, 1);
 });
+
+// ---------- Dropout cutoff ----------
+
+test('applyDropoutCutoff cancels unpaid months after the dropout month only', async () => {
+  const fees = Array.from({ length: 12 }, (_, i) => feeEntity(i + 1));
+  // July was paid in advance: money is never touched.
+  fees[6] = feeEntity(7, { status: 'paid', paidAmount: '1000.00' });
+  const manager = fakeManager({
+    Student: student({ status: 'dropout', statusDate: '2026-05-17' }),
+    StudentFee: fees,
+    AcademicYear: [YEAR],
+    Payment: [],
+  });
+  const summary = await service().applyDropoutCutoff(manager, 'st1', { actorId: 'u1' });
+
+  assert.equal(summary.cutoffDate, '2026-05-17');
+  assert.equal(summary.voided, 6); // Jun, Aug-Dec
+  assert.equal(summary.retainedWithPayment, 1); // Jul
+  const byMonth = Object.fromEntries(fees.map((f) => [f.month, f.status]));
+  for (let m = 1; m <= 5; m++) assert.equal(byMonth[m], 'due', `month ${m} stays billable`);
+  assert.equal(byMonth[6], 'cancelled');
+  assert.equal(byMonth[7], 'paid');
+  assert.equal(byMonth[12], 'cancelled');
+  assert.equal(fees[5].voidSource, 'dropout');
+  assert.equal(fees[5].voidedById, 'u1');
+});
+
+test('applyDropoutCutoff brings dropout-cancelled months back when the date moves later or status changes', async () => {
+  const cancelled = (month) => feeEntity(month, { status: 'cancelled', voidSource: 'dropout', voidReason: 'x' });
+  const admissionVoid = feeEntity(1, { status: 'cancelled', voidSource: 'admission_date' });
+  const fees = [admissionVoid, cancelled(5), cancelled(6), cancelled(7)];
+
+  const later = fakeManager({
+    Student: student({ status: 'dropout', statusDate: '2026-06-30' }),
+    StudentFee: fees,
+    AcademicYear: [YEAR],
+    Payment: [],
+  });
+  let summary = await service().applyDropoutCutoff(later, 'st1');
+  assert.equal(summary.reinstated, 2); // May + June
+  assert.equal(fees[1].status, 'due');
+  assert.equal(fees[1].voidSource, null);
+  assert.equal(fees[3].status, 'cancelled'); // July still after the cutoff
+  assert.equal(admissionVoid.status, 'cancelled'); // other void sources untouched
+
+  const reactivated = fakeManager({
+    Student: student({ status: 'active', statusDate: null }),
+    StudentFee: fees,
+    AcademicYear: [YEAR],
+    Payment: [],
+  });
+  summary = await service().applyDropoutCutoff(reactivated, 'st1');
+  assert.equal(summary.cutoffDate, null);
+  assert.equal(summary.reinstated, 1);
+  assert.equal(fees[3].status, 'due');
+  assert.equal(admissionVoid.status, 'cancelled');
+});
+
+test('applyDropoutCutoff keeps months with completed payments even if paid_amount is stale', async () => {
+  const june = feeEntity(6);
+  const manager = fakeManager({
+    Student: student({ status: 'dropout', statusDate: '2026-05-01' }),
+    StudentFee: [june],
+    AcademicYear: [YEAR],
+    Payment: [{ studentFeeId: june.id, amount: '400.00', status: 'completed' }],
+  });
+  const summary = await service().applyDropoutCutoff(manager, 'st1');
+  assert.equal(summary.voided, 0);
+  assert.equal(summary.retainedWithPayment, 1);
+  assert.equal(june.status, 'due');
+});
+
+test('applyDropoutCutoff raises one Finance flag for a paid month after the dropout month and dismisses it when the date moves', async () => {
+  const july = feeEntity(7, { status: 'paid', paidAmount: '1000.00' });
+  const flags = [];
+  const data = {
+    Student: student({ status: 'dropout', statusDate: '2026-05-17' }),
+    StudentFee: [july],
+    AcademicYear: [YEAR],
+    Payment: [],
+    FeeAdjustment: flags,
+  };
+  const manager = fakeManager(data);
+
+  let summary = await service().applyDropoutCutoff(manager, 'st1');
+  assert.equal(summary.flagged, 1);
+  const flag = manager.saved.find((e) => e.constructor.name === 'FeeAdjustment');
+  assert.equal(flag.kind, 'post_dropout_payment');
+  assert.equal(flag.amount, '1000.00');
+  assert.equal(july.status, 'paid');
+
+  // Re-running with the flag already open does not duplicate it.
+  flags.push(flag);
+  const again = fakeManager(data);
+  summary = await service().applyDropoutCutoff(again, 'st1');
+  assert.equal(summary.flagged, 0);
+
+  // Date moved past July: the flag's cause is gone.
+  data.Student = student({ status: 'dropout', statusDate: '2026-07-31' });
+  await service().applyDropoutCutoff(fakeManager(data), 'st1');
+  assert.equal(flag.status, 'dismissed');
+});
+
+test('monthly collection keeps dropouts only while they have a bill or arrears', async () => {
+  const svc = Object.create(FeeCollectionService.prototype);
+  svc.logger = { warn() {} };
+  svc.dataSource = { transaction: async () => ({}) };
+  const mk = (id, status) => ({ id, admissionNumber: id, name: id, status, schoolClass: null, section: null });
+  svc.studentsRepo = {
+    find: async () => [mk('act', 'active'), mk('billed', 'dropout'), mk('arrears', 'dropout'), mk('gone', 'dropout')],
+  };
+  svc.feesRepo = {
+    find: async () => [
+      feeEntity(5, { studentId: 'billed' }),
+      feeEntity(3, { studentId: 'arrears' }),
+      { ...voided(6), studentId: 'gone' },
+    ],
+  };
+  const may = await svc.monthlyCollection('s1', YEAR.id, 5);
+  assert.deepEqual(may.map((r) => r.student.id).sort(), ['act', 'arrears', 'billed']);
+  const june = await svc.monthlyCollection('s1', YEAR.id, 6);
+  assert.deepEqual(june.map((r) => r.student.id).sort(), ['act', 'arrears', 'billed']);
+  assert.equal(june.find((r) => r.student.id === 'billed').previousDue, 1000);
+  assert.equal(june.find((r) => r.student.status === 'dropout' && r.student.id === 'gone'), undefined);
+});

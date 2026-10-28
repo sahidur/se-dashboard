@@ -9,6 +9,7 @@ import { StudentFee, StudentFeeStatus } from './entities/student-fee.entity';
 import { Payment, PaymentStatus } from './entities/payment.entity';
 import {
   FeeAdjustment,
+  FeeAdjustmentKind,
   FeeAdjustmentStatus,
 } from './entities/fee-adjustment.entity';
 import {
@@ -16,8 +17,23 @@ import {
   PlannerFee,
   ReconcileAction,
   VOID_SOURCE_ADMISSION_DATE,
+  VOID_SOURCE_DROPOUT,
 } from './fee-reconcile.planner';
+import { isFeeMonthAfterDate, toDateOnly, toMoney } from '../fee-management/fee-calculation';
 import { ListFeeAdjustmentsQueryDto, ResolveFeeAdjustmentDto } from './dto/fee-collection.dto';
+
+export interface DropoutCutoffSummary {
+  /** Dropout date used ('YYYY-MM-DD'); null when the student is not a dropout. */
+  cutoffDate: string | null;
+  /** Unpaid months after the dropout month that were cancelled. */
+  voided: number;
+  /** Previously cancelled months brought back (date moved later / not a dropout). */
+  reinstated: number;
+  /** Months after the dropout month left in place because money was collected. */
+  retainedWithPayment: number;
+  /** Of those, new Finance-review flags raised (fees > Adjustments). */
+  flagged: number;
+}
 
 export interface ReconcileOptions {
   /** User performing the change (recorded on voided rows). */
@@ -107,6 +123,149 @@ export class FeeReconcileService {
     return rows.map((r) => r.id);
   }
 
+  /**
+   * Dropout rule: monthly fees apply up to and including the dropout month.
+   * Every unpaid fee row after that month is cancelled (so reports, targets
+   * and achievements ignore it); rows already voided by a dropout come back if
+   * the dropout date moves later or the student is no longer a dropout.
+   * Months with money collected are never touched (reported as retained).
+   * Runs inside the caller's transaction; independent of FEE_ADMISSION_RULES.
+   */
+  async applyDropoutCutoff(
+    manager: EntityManager,
+    studentId: string,
+    opts: { actorId?: string | null } = {},
+  ): Promise<DropoutCutoffSummary> {
+    const summary: DropoutCutoffSummary = {
+      cutoffDate: null,
+      voided: 0,
+      reinstated: 0,
+      retainedWithPayment: 0,
+      flagged: 0,
+    };
+    const student = await manager.findOne(Student, {
+      where: { id: studentId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!student) return summary;
+
+    const cutoff =
+      student.status === StudentStatus.DROPOUT ? toDateOnly(student.statusDate) : null;
+    summary.cutoffDate = cutoff;
+
+    // Same safeguard as the admission-date reconcile: only the current
+    // school's rows. Locking serialises with collectPayment.
+    const fees = await manager.find(StudentFee, {
+      where: { studentId, schoolId: student.schoolId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (fees.length === 0) return summary;
+
+    const years = await manager.find(AcademicYear, {
+      where: { id: In([...new Set(fees.map((f) => f.academicYearId))]) },
+      withDeleted: true,
+    });
+    const yearById = new Map(years.map((y) => [y.id, y]));
+
+    const payments = await manager.find(Payment, {
+      where: { studentFeeId: In(fees.map((f) => f.id)), status: PaymentStatus.COMPLETED },
+    });
+    const completedByFee = new Map<string, number>();
+    for (const p of payments) {
+      completedByFee.set(
+        p.studentFeeId,
+        (completedByFee.get(p.studentFeeId) ?? 0) + (parseFloat(p.amount) || 0),
+      );
+    }
+
+    const openFlags = new Map(
+      (
+        await manager.find(FeeAdjustment, {
+          where: {
+            studentId,
+            kind: FeeAdjustmentKind.POST_DROPOUT_PAYMENT,
+            status: FeeAdjustmentStatus.OPEN,
+          },
+        })
+      ).map((a) => [a.studentFeeId, a]),
+    );
+    const wantedFlags = new Set<string>();
+    const feeById = new Map(fees.map((f) => [f.id, f]));
+
+    for (const fee of fees) {
+      const year = yearById.get(fee.academicYearId);
+      if (!year || year.status === 'closed') continue;
+      const after = cutoff ? isFeeMonthAfterDate(year, fee.month, cutoff) : false;
+
+      if (fee.status === StudentFeeStatus.CANCELLED) {
+        if (!after && fee.voidSource === VOID_SOURCE_DROPOUT) {
+          fee.status = StudentFeeStatus.DUE;
+          fee.voidReason = null;
+          fee.voidSource = null;
+          fee.voidedAt = null;
+          fee.voidedById = null;
+          await manager.save(fee);
+          summary.reinstated++;
+        }
+        continue;
+      }
+      if (!after) continue;
+
+      const money = Math.max(
+        parseFloat(fee.paidAmount ?? '0') || 0,
+        completedByFee.get(fee.id) ?? 0,
+      );
+      if (money > 0) {
+        // Money is never touched: Finance decides (refund / keep / waive).
+        summary.retainedWithPayment++;
+        wantedFlags.add(fee.id);
+        if (!openFlags.has(fee.id)) {
+          await manager.save(
+            manager.create(FeeAdjustment, {
+              studentId,
+              studentFeeId: fee.id,
+              schoolId: student.schoolId,
+              academicYearId: fee.academicYearId,
+              month: fee.month,
+              kind: FeeAdjustmentKind.POST_DROPOUT_PAYMENT,
+              amount: toMoney(money).toFixed(2),
+              details: {
+                reason: 'Payment collected for a month after the dropout month',
+                dropoutDate: cutoff,
+                status: fee.status,
+                payable: parseFloat(fee.payableAmount),
+                paid: parseFloat(fee.paidAmount),
+              },
+              status: FeeAdjustmentStatus.OPEN,
+            }),
+          );
+          summary.flagged++;
+        }
+        continue;
+      }
+      fee.status = StudentFeeStatus.CANCELLED;
+      fee.voidReason = `Student dropped out on ${cutoff}; no fee after that month`;
+      fee.voidSource = VOID_SOURCE_DROPOUT;
+      fee.voidedAt = new Date();
+      fee.voidedById = opts.actorId ?? null;
+      await manager.save(fee);
+      summary.voided++;
+    }
+
+    // The dropout date moved later / was withdrawn: the flag's cause is gone.
+    for (const [feeId, flag] of openFlags) {
+      if (wantedFlags.has(feeId)) continue;
+      const fee = feeById.get(feeId);
+      const year = fee ? yearById.get(fee.academicYearId) : undefined;
+      if (!fee || !year || year.status === 'closed') continue;
+      flag.status = FeeAdjustmentStatus.DISMISSED;
+      flag.resolutionNote = 'Condition no longer applies after the dropout date changed';
+      flag.resolvedAt = new Date();
+      await manager.save(flag);
+    }
+    return summary;
+  }
+
   async reconcileStudentInManager(
     manager: EntityManager,
     studentId: string,
@@ -170,9 +329,13 @@ export class FeeReconcileService {
       paymentsByFee.set(p.studentFeeId, list);
     }
 
-    const openAdjustments = await manager.find(FeeAdjustment, {
-      where: { studentId, status: FeeAdjustmentStatus.OPEN },
-    });
+    // Post-dropout flags are managed by applyDropoutCutoff, not by the planner
+    // (which would dismiss any flag it did not raise itself).
+    const openAdjustments = (
+      await manager.find(FeeAdjustment, {
+        where: { studentId, status: FeeAdjustmentStatus.OPEN },
+      })
+    ).filter((a) => a.kind !== FeeAdjustmentKind.POST_DROPOUT_PAYMENT);
 
     const headIds = new Set<string>();
     for (const f of feeEntities) for (const b of f.breakdown ?? []) headIds.add(b.feeHeadId);

@@ -22,6 +22,8 @@ interface StudentDetail {
   guardianPhone: string | null;
   address: string | null;
   status: string;
+  statusDate: string | null;
+  statusComment: string | null;
   rollNumber: number | null;
   admissionDate: string | null;
   school: { id: string; name: string } | null;
@@ -324,6 +326,9 @@ export default function StudentProfilePage() {
                   ['Roll Number', student.rollNumber ?? '-'],
                   ['Admission Date', student.admissionDate?.slice(0, 10) ?? '-'],
                   ['Status', student.status],
+                  ...(student.statusDate
+                    ? [[`${student.status} Date`, student.statusDate.slice(0, 10)]]
+                    : []),
                 ].map(([k, v]) => (
                   <div key={k} className="flex justify-between gap-4">
                     <dt className="text-gray-500">{k}</dt>
@@ -331,6 +336,12 @@ export default function StudentProfilePage() {
                   </div>
                 ))}
               </dl>
+              {student.statusComment && (
+                <p className="mt-3 border-t pt-2 text-sm text-gray-600">
+                  <span className="text-gray-500">Comment: </span>
+                  {student.statusComment}
+                </p>
+              )}
             </CardContent>
           </Card>
         </div>

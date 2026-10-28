@@ -177,6 +177,14 @@ export class Student {
   @Column({ type: 'enum', enum: StudentStatus, default: StudentStatus.ACTIVE })
   status: StudentStatus;
 
+  // Effective date of the current status when it is dropout / transferred /
+  // withdrawn / graduated (e.g. the dropout date). NULL for active/inactive.
+  @Column({ name: 'status_date', type: 'date', nullable: true })
+  statusDate: Date | null;
+
+  // Free-text reason / remark for that status change.
+  @Column({ name: 'status_comment', type: 'text', nullable: true })
+  statusComment: string | null;
   @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'created_by_id' })
   createdBy: User;
