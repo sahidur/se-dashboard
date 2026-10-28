@@ -3,6 +3,9 @@
 
 # Database backups
 backups/
+
+# Fee reconcile report output (regenerable)
+backend/reconcile-output/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
